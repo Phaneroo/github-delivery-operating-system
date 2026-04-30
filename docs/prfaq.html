@@ -11,182 +11,211 @@
   <link rel="stylesheet" href="site.css">
 </head>
 <body>
-  <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode" title="Toggle theme">
-    <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
-    </svg>
-    <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-    </svg>
-    <span id="theme-label">Light</span>
-  </button>
-  <div class="container doc prose">
-    <nav class="site-nav" aria-label="Site">
-      <a href="index.html">Home</a><span class="site-nav-sep" aria-hidden="true">·</span><a href="prfaq.html" aria-current="page">PRFAQ</a>
+  <header class="site-topbar">
+    <a class="site-brand" href="index.html">
+      <span class="site-brand-mark" aria-hidden="true"></span>
+      Delivery OS
+    </a>
+    <nav class="site-topbar-nav" aria-label="Primary">
+      <a href="index.html">Home</a>
+      <a href="prfaq.html" aria-current="page">PRFAQ</a>
+      <a href="https://github.com/Phaneroo/github-delivery-operating-system" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://www.npmjs.com/package/github-delivery-os" target="_blank" rel="noopener noreferrer">npm</a>
     </nav>
-    <header class="compact">
-      <h1>Product &amp; frequently asked questions (PRFAQ)</h1>
-      <p class="tagline">GitHub Delivery Operating System (<code>github-delivery-os</code>)</p>
-    </header>
-    <p>This document answers common questions for engineering leaders, DevOps and platform teams, release managers, and individual contributors evaluating or adopting Delivery OS.</p>
-    <article class="doc-section" id="q1">
-      <h2>1. What problem does this solve?</h2>
-      <p>Teams often coordinate delivery in GitHub informally: ad hoc sprints, inconsistent QA handoffs, and production approvals that are hard to audit or repeat across repositories.</p>
-      <p>Before the npm package, adopting the same workflow set usually meant cloning, manually copying files, or rebuilding similar automation yourself—leading to drift between repos and slow rollout.</p>
-      <p><code>github-delivery-os</code> installs workflows and templates into a target repo with a documented CLI, so behavior stays aligned with the published model and versioned releases on npm.</p>
-    </article>
-    <article class="doc-section" id="q2">
-      <h2>2. What is <code>github-delivery-os</code>?</h2>
-      <p><code>github-delivery-os</code> is the npm package name for the GitHub Delivery Operating System.</p>
-      <p>It ships a command-line interface that copies GitHub Actions workflows and, optionally, issue templates into a repository you specify. After installation, all automation runs inside that repository on GitHub.</p>
-      <table class="workflows-table plain-first">
-        <thead>
-          <tr><th>Resource</th><th>Link</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>npm</td><td><a href="https://www.npmjs.com/package/github-delivery-os">github-delivery-os</a></td></tr>
-          <tr><td>Homepage</td><td><a href="https://phaneroo.github.io/github-delivery-operating-system/">GitHub Pages site</a></td></tr>
-          <tr><td>Source</td><td><a href="https://github.com/Phaneroo/github-delivery-operating-system">github-delivery-operating-system</a></td></tr>
-          <tr><td>License</td><td>MIT (see repository)</td></tr>
-        </tbody>
-      </table>
-    </article>
-    <article class="doc-section" id="q3">
-      <h2>3. How do I install it?</h2>
-      <p>Run this from the root of the repository where you want the files:</p>
-      <pre><code>npx github-delivery-os install --with-templates .</code></pre>
-      <p>Common flags:</p>
-      <table class="workflows-table plain-first">
-        <thead>
-          <tr><th>Flag</th><th>Purpose</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>--with-templates</code></td><td>Copy issue templates (recommended for sprint and release forms).</td></tr>
-          <tr><td><code>--with-labels</code></td><td>Create labels using the GitHub CLI (<code>gh</code>); requires authentication.</td></tr>
-          <tr><td><code>--dry-run</code></td><td>Show planned changes without writing files.</td></tr>
-          <tr><td><code>--overwrite</code></td><td>Replace existing Delivery OS files (use when upgrading; prefer <code>--dry-run</code> first).</td></tr>
-        </tbody>
-      </table>
-      <p>Other commands include <code>status</code> and <code>uninstall</code>. By default, existing files are not overwritten unless you opt in.</p>
-    </article>
-    <article class="doc-section" id="q4">
-      <h2>4. What gets installed?</h2>
-      <p>Typical workflows (names may vary by release):</p>
-      <table class="workflows-table plain-first">
-        <thead>
-          <tr><th>Area</th><th>Behavior</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Sprint</td><td>Create child issues from sprint planning issues whose title contains <code>SPRINT -</code> and whose body lists features.</td></tr>
-          <tr><td>Sprint completion</td><td>Update burn-down and optionally auto-close the sprint when work is complete.</td></tr>
-          <tr><td>Production</td><td>Notify a release approver when production-style issues are opened.</td></tr>
-          <tr><td>Approvals</td><td>Apply <code>ready-for-deploy</code> after dual approval rules in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a>.</td></tr>
-          <tr><td>QA</td><td>Auto-assign QA on issues labeled <code>qa</code> or <code>qa-request</code>.</td></tr>
-          <tr><td>Notifications</td><td>Optional Telegram messages for configured events.</td></tr>
-          <tr><td>Labels</td><td>A workflow to create required labels on demand.</td></tr>
-        </tbody>
-      </table>
-      <p>With <code>--with-templates</code>, you get structured forms for sprints, tasks, bugs, QA requests, production sign-off, and configuration. See <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/architecture.md">Architecture</a> for the full list and triggers.</p>
-    </article>
-    <article class="doc-section" id="q5">
-      <h2>5. How is this different from branch protection and pull requests alone?</h2>
-      <p>GitHub’s built-in features focus on code review and branch rules. Delivery OS adds an issue-centric lifecycle: planned sprints as issues, QA requests, production release issues, label-driven state, and comment-based approval rules that your organization configures. It complements—not replaces—CI/CD pipelines.</p>
-    </article>
-    <article class="doc-section" id="q6">
-      <h2>6. What configuration is required after install?</h2>
-      <p>Set GitHub Actions variables (Repository → Settings → Secrets and variables → Actions → Variables) as described in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md">Consumer Setup</a>, for example:</p>
+    <div class="site-topbar-actions">
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode" title="Toggle theme">
+        <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <span id="theme-label">Light</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="doc-shell">
+    <aside class="doc-sidebar" aria-label="Documentation">
+      <div class="doc-sidebar-title">Docs</div>
       <ul>
-        <li><code>RELEASE_APPROVER</code> — GitHub username for release approval flows.</li>
-        <li><code>QA_APPROVER</code> — GitHub username for QA approval in dual-approval scenarios.</li>
-        <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment.</li>
-        <li><code>PROJECT_NAME</code> — Optional display name in notifications.</li>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="prfaq.html" aria-current="page">PRFAQ</a></li>
       </ul>
-      <p>Optional secrets for Telegram: <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code>.</p>
-      <p>Create labels via the Setup Labels workflow or <code>install --with-labels</code> with <code>gh</code> authenticated.</p>
-    </article>
-    <article class="doc-section" id="q7">
-      <h2>7. How does sprint planning work?</h2>
-      <p>Use the Sprint Planning template (requires installing with <code>--with-templates</code>). The issue title should include <code>SPRINT -</code>. List one feature per line in the Sprint Features section. The automation creates linked child issues; closing them updates progress and can auto-close the sprint when complete. Details: <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/how-to.md">How To</a>.</p>
-    </article>
-    <article class="doc-section" id="q8">
-      <h2>8. What prevents unapproved production deployment?</h2>
-      <p>Production flows are designed so that <code>ready-for-deploy</code> is applied only when governance conditions in the workflows and <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> are met—typically including dual approval via comments from configured approvers. Decline keywords remove readiness as documented. Telegram, if enabled, surfaces key events for visibility.</p>
-    </article>
-    <article class="doc-section" id="q9">
-      <h2>9. Do I have to use npm?</h2>
-      <p>No. You may clone this repository and use the shell installer scripts documented in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md">Consumer Setup</a>. npm is the recommended path for quick adoption and pinned versions (<code>npx github-delivery-os@x.y.z</code>) when you need reproducible installs.</p>
-    </article>
-    <article class="doc-section" id="q10">
-      <h2>10. What are the main benefits?</h2>
-      <ul>
-        <li>Repeatable governance across many repositories.</li>
-        <li>Less manual copying of YAML and templates.</li>
-        <li>Auditable automation in your own repo.</li>
-        <li>Clear documentation for onboarding.</li>
-        <li>MIT license for broad use.</li>
-      </ul>
-    </article>
-    <article class="doc-section" id="q11">
-      <h2>11. Is it suitable for large organizations?</h2>
-      <p>The model is per-repository and workflow-driven, which scales by rolling the same install process out to each repo. Teams with stricter change control can pin npm versions, review diffs in pull requests, and align variables with internal policies.</p>
-    </article>
-    <article class="doc-section" id="q12">
-      <h2>12. Roadmap (high level)</h2>
-      <p>Directions under consideration include stronger enterprise pinning documentation, environment-specific gates (for example staging versus production), metrics on approvals and cycle time, and continued documentation improvements. Priorities may change; watch <a href="https://github.com/Phaneroo/github-delivery-operating-system/releases">releases</a> and the repository for updates.</p>
-    </article>
-    <article class="doc-section" id="history">
-      <h2>Document history</h2>
-      <p>This PRFAQ describes the GitHub Delivery Operating System as published in the open-source repository. For the latest behavior, always refer to the version you install and the <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> and <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/architecture.md">Architecture</a> docs in the same release.</p>
-      <p class="inline-links"><a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/PRFAQ.md">View PRFAQ.md on GitHub →</a></p>
-    </article>
-    <footer>
-      <div class="footer-content">
-        <div class="footer-icons">
-          <a href="https://www.npmjs.com/package/github-delivery-os" target="_blank" rel="noopener noreferrer" aria-label="npm" class="footer-icon-npm">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.332h-2.669v-1.336h.001zM10.665 10H12v2.666h-1.335V10zm12 2.666h-1.33v-2.666h-1.336v2.666h-1.335V8.667h4.001v4zm-3.999-4h1.335v4h-1.335V8.667z"/></svg>
-          </a>
-          <a href="https://github.com/Phaneroo/github-delivery-operating-system" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-          </a>
-          <a href="https://www.linkedin.com/company/phaneroo/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-          </a>
-          <a href="https://phaneroo.org/" target="_blank" rel="noopener noreferrer" aria-label="Phaneroo">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-          </a>
-        </div>
+    </aside>
+
+    <main class="doc-main doc doc-prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="index.html">Home</a>
+        <span class="breadcrumb-sep" aria-hidden="true">›</span>
+        <span aria-current="page">PRFAQ</span>
+      </nav>
+
+      <div class="doc-hero" id="intro">
+        <h1>Product &amp; frequently asked questions (PRFAQ)</h1>
+        <p class="tagline">GitHub Delivery Operating System (<code>github-delivery-os</code>)</p>
       </div>
-    </footer>
+
+      <p class="doc-lead">This document answers common questions for engineering leaders, DevOps and platform teams, release managers, and individual contributors evaluating or adopting Delivery OS.</p>
+
+      <article class="doc-section" id="q1">
+        <h2>1. What problem does this solve?</h2>
+        <p>Teams often coordinate delivery in GitHub informally: ad hoc sprints, inconsistent QA handoffs, and production approvals that are hard to audit or repeat across repositories.</p>
+        <p>Before the npm package, adopting the same workflow set usually meant cloning, manually copying files, or rebuilding similar automation yourself—leading to drift between repos and slow rollout.</p>
+        <p><code>github-delivery-os</code> installs workflows and templates into a target repo with a documented CLI, so behavior stays aligned with the published model and versioned releases on npm.</p>
+      </article>
+      <article class="doc-section" id="q2">
+        <h2>2. What is <code>github-delivery-os</code>?</h2>
+        <p><code>github-delivery-os</code> is the npm package name for the GitHub Delivery Operating System.</p>
+        <p>It ships a command-line interface that copies GitHub Actions workflows and, optionally, issue templates into a repository you specify. After installation, all automation runs inside that repository on GitHub.</p>
+        <div class="table-wrap">
+          <table class="workflows-table plain-first">
+            <thead>
+              <tr><th>Resource</th><th>Link</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>npm</td><td><a href="https://www.npmjs.com/package/github-delivery-os">github-delivery-os</a></td></tr>
+              <tr><td>Homepage</td><td><a href="https://phaneroo.github.io/github-delivery-operating-system/">GitHub Pages site</a></td></tr>
+              <tr><td>Source</td><td><a href="https://github.com/Phaneroo/github-delivery-operating-system">github-delivery-operating-system</a></td></tr>
+              <tr><td>License</td><td>MIT (see repository)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+      <article class="doc-section" id="q3">
+        <h2>3. How do I install it?</h2>
+        <p>Run this from the root of the repository where you want the files:</p>
+        <pre><code>npx github-delivery-os install --with-templates .</code></pre>
+        <p>Common flags:</p>
+        <div class="table-wrap">
+          <table class="workflows-table plain-first">
+            <thead>
+              <tr><th>Flag</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>--with-templates</code></td><td>Copy issue templates (recommended for sprint and release forms).</td></tr>
+              <tr><td><code>--with-labels</code></td><td>Create labels using the GitHub CLI (<code>gh</code>); requires authentication.</td></tr>
+              <tr><td><code>--dry-run</code></td><td>Show planned changes without writing files.</td></tr>
+              <tr><td><code>--overwrite</code></td><td>Replace existing Delivery OS files (use when upgrading; prefer <code>--dry-run</code> first).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Other commands include <code>status</code> and <code>uninstall</code>. By default, existing files are not overwritten unless you opt in.</p>
+      </article>
+      <article class="doc-section" id="q4">
+        <h2>4. What gets installed?</h2>
+        <p>Typical workflows (names may vary by release):</p>
+        <div class="table-wrap">
+          <table class="workflows-table plain-first">
+            <thead>
+              <tr><th>Area</th><th>Behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Sprint</td><td>Create child issues from sprint planning issues whose title contains <code>SPRINT -</code> and whose body lists features.</td></tr>
+              <tr><td>Sprint completion</td><td>Update burn-down and optionally auto-close the sprint when work is complete.</td></tr>
+              <tr><td>Production</td><td>Notify a release approver when production-style issues are opened.</td></tr>
+              <tr><td>Approvals</td><td>Apply <code>ready-for-deploy</code> after dual approval rules in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a>.</td></tr>
+              <tr><td>QA</td><td>Auto-assign QA on issues labeled <code>qa</code> or <code>qa-request</code>.</td></tr>
+              <tr><td>Notifications</td><td>Optional Telegram messages for configured events.</td></tr>
+              <tr><td>Labels</td><td>A workflow to create required labels on demand.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>With <code>--with-templates</code>, you get structured forms for sprints, tasks, bugs, QA requests, production sign-off, and configuration. See <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/architecture.md">Architecture</a> for the full list and triggers.</p>
+      </article>
+      <article class="doc-section" id="q5">
+        <h2>5. How is this different from branch protection and pull requests alone?</h2>
+        <p>GitHub’s built-in features focus on code review and branch rules. Delivery OS adds an issue-centric lifecycle: planned sprints as issues, QA requests, production release issues, label-driven state, and comment-based approval rules that your organization configures. It complements—not replaces—CI/CD pipelines.</p>
+      </article>
+      <article class="doc-section" id="q6">
+        <h2>6. What configuration is required after install?</h2>
+        <p>Set GitHub Actions variables (Repository → Settings → Secrets and variables → Actions → Variables) as described in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md">Consumer Setup</a>, for example:</p>
+        <ul>
+          <li><code>RELEASE_APPROVER</code> — GitHub username for release approval flows.</li>
+          <li><code>QA_APPROVER</code> — GitHub username for QA approval in dual-approval scenarios.</li>
+          <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment.</li>
+          <li><code>PROJECT_NAME</code> — Optional display name in notifications.</li>
+        </ul>
+        <p>Optional secrets for Telegram: <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code>.</p>
+        <p>Create labels via the Setup Labels workflow or <code>install --with-labels</code> with <code>gh</code> authenticated.</p>
+      </article>
+      <article class="doc-section" id="q7">
+        <h2>7. How does sprint planning work?</h2>
+        <p>Use the Sprint Planning template (requires installing with <code>--with-templates</code>). The issue title should include <code>SPRINT -</code>. List one feature per line in the Sprint Features section. The automation creates linked child issues; closing them updates progress and can auto-close the sprint when complete. Details: <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/how-to.md">How To</a>.</p>
+      </article>
+      <article class="doc-section" id="q8">
+        <h2>8. What prevents unapproved production deployment?</h2>
+        <p>Production flows are designed so that <code>ready-for-deploy</code> is applied only when governance conditions in the workflows and <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> are met—typically including dual approval via comments from configured approvers. Decline keywords remove readiness as documented. Telegram, if enabled, surfaces key events for visibility.</p>
+      </article>
+      <article class="doc-section" id="q9">
+        <h2>9. Do I have to use npm?</h2>
+        <p>No. You may clone this repository and use the shell installer scripts documented in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md">Consumer Setup</a>. npm is the recommended path for quick adoption and pinned versions (<code>npx github-delivery-os@x.y.z</code>) when you need reproducible installs.</p>
+      </article>
+      <article class="doc-section" id="q10">
+        <h2>10. What are the main benefits?</h2>
+        <ul>
+          <li>Repeatable governance across many repositories.</li>
+          <li>Less manual copying of YAML and templates.</li>
+          <li>Auditable automation in your own repo.</li>
+          <li>Clear documentation for onboarding.</li>
+          <li>MIT license for broad use.</li>
+        </ul>
+      </article>
+      <article class="doc-section" id="q11">
+        <h2>11. Is it suitable for large organizations?</h2>
+        <p>The model is per-repository and workflow-driven, which scales by rolling the same install process out to each repo. Teams with stricter change control can pin npm versions, review diffs in pull requests, and align variables with internal policies.</p>
+      </article>
+      <article class="doc-section" id="q12">
+        <h2>12. Roadmap (high level)</h2>
+        <p>Directions under consideration include stronger enterprise pinning documentation, environment-specific gates (for example staging versus production), metrics on approvals and cycle time, and continued documentation improvements. Priorities may change; watch <a href="https://github.com/Phaneroo/github-delivery-operating-system/releases">releases</a> and the repository for updates.</p>
+      </article>
+      <article class="doc-section" id="history">
+        <h2>Document history</h2>
+        <p>This PRFAQ describes the GitHub Delivery Operating System as published in the open-source repository. For the latest behavior, always refer to the version you install and the <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> and <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/architecture.md">Architecture</a> docs in the same release.</p>
+        <p class="inline-links"><a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/PRFAQ.md">View PRFAQ.md on GitHub →</a></p>
+      </article>
+    </main>
+
+    <aside class="doc-toc" aria-label="On this page">
+      <div class="doc-toc-title">On this page</div>
+      <ul>
+        <li><a href="#intro">Introduction</a></li>
+        <li><a href="#q1">What problem does this solve?</a></li>
+        <li><a href="#q2">What is github-delivery-os?</a></li>
+        <li><a href="#q3">How do I install?</a></li>
+        <li><a href="#q4">What gets installed?</a></li>
+        <li><a href="#q5">Vs branch protection &amp; PRs</a></li>
+        <li><a href="#q6">Configuration after install</a></li>
+        <li><a href="#q7">Sprint planning</a></li>
+        <li><a href="#q8">Production deployment</a></li>
+        <li><a href="#q9">Do I need npm?</a></li>
+        <li><a href="#q10">Main benefits</a></li>
+        <li><a href="#q11">Large organizations</a></li>
+        <li><a href="#q12">Roadmap</a></li>
+        <li><a href="#history">Document history</a></li>
+      </ul>
+    </aside>
   </div>
-  <script>
-    (function() {
-      const STORAGE_KEY = 'delivery-os-theme';
-      const toggle = document.getElementById('theme-toggle');
-      const label = document.getElementById('theme-label');
 
-      function getPreferredTheme() {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return stored;
-        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      }
+  <footer class="site-footer">
+    <div class="footer-content">
+      <div class="footer-icons">
+        <a href="https://www.npmjs.com/package/github-delivery-os" target="_blank" rel="noopener noreferrer" aria-label="npm" class="footer-icon-npm">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.332h-2.669v-1.336h.001zM10.665 10H12v2.666h-1.335V10zm12 2.666h-1.33v-2.666h-1.336v2.666h-1.335V8.667h4.001v4zm-3.999-4h1.335v4h-1.335V8.667z"/></svg>
+        </a>
+        <a href="https://github.com/Phaneroo/github-delivery-operating-system" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        </a>
+        <a href="https://www.linkedin.com/company/phaneroo/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+        </a>
+        <a href="https://phaneroo.org/" target="_blank" rel="noopener noreferrer" aria-label="Phaneroo">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        </a>
+      </div>
+    </div>
+  </footer>
 
-      function setTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : '');
-        localStorage.setItem(STORAGE_KEY, theme);
-        if (theme === 'light') {
-          toggle.querySelector('.sun-icon').style.display = 'none';
-          toggle.querySelector('.moon-icon').style.display = 'block';
-          label.textContent = 'Dark';
-        } else {
-          toggle.querySelector('.sun-icon').style.display = 'block';
-          toggle.querySelector('.moon-icon').style.display = 'none';
-          label.textContent = 'Light';
-        }
-      }
-
-      setTheme(getPreferredTheme());
-      toggle.addEventListener('click', () => setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'));
-    })();
-  </script>
+  <script src="site.js" defer></script>
 </body>
 </html>

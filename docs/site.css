@@ -20,6 +20,12 @@
   --accent-dim: #0550ae;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  font-size: 112.5%;
+}
+
 .theme-toggle {
   position: fixed;
   top: 1rem;
@@ -29,7 +35,7 @@
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -57,12 +63,13 @@ body {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text);
-  line-height: 1.6;
+  font-size: 1rem;
+  line-height: 1.65;
   min-height: 100vh;
 }
 
 .container {
-  max-width: 720px;
+  max-width: 42rem;
   margin: 0 auto;
   padding: 2rem 1.5rem;
 }
@@ -70,7 +77,7 @@ body {
 .site-nav {
   text-align: center;
   padding: 0.75rem 0 0;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .site-nav a {
@@ -98,14 +105,14 @@ header.compact {
 }
 
 h1 {
-  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-size: clamp(1.9rem, 4.5vw, 2.5rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0.75rem;
 }
 
 .tagline {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   color: var(--text-muted);
   font-weight: 500;
 }
@@ -117,7 +124,7 @@ h1 {
   padding: 1.25rem 1.5rem;
   margin: 2.5rem 0;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   overflow-x: auto;
 }
 
@@ -126,7 +133,7 @@ h1 {
 }
 
 .install-label {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -138,7 +145,7 @@ section {
 }
 
 h2 {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 600;
   margin-bottom: 1rem;
   color: var(--text);
@@ -174,12 +181,12 @@ ul li {
 
 .feature strong {
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 .feature span {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   display: block;
   margin-top: 0.25rem;
 }
@@ -187,7 +194,7 @@ ul li {
 .workflows-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   margin-top: 1rem;
   margin-bottom: 1rem;
 }
@@ -203,7 +210,7 @@ ul li {
 .workflows-table th {
   color: var(--text-muted);
   font-weight: 500;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -211,13 +218,13 @@ ul li {
 .workflows-table td:first-child {
   font-family: 'JetBrains Mono', monospace;
   color: var(--accent);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 .workflows-table.plain-first td:first-child {
   font-family: inherit;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 
 .workflows-table a {
@@ -231,10 +238,10 @@ ul li {
   background: var(--accent);
   color: var(--bg) !important;
   text-decoration: none;
-  padding: 0.6rem 1.25rem;
+  padding: 0.65rem 1.35rem;
   border-radius: 6px;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1rem;
   margin-top: 0.5rem;
   transition: background 0.15s;
 }
@@ -251,7 +258,7 @@ footer {
   padding: 2.5rem 0;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .footer-content {
@@ -313,8 +320,8 @@ pre {
   overflow-x: auto;
   margin-bottom: 1rem;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: 0.95rem;
+  line-height: 1.55;
 }
 
 pre code {
@@ -323,7 +330,7 @@ pre code {
 
 :not(pre) > code {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9em;
+  font-size: 0.92em;
   color: var(--accent);
 }
 
@@ -346,7 +353,7 @@ pre code {
 .inline-links > a:not(.cta) {
   color: var(--accent);
   text-decoration: none;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 .inline-links > a:not(.cta):hover {

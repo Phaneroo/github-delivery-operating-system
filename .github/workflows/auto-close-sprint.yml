@@ -66,11 +66,17 @@ jobs:
 
             // Paginate: a plain listForRepo call caps at one page (100 issues) and
             // would silently undercount children in repos with more open+closed
-            // issues than that, skewing the burn-down.
+            // issues than that, skewing the burn-down. Scoped to `sprint-active`
+            // (the label every child issue gets on creation) instead of every
+            // issue in the repo, so this stays cheap in repos with a lot of
+            // unrelated issue history — this workflow now runs serialized per
+            // repo, so an unscoped full-repo fetch on every child close would
+            // add up fast.
             const allIssues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: "all",
+              labels: "sprint-active",
               per_page: 100
             });
 

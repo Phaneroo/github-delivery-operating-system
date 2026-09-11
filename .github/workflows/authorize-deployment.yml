@@ -13,6 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+    # Serialize per-issue: two comments posted seconds apart (e.g. a decline
+    # immediately corrected with an approval) can trigger overlapping runs.
+    # Both would recompute the same final verdict correctly, but each reads
+    # its "already posted?" check from the stale label snapshot on its own
+    # triggering event, so without this they could both post a status
+    # comment. Scoped per issue (not per repo) so unrelated releases still
+    # process concurrently.
+    concurrency:
+      group: authorize-deployment-${{ github.event.issue.number }}
+      cancel-in-progress: false
 
     steps:
       - name: Check Dual Approval (Flexible + Decline)
@@ -34,7 +44,7 @@ jobs:
             // comment (matches the documented convention) and can't match inside a
             // larger word (e.g. "ok" no longer matches "okay", "reject" no longer
             // matches "rejection") or as a substring anywhere in unrelated prose.
-            const DECLINE_RE = /^(declined|reject|not approved)\b/i;
+            const DECLINE_RE = /^(declined|rejected|reject|not approved)\b/i;
             const APPROVE_RE = /^(approved|approve|ok|go ahead)\b/i;
             const QA_APPROVE_RE = /^(qa approved|approved|qa ok|looks good)\b/i;
 

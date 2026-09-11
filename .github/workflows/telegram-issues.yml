@@ -103,7 +103,11 @@ jobs:
             # Case-insensitive actor comparison: GitHub logins are case-insensitive,
             # but a plain bash == is not, so a RELEASE_APPROVER var with different
             # casing than the actual login would otherwise never match here.
-            if [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iq "declined\|reject\|not approved"; then
+            # Anchored to the start of a line, matching the same keyword set and
+            # convention as authorize-deployment.yml's DECLINE_RE, so this alert
+            # can't fire for a comment that workflow wouldn't actually treat as a
+            # decline (e.g. "not approved" appearing mid-sentence).
+            if [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)"; then
               MESSAGE="🔴🛑 RELEASE DECLINED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             elif [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iq "^approved"; then

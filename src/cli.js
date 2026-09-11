@@ -55,7 +55,13 @@ program
     });
   });
 
-program.parse();
+// parseAsync (not parse) because the `status` action is async — with plain
+// parse(), an error thrown inside it becomes an unhandled rejection that
+// Node <15 does not treat as fatal, so a real failure could exit 0.
+program.parseAsync().catch((err) => {
+  console.error(err && err.message ? err.message : err);
+  process.exitCode = 1;
+});
 
 // Show help if no command
 if (!process.argv.slice(2).length) {

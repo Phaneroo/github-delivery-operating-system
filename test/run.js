@@ -9,5 +9,7 @@ console.log('');
 require('./install.test.js');
 require('./fetch-latest-version.test.js');
 require('./authorize-deployment-verdict.test.js');
+require('./sprint-child-creator.test.js');
+require('./auto-close-sprint.test.js');
 
 run();

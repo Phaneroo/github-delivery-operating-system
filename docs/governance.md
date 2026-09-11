@@ -59,6 +59,8 @@ When a production release issue is opened (template auto-applies `production`):
 
 Both must approve → `ready-for-deploy` label. Release approver can decline → `declined` label.
 
+Only the release approver's **latest** comment counts as their verdict — a later `approved` comment supersedes an earlier `declined` one (and vice versa), so a release can be re-approved after fixes land without editing or deleting history. Keywords must lead the comment (e.g. `Approved, ship it` matches; `ok, hold off, I have concerns` does not).
+
 ---
 
 ## Automation Rules

@@ -6,6 +6,7 @@ on:
 
 permissions:
   issues: write
+  contents: read
 
 jobs:
   authorize:
@@ -13,8 +14,22 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read # needed for actions/checkout, so the verdict script can be required from the repo
+    # Serialize per-issue: two comments posted seconds apart (e.g. a decline
+    # immediately corrected with an approval) can trigger overlapping runs.
+    # Both would recompute the same final verdict correctly, but each reads
+    # its "already posted?" check from the stale label snapshot on its own
+    # triggering event, so without this they could both post a status
+    # comment. Scoped per issue (not per repo) so unrelated releases still
+    # process concurrently.
+    concurrency:
+      group: authorize-deployment-${{ github.event.issue.number }}
+      cancel-in-progress: false
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Check Dual Approval (Flexible + Decline)
         uses: actions/github-script@v7
         env:
@@ -22,80 +37,78 @@ jobs:
           QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
         with:
           script: |
+            // Pure verdict logic lives in a real, unit-tested module (see
+            // .github/scripts/authorize-deployment-verdict.js and
+            // test/authorize-deployment-verdict.test.js) rather than inline here,
+            // so it isn't only verified by hand whenever it changes.
+            const { computeVerdict } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const releaseApprover = process.env.RELEASE_APPROVER;
             const qaApprover = process.env.QA_APPROVER;
 
-            const comments = await github.rest.issues.listComments({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
               repo,
-              issue_number: issueNumber
+              issue_number: issueNumber,
+              per_page: 100
             });
 
-            let releaseApproved = false;
-            let qaApproved = false;
+            const { releaseVerdict, qaApproved } = computeVerdict(comments, releaseApprover, qaApprover);
 
-            for (const comment of comments.data) {
-              const body = (comment.body || "").trim().toLowerCase();
+            const currentLabels = (context.payload.issue.labels || []).map((l) => l.name);
+            const alreadyDeclined = currentLabels.includes("declined");
+            const alreadyReady = currentLabels.includes("ready-for-deploy");
 
-              if (
-                comment.user.login === releaseApprover &&
-                /(declined|reject|not approved)/i.test(body)
-              ) {
+            if (releaseVerdict === "declined") {
+              if (alreadyDeclined) return; // avoid re-posting on every later comment
 
-                await github.rest.issues.addLabels({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                  labels: ["declined"]
-                });
-
-                try {
-                  await github.rest.issues.removeLabel({
-                    owner,
-                    repo,
-                    issue_number: issueNumber,
-                    name: "ready-for-deploy"
-                  });
-                } catch (e) {}
-
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                  body: "🔴 **Release Declined**\n\nThis release requires additional fixes before production deployment."
-                });
-
-                return;
-              }
-
-              if (
-                comment.user.login === releaseApprover &&
-                /^(approved|approve|ok|go ahead)/i.test(body)
-              ) {
-                releaseApproved = true;
-              }
-
-              if (
-                comment.user.login === qaApprover &&
-                /(qa approved|approved|qa ok|looks good)/i.test(body)
-              ) {
-                qaApproved = true;
-              }
-            }
-
-            if (releaseApproved && qaApproved) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                labels: ["declined"]
+              });
 
               try {
-                await github.rest.issues.addLabels({
+                await github.rest.issues.removeLabel({
                   owner,
                   repo,
                   issue_number: issueNumber,
-                  labels: ["ready-for-deploy"]
+                  name: "ready-for-deploy"
                 });
               } catch (e) {}
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: "🔴 **Release Declined**\n\nThis release requires additional fixes before production deployment."
+              });
+
+              return;
+            }
+
+            if (releaseVerdict === "approved" && qaApproved) {
+              if (alreadyReady) return; // avoid re-posting on every later comment
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  name: "declined"
+                });
+              } catch (e) {}
+
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                labels: ["ready-for-deploy"]
+              });
 
               await github.rest.issues.createComment({
                 owner,

@@ -52,11 +52,14 @@ cd github-delivery-operating-system
 
 **Other commands:**
 ```bash
-npx github-delivery-os status .                    # Show what's installed
+npx github-delivery-os status .                    # Show what's installed + installed version
+npx github-delivery-os status --offline .          # Same, without checking npm for updates
 npx github-delivery-os uninstall .                 # Remove workflows
 npx github-delivery-os uninstall --with-templates .  # Remove workflows + templates
 npx github-delivery-os uninstall --dry-run .      # Preview (no changes)
 ```
+
+`status` also checks npm for a newer release and tells you if you're behind (e.g. `⬆️ Update available: 1.0.3 → 1.1.0`), along with the exact command to update. That check is silent and non-fatal if you're offline — use `--offline` to skip it outright (e.g. in CI).
 
 **What gets installed:**
 
@@ -71,6 +74,8 @@ npx github-delivery-os uninstall --dry-run .      # Preview (no changes)
 | `setup-labels` | One-time workflow to create required labels |
 
 Workflows and templates are **copied directly** into your repo. No `workflow_call` or external references.
+
+Installing via `npx github-delivery-os` (not the `scripts/install.sh` clone path) also writes `.github/delivery-os.json`, a small manifest recording the installed version — this is what powers the update check in `status`. It's only written when the files it describes are actually current (a fresh install, or `--overwrite`); a skip-mode install over existing files leaves it untouched rather than claiming a version that isn't really on disk. `uninstall` removes it.
 
 ---
 

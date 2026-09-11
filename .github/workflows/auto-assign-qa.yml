@@ -19,7 +19,7 @@ jobs:
     steps:
       # pozil/auto-assign-issue does not support 'labels' input; labels come from issue template (qa_request.yml)
       - name: Assign QA team to QA submission issues
-        uses: pozil/auto-assign-issue@v1
+        uses: pozil/auto-assign-issue@d11e715efc663fe323c3d8d4d3cbbfdddd539baf # v1
         with:
           assignees: ${{ vars.QA_ASSIGNEES }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}

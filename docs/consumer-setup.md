@@ -72,6 +72,25 @@ By default, existing files are **skipped** (never overwritten). Use `--overwrite
 
 ---
 
+## Checking Status & Updates
+
+```bash
+npx github-delivery-os status .            # What's installed, installed version, update check
+npx github-delivery-os status --offline .  # Same, without checking npm for the latest version
+```
+
+Installing via `npx github-delivery-os` writes `.github/delivery-os.json` — a small manifest recording which version was installed. `status` reads it and, unless `--offline` is passed, checks npm for the latest published version:
+
+- `⬆️  Update available: 1.0.3 → 1.1.0` — a newer release exists; the message includes the exact `install --overwrite` command to run.
+- `✓ Up to date` — you're on the latest.
+- A quiet note instead, if npm can't be reached — the check never fails the command.
+
+The manifest is only written/updated when the files it describes are actually current on disk (a fresh install, or one run with `--overwrite`). A skip-mode install over pre-existing files leaves it as-is rather than claiming a version that isn't really installed — `status` will tell you when that's happened.
+
+**Note:** this version tracking only applies to the `npx github-delivery-os` install path. The `scripts/install.sh` clone-and-run alternative does not currently write or read this manifest.
+
+---
+
 ## What Gets Installed
 
 | Workflow | Purpose |
@@ -180,13 +199,23 @@ The consumer repo must allow workflows to write. In your consumer repo:
 
 ## Uninstalling
 
-1. Delete these files from `.github/workflows/`:
-   - `sprint-child-creator.yml`
-   - `auto-close-sprint.yml`
-   - `notify-release-approver.yml`
-   - `authorize-deployment.yml`
-   - `auto-assign-qa.yml`
-   - `telegram-issues.yml`
-   - `setup-labels.yml`
+**One command (recommended):**
 
-2. Optionally remove templates from `.github/ISSUE_TEMPLATE/` and repo variables/secrets.
+```bash
+npx github-delivery-os uninstall .                    # Remove workflows only
+npx github-delivery-os uninstall --with-templates .   # Also remove issue templates
+npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
+```
+
+This removes the seven workflow files, optionally the issue templates, and `.github/delivery-os.json` if present. It does not touch repo variables or secrets.
+
+**Manual alternative** — delete these files from `.github/workflows/`:
+- `sprint-child-creator.yml`
+- `auto-close-sprint.yml`
+- `notify-release-approver.yml`
+- `authorize-deployment.yml`
+- `auto-assign-qa.yml`
+- `telegram-issues.yml`
+- `setup-labels.yml`
+
+Optionally also remove templates from `.github/ISSUE_TEMPLATE/`, `.github/delivery-os.json`, and repo variables/secrets.

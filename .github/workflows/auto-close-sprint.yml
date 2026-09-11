@@ -6,14 +6,25 @@ on:
 
 permissions:
   issues: write
+  contents: read
 
 jobs:
   update-sprint:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read # needed for actions/checkout, so the burn-down script can be required from the repo
+    # Serialize runs: closing several child issues in quick succession triggers
+    # concurrent runs that each read-modify-write the same sprint issue body,
+    # which can race and drop an update (or double-fire the 100% auto-close).
+    concurrency:
+      group: auto-close-sprint-${{ github.repository }}
+      cancel-in-progress: false
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Update sprint health, burn-down, and auto-close
         uses: actions/github-script@v7
         env:
@@ -21,13 +32,25 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
           script: |
+            // Pure burn-down/health logic lives in a real, unit-tested module
+            // (see .github/scripts/auto-close-sprint.js and
+            // test/auto-close-sprint.test.js) rather than inline here, so
+            // it isn't only verified by hand whenever it changes.
+            const {
+              parseParentSprintNumber,
+              parseSprintDates,
+              computeTimePercent,
+              computeProgress,
+              computeHealthEmoji,
+              renderBurnDown,
+              updateSprintBody,
+            } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-close-sprint.js`);
+
             const issue = context.payload.issue;
             const body = issue.body || "";
 
-            const parentMatch = body.match(/Parent Sprint:\s*#(\d+)/);
-            if (!parentMatch) return;
-
-            const sprintNumber = parseInt(parentMatch[1]);
+            const sprintNumber = parseParentSprintNumber(body);
+            if (!sprintNumber) return;
 
             const sprintIssue = await github.rest.issues.get({
               owner: context.repo.owner,
@@ -37,31 +60,27 @@ jobs:
 
             const sprintBody = sprintIssue.data.body || "";
 
-            let startDate, endDate;
-            const dateMatch1 = sprintBody.match(/Sprint Dates[\s\S]*?(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i);
-            const dateMatch2a = sprintBody.match(/Sprint Start[\s\S]*?(\d{4}-\d{2}-\d{2})/i);
-            const dateMatch2b = sprintBody.match(/Sprint End[\s\S]*?(\d{4}-\d{2}-\d{2})/i);
-            if (dateMatch1) {
-              startDate = new Date(dateMatch1[1]);
-              endDate = new Date(dateMatch1[2]);
-            } else if (dateMatch2a && dateMatch2b) {
-              startDate = new Date(dateMatch2a[1]);
-              endDate = new Date(dateMatch2b[1]);
-            }
-            if (!startDate || !endDate) {
+            const dates = parseSprintDates(sprintBody);
+            if (!dates) {
               console.log("Sprint dates not found.");
               return;
             }
-            const now = new Date();
 
-            const totalDuration = endDate - startDate;
-            const elapsed = now - startDate;
-            const timePercent = Math.max(0, Math.min(100, Math.round((elapsed / totalDuration) * 100)));
+            const timePercent = computeTimePercent(dates.startDate, dates.endDate, new Date());
 
-            const { data: allIssues } = await github.rest.issues.listForRepo({
+            // Paginate: a plain listForRepo call caps at one page (100 issues) and
+            // would silently undercount children in repos with more open+closed
+            // issues than that, skewing the burn-down. Scoped to `sprint-active`
+            // (the label every child issue gets on creation) instead of every
+            // issue in the repo, so this stays cheap in repos with a lot of
+            // unrelated issue history — this workflow now runs serialized per
+            // repo, so an unscoped full-repo fetch on every child close would
+            // add up fast.
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: "all",
+              labels: "sprint-active",
               per_page: 100
             });
 
@@ -69,31 +88,10 @@ jobs:
               i.body && i.body.includes(`Parent Sprint: #${sprintNumber}`)
             );
 
-            const closedChildren = children.filter(i => i.state === "closed");
-
-            const progressPercent = children.length === 0
-              ? 0
-              : Math.round((closedChildren.length / children.length) * 100);
-
-            let healthEmoji = "🟢";
-            if (progressPercent < timePercent - 10) healthEmoji = "🔴";
-            else if (progressPercent < timePercent) healthEmoji = "🟡";
-
-            const totalBars = 20;
-            const filledBars = Math.round((progressPercent / 100) * totalBars);
-            const burnDown =
-              "█".repeat(filledBars) + "░".repeat(totalBars - filledBars);
-
-            let updatedBody = sprintBody;
-            updatedBody = updatedBody.replace(/## 🚦 Sprint Status[\s\S]*?---/g, "");
-
-            updatedBody +=
-              `\n\n---\n\n## 🚦 Sprint Status\n\n` +
-              `Progress: **${progressPercent}%**\n` +
-              `Time Elapsed: **${timePercent}%**\n\n` +
-              `Health: ${healthEmoji}\n\n` +
-              `### 📉 Burn-down\n` +
-              `\`${burnDown}\` ${progressPercent}%\n\n---`;
+            const { progressPercent } = computeProgress(children);
+            const healthEmoji = computeHealthEmoji(progressPercent, timePercent);
+            const burnDown = renderBurnDown(progressPercent);
+            const updatedBody = updateSprintBody(sprintBody, { progressPercent, timePercent, healthEmoji, burnDown });
 
             await github.rest.issues.update({
               owner: context.repo.owner,

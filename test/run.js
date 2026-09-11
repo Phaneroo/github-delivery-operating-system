@@ -8,5 +8,6 @@ console.log('');
 
 require('./install.test.js');
 require('./fetch-latest-version.test.js');
+require('./authorize-deployment-verdict.test.js');
 
 run();

@@ -6,6 +6,7 @@ on:
 
 permissions:
   issues: write
+  contents: read
 
 jobs:
   authorize:
@@ -13,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read # needed for actions/checkout, so the verdict script can be required from the repo
     # Serialize per-issue: two comments posted seconds apart (e.g. a decline
     # immediately corrected with an approval) can trigger overlapping runs.
     # Both would recompute the same final verdict correctly, but each reads
@@ -25,6 +27,9 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Check Dual Approval (Flexible + Decline)
         uses: actions/github-script@v7
         env:
@@ -32,21 +37,17 @@ jobs:
           QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
         with:
           script: |
+            // Pure verdict logic lives in a real, unit-tested module (see
+            // .github/scripts/authorize-deployment-verdict.js and
+            // test/authorize-deployment-verdict.test.js) rather than inline here,
+            // so it isn't only verified by hand whenever it changes.
+            const { computeVerdict } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const releaseApprover = process.env.RELEASE_APPROVER;
             const qaApprover = process.env.QA_APPROVER;
-
-            const normalize = (s) => (s || "").toLowerCase();
-
-            // Anchored to comment start + word boundary so keywords must lead the
-            // comment (matches the documented convention) and can't match inside a
-            // larger word (e.g. "ok" no longer matches "okay", "reject" no longer
-            // matches "rejection") or as a substring anywhere in unrelated prose.
-            const DECLINE_RE = /^(declined|rejected|reject|not approved)\b/i;
-            const APPROVE_RE = /^(approved|approve|ok|go ahead)\b/i;
-            const QA_APPROVE_RE = /^(qa approved|approved|qa ok|looks good)\b/i;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
@@ -55,29 +56,7 @@ jobs:
               per_page: 100
             });
 
-            // Walk comments in chronological order and keep the LATEST verdict from
-            // each approver, rather than stopping at the first decline seen. This
-            // lets a release-approver re-approve after an earlier decline (e.g. once
-            // fixes land) instead of being permanently stuck as declined.
-            let releaseVerdict = null; // 'approved' | 'declined' | null
-            let qaApproved = false;
-
-            for (const comment of comments) {
-              const login = comment.user && comment.user.login;
-              const body = (comment.body || "").trim();
-
-              if (normalize(login) === normalize(releaseApprover)) {
-                if (DECLINE_RE.test(body)) {
-                  releaseVerdict = "declined";
-                } else if (APPROVE_RE.test(body)) {
-                  releaseVerdict = "approved";
-                }
-              }
-
-              if (normalize(login) === normalize(qaApprover) && QA_APPROVE_RE.test(body)) {
-                qaApproved = true;
-              }
-            }
+            const { releaseVerdict, qaApproved } = computeVerdict(comments, releaseApprover, qaApprover);
 
             const currentLabels = (context.payload.issue.labels || []).map((l) => l.name);
             const alreadyDeclined = currentLabels.includes("declined");

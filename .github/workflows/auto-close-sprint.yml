@@ -12,6 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+    # Serialize runs: closing several child issues in quick succession triggers
+    # concurrent runs that each read-modify-write the same sprint issue body,
+    # which can race and drop an update (or double-fire the 100% auto-close).
+    concurrency:
+      group: auto-close-sprint-${{ github.repository }}
+      cancel-in-progress: false
 
     steps:
       - name: Update sprint health, burn-down, and auto-close
@@ -58,7 +64,10 @@ jobs:
             const elapsed = now - startDate;
             const timePercent = Math.max(0, Math.min(100, Math.round((elapsed / totalDuration) * 100)));
 
-            const { data: allIssues } = await github.rest.issues.listForRepo({
+            // Paginate: a plain listForRepo call caps at one page (100 issues) and
+            // would silently undercount children in repos with more open+closed
+            // issues than that, skewing the burn-down.
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: "all",

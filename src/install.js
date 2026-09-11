@@ -1,6 +1,9 @@
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const { execFileSync } = require('child_process');
+
+const MANIFEST_FILE = 'delivery-os.json'; // written to .github/delivery-os.json in the target repo
 
 const WORKFLOWS = [
   'sprint-child-creator',
@@ -29,6 +32,65 @@ const LABELS = [
   ['declined', 'B60205'],
   ['risk', 'B60205'],
 ];
+
+function manifestPath(targetAbs) {
+  return path.join(targetAbs, '.github', MANIFEST_FILE);
+}
+
+function readManifest(targetAbs) {
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath(targetAbs), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeManifest(targetAbs, version) {
+  const dest = manifestPath(targetAbs);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(
+    dest,
+    JSON.stringify({ version, installedAt: new Date().toISOString() }, null, 2) + '\n'
+  );
+}
+
+// Best-effort check against the npm registry. Never throws or rejects —
+// resolves null on any failure (offline, registry down, timeout) so callers
+// can treat "unknown" and "couldn't check" identically with no extra
+// error-handling of their own.
+function fetchLatestVersion(timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    const req = https.get(
+      'https://registry.npmjs.org/github-delivery-os/latest',
+      { headers: { 'User-Agent': 'github-delivery-os-cli' } },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          done(null);
+          return;
+        }
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try {
+            done(JSON.parse(data).version || null);
+          } catch {
+            done(null);
+          }
+        });
+      }
+    );
+    req.setTimeout(timeoutMs, () => req.destroy());
+    req.on('error', () => done(null));
+  });
+}
 
 function getPackageRoot() {
   // When installed via npm, __dirname is node_modules/github-delivery-os/src
@@ -86,6 +148,8 @@ function runInstall(options) {
 
   let workflowsCopied = 0;
   let templatesCopied = 0;
+  let workflowsSkipped = 0;
+  let templatesSkipped = 0;
 
   // Copy workflows
   for (const wf of WORKFLOWS) {
@@ -99,6 +163,7 @@ function runInstall(options) {
 
     if (fs.existsSync(dest) && !overwrite) {
       console.log(`  Skipped (exists): ${wf}.yml`);
+      workflowsSkipped++;
     } else if (dryRun) {
       console.log(`  [dry-run] Would create: ${wf}.yml`);
       workflowsCopied++;
@@ -120,6 +185,7 @@ function runInstall(options) {
 
       if (fs.existsSync(dest) && !overwrite) {
         console.log(`  Skipped (exists): ${name}`);
+        templatesSkipped++;
       } else if (dryRun) {
         console.log(`  [dry-run] Would create template: ${name}`);
         templatesCopied++;
@@ -192,8 +258,26 @@ function runInstall(options) {
     }
   }
 
+  // Record what got installed so `status` can report a version and detect
+  // drift. Only claim a version when the on-disk files actually match it: an
+  // overwrite, or a fresh install where nothing had to be skipped. A partial
+  // skip-mode install would leave older file content on disk, so don't
+  // overwrite a previously recorded (possibly accurate, possibly newer)
+  // version with a number that isn't actually true on disk yet.
+  const cleanInstall = overwrite || (workflowsSkipped === 0 && templatesSkipped === 0);
+  if (!dryRun && cleanInstall) {
+    const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
+    writeManifest(targetAbs, pkgVersion);
+  }
+
   // Summary
   console.log('');
+  if (!dryRun && !cleanInstall) {
+    console.log('  Note: some files already existed and were skipped, so the recorded');
+    console.log('  Delivery OS version was not updated. Re-run with --overwrite to sync');
+    console.log('  all files (and the recorded version) to the latest release.');
+    console.log('');
+  }
   if (workflowsCopied > 0 || templatesCopied > 0 || labelsCreated > 0) {
     if (dryRun) {
       if (workflowsCopied > 0) console.log(`Would install ${workflowsCopied} workflow(s).`);
@@ -238,8 +322,8 @@ const TEMPLATES = [
   'bug_report.yml',
 ];
 
-function runStatus(options) {
-  const { targetDir = '.' } = options;
+async function runStatus(options) {
+  const { targetDir = '.', checkUpdates = true } = options;
   const targetAbs = path.resolve(process.cwd(), targetDir);
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
   const templatesDest = path.join(targetAbs, '.github', 'ISSUE_TEMPLATE');
@@ -254,6 +338,32 @@ function runStatus(options) {
   const installedTemplates = TEMPLATES.filter((t) =>
     fs.existsSync(path.join(templatesDest, t))
   );
+
+  if (installedWorkflows.length > 0 || installedTemplates.length > 0) {
+    const manifest = readManifest(targetAbs);
+    if (manifest && manifest.version) {
+      const installedOn = manifest.installedAt ? ` (installed ${manifest.installedAt.slice(0, 10)})` : '';
+      console.log(`Installed version: ${manifest.version}${installedOn}`);
+    } else {
+      console.log('Installed version: unknown (installed before version tracking was added)');
+      console.log('  Run install with --overwrite to record the current version.');
+    }
+
+    if (checkUpdates) {
+      const latest = await fetchLatestVersion();
+      if (!latest) {
+        console.log('  (Could not check npm for the latest version — offline or registry unreachable.)');
+      } else if (manifest && manifest.version === latest) {
+        console.log(`✓ Up to date (latest is ${latest})`);
+      } else if (manifest && manifest.version) {
+        console.log(`⬆️  Update available: ${manifest.version} → ${latest}`);
+        console.log('    Run: npx github-delivery-os@latest install --overwrite .');
+      } else {
+        console.log(`Latest published version: ${latest}`);
+      }
+    }
+    console.log('');
+  }
 
   if (installedWorkflows.length > 0) {
     console.log('Workflows:');
@@ -325,6 +435,19 @@ function runUninstall(options) {
     }
   }
 
+  // Remove the version manifest too — it has no meaning once Delivery OS is
+  // gone, and leaving it behind would make a later install/status think a
+  // stale version is still installed.
+  const manifestDest = manifestPath(targetAbs);
+  if (fs.existsSync(manifestDest)) {
+    if (dryRun) {
+      console.log('  [dry-run] Would remove: delivery-os.json');
+    } else {
+      fs.unlinkSync(manifestDest);
+      console.log('  Removed: delivery-os.json');
+    }
+  }
+
   console.log('');
   if (workflowsRemoved > 0 || templatesRemoved > 0) {
     if (dryRun) {
@@ -342,4 +465,10 @@ function runUninstall(options) {
   console.log('=== Uninstall complete ===');
 }
 
-module.exports = { runInstall, runStatus, runUninstall };
+module.exports = {
+  runInstall,
+  runStatus,
+  runUninstall,
+  // Exposed for tests only — not part of the CLI's public API.
+  __test__: { manifestPath, readManifest, writeManifest, fetchLatestVersion, WORKFLOWS, TEMPLATES },
+};

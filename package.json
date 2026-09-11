@@ -1,13 +1,14 @@
 {
   "name": "github-delivery-os",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "A GitHub-native Delivery Governance Framework for structured sprint execution, QA review, and collaborative production release control.",
   "main": "src/install.js",
   "bin": {
     "delivery-os": "./bin/delivery-os.js"
   },
   "scripts": {
-    "install:local": "node bin/delivery-os.js install --with-templates ."
+    "install:local": "node bin/delivery-os.js install --with-templates .",
+    "test": "node test/run.js"
   },
   "keywords": [
     "github",

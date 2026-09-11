@@ -37,8 +37,9 @@ program
 program
   .command('status [target]')
   .description('Show which workflows and templates are installed')
-  .action((target) => {
-    runStatus({ targetDir: target || '.' });
+  .option('--offline', 'Skip checking npm for the latest published version')
+  .action(async (target, options) => {
+    await runStatus({ targetDir: target || '.', checkUpdates: !options.offline });
   });
 
 program

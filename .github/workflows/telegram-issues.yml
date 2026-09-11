@@ -100,10 +100,13 @@ jobs:
             URL="${ISSUE_URL}"
             COMMENT=$(echo "$COMMENT_BODY" | head -c 300)
 
-            if [[ "$ACTOR" == "$RELEASE_APPROVER" ]] && echo "$COMMENT_BODY" | grep -iq "declined\|reject\|not approved"; then
+            # Case-insensitive actor comparison: GitHub logins are case-insensitive,
+            # but a plain bash == is not, so a RELEASE_APPROVER var with different
+            # casing than the actual login would otherwise never match here.
+            if [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iq "declined\|reject\|not approved"; then
               MESSAGE="🔴🛑 RELEASE DECLINED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
-            elif [[ "$ACTOR" == "$RELEASE_APPROVER" ]] && echo "$COMMENT_BODY" | grep -iq "^approved"; then
+            elif [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iq "^approved"; then
               MESSAGE="🟢🛡️ RELEASE APPROVED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'bug') }}" == "true" ]]; then

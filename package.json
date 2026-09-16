@@ -8,7 +8,8 @@
   },
   "scripts": {
     "install:local": "node bin/delivery-os.js install --with-templates .",
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "check-skill-sync": "bash scripts/check-skill-sync.sh"
   },
   "keywords": [
     "github",

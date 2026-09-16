@@ -66,7 +66,7 @@
           <div class="install-label">From your repo root</div>
           <code>npx github-delivery-os install --with-templates .</code>
         </div>
-        <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Use <code>--dry-run</code> to preview first.</p>
+        <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
       </section>
 
       <section id="why">
@@ -101,6 +101,10 @@
             <strong>Telegram alerts</strong>
             <span>Optional notifications for bugs, QA requests, sprints, and releases.</span>
           </div>
+          <div class="feature">
+            <strong>Claude Code skill</strong>
+            <span>Optional (<code>--with-skill</code>): operate the installed repo from Claude Code — create issues, comment as an approver, check status — in plain language.</span>
+          </div>
         </div>
       </section>
 
@@ -111,17 +115,18 @@
             <thead>
               <tr>
                 <th>Workflow</th>
+                <th>Trigger</th>
                 <th>Purpose</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>sprint-child-creator</td><td>Creates child issues when a sprint (SPRINT -) is opened</td></tr>
-              <tr><td>auto-close-sprint</td><td>Burn-down, sprint health, auto-close at 100%</td></tr>
-              <tr><td>notify-release-approver</td><td>Pings approver when production release issue opens</td></tr>
-              <tr><td>authorize-deployment</td><td>Dual approval (release approver + QA)</td></tr>
-              <tr><td>auto-assign-qa</td><td>Assigns QA team to qa / qa-request issues</td></tr>
-              <tr><td>telegram-issues</td><td>Telegram alerts for bugs, QA, sprints, releases</td></tr>
-              <tr><td>setup-labels</td><td>One-time workflow to create required labels</td></tr>
+              <tr><td>sprint-child-creator</td><td>Issue opened, title contains <code>SPRINT -</code></td><td>Parses "Sprint Features (One Per Line)" and creates one child issue per line, each linked back with <code>Parent Sprint: #N</code></td></tr>
+              <tr><td>auto-close-sprint</td><td>Issue closed, body contains <code>Parent Sprint</code></td><td>Recomputes the parent sprint's burn-down/health and rewrites its status section; auto-closes the sprint at 100%</td></tr>
+              <tr><td>notify-release-approver</td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code></td></tr>
+              <tr><td>authorize-deployment</td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code>; once both approve, adds <code>ready-for-deploy</code></td></tr>
+              <tr><td>auto-assign-qa</td><td>Issue opened/labeled <code>qa</code> or <code>qa-request</code></td><td>Assigns the repo's configured <code>QA_ASSIGNEES</code></td></tr>
+              <tr><td>telegram-issues</td><td>Issue/comment/PR events</td><td>Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
+              <tr><td>setup-labels</td><td>Manual (<code>workflow_dispatch</code>)</td><td>One-time run that creates all labels Delivery OS needs</td></tr>
             </tbody>
           </table>
         </div>

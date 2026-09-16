@@ -67,6 +67,27 @@
           <code>npx github-delivery-os install --with-templates .</code>
         </div>
         <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
+
+        <div class="table-wrap">
+          <table class="workflows-table">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>When to run it</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>install --with-templates .</code></td><td>First install — workflows + issue templates</td></tr>
+              <tr><td><code>install --with-templates --with-labels .</code></td><td>Also create labels immediately via <code>gh</code> CLI</td></tr>
+              <tr><td><code>install --with-templates --with-skill .</code></td><td>You'll operate this repo's Delivery OS from Claude Code</td></tr>
+              <tr><td><code>install --with-templates --with-labels --with-skill .</code></td><td>Everything at once, in one command</td></tr>
+              <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>
+              <tr><td><code>install --overwrite …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
+              <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>
+              <tr><td><code>uninstall --with-templates --with-skill .</code></td><td>Remove everything, including templates and the skill</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section id="why">

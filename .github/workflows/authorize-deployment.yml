@@ -58,19 +58,40 @@ jobs:
 
             const { releaseVerdict, qaApproved } = computeVerdict(comments, releaseApprover, qaApprover);
 
-            const currentLabels = (context.payload.issue.labels || []).map((l) => l.name);
+            // Nothing to act on this run (most comments on a production issue
+            // are routine discussion, not a verdict-changing approval/decline)
+            // — return before the live label fetch below, which only matters
+            // once we actually have a verdict to check against current state.
+            const hasActionableVerdict =
+              releaseVerdict === "declined" || (releaseVerdict === "approved" && qaApproved);
+            if (!hasActionableVerdict) return;
+
+            // Fetch labels live rather than trusting context.payload.issue.labels:
+            // that's a snapshot fixed at the triggering event's delivery time.
+            // Two comments posted seconds apart queue under the concurrency
+            // group above and run sequentially, but each was still delivered
+            // (and its label snapshot captured) before either job actually ran
+            // — serializing execution order doesn't refresh an already-stale
+            // snapshot. A live re-fetch is what actually lets the second
+            // (queued) run see what the first one just did.
+            const { data: liveIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            const currentLabels = (liveIssue.labels || []).map((l) => (typeof l === "string" ? l : l.name));
             const alreadyDeclined = currentLabels.includes("declined");
             const alreadyReady = currentLabels.includes("ready-for-deploy");
 
             if (releaseVerdict === "declined") {
               if (alreadyDeclined) return; // avoid re-posting on every later comment
 
-              await github.rest.issues.addLabels({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                labels: ["declined"]
-              });
+              try {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: ["declined"]
+                });
+              } catch (e) {
+                console.log(`Failed to add 'declined' label: ${e.message || e}`);
+              }
 
               try {
                 await github.rest.issues.removeLabel({
@@ -103,12 +124,16 @@ jobs:
                 });
               } catch (e) {}
 
-              await github.rest.issues.addLabels({
-                owner,
-                repo,
-                issue_number: issueNumber,
-                labels: ["ready-for-deploy"]
-              });
+              try {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: ["ready-for-deploy"]
+                });
+              } catch (e) {
+                console.log(`Failed to add 'ready-for-deploy' label: ${e.message || e}`);
+              }
 
               await github.rest.issues.createComment({
                 owner,

@@ -78,6 +78,21 @@ test('computeTimePercent clamps below 0 and above 100', () => {
   assert.equal(computeTimePercent(start, end, new Date('2027-01-01')), 100, 'well after the sprint ends');
 });
 
+test('computeTimePercent returns 100 instead of NaN when Start >= End (data-entry mistake)', () => {
+  // Regression guard: dividing by a zero/negative totalDuration used to
+  // produce NaN, which flowed into the posted burn-down as "Time Elapsed:
+  // NaN%" — and every NaN comparison in computeHealthEmoji is false, so it
+  // silently defaulted to the green/no-warning branch instead of flagging
+  // the broken dates.
+  const same = new Date('2026-01-01');
+  assert.equal(computeTimePercent(same, same, same), 100, 'zero-length sprint');
+  assert.equal(
+    computeTimePercent(new Date('2026-01-05'), new Date('2026-01-01'), new Date('2026-01-03')),
+    100,
+    'End before Start'
+  );
+});
+
 // --- computeProgress ---
 
 test('computeProgress with no children is 0%', () => {

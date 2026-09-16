@@ -20,6 +20,22 @@ const WORKFLOWS = [
   'setup-labels',
 ];
 
+// Pure logic some of the workflows above require() at runtime from
+// .github/scripts/<name>.js (see .github/workflows/authorize-deployment.yml
+// etc.) — these are required dependencies of those workflows, not optional,
+// so they're always copied alongside them, the same as WORKFLOWS. Also list
+// them explicitly in package.json's "files".
+const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator'];
+
+// Which workflow requires which script, so `status` can flag a workflow
+// that's present but whose required script is missing (an install that will
+// fail with MODULE_NOT_FOUND the next time that workflow actually runs).
+const REQUIRED_SCRIPT_BY_WORKFLOW = {
+  'authorize-deployment': 'authorize-deployment-verdict',
+  'auto-close-sprint': 'auto-close-sprint',
+  'sprint-child-creator': 'sprint-child-creator',
+};
+
 const LABELS = [
   ['intake', '0E8A16'],
   ['bug', 'D93F0B'],
@@ -101,6 +117,44 @@ function fetchLatestVersion(timeoutMs = 3000) {
   });
 }
 
+// Copies each `${name}${ext}` from srcDir to destDir for a fixed list of
+// expected filenames — the shared logic behind copying WORKFLOWS and SCRIPTS
+// (both: a required, always-on set of individually-named files, as opposed
+// to templates, which copies whatever's found in a directory, or the skill,
+// a single optional file). `label` is what's printed for each entry, e.g.
+// `.github/scripts/auto-close-sprint.js` — pass names already including
+// their directory prefix so log lines are self-explanatory on their own.
+function copyManagedFiles(names, ext, srcDir, destDir, { overwrite, dryRun, relDir }) {
+  let copied = 0;
+  let skipped = 0;
+
+  for (const name of names) {
+    const src = path.join(srcDir, `${name}${ext}`);
+    const dest = path.join(destDir, `${name}${ext}`);
+    const label = `${relDir}/${name}${ext}`;
+
+    if (!fs.existsSync(src)) {
+      console.log(`  Warning: source not found: ${label}`);
+      skipped++; // missing source must block a "clean install" claim, not just warn
+      continue;
+    }
+
+    if (fs.existsSync(dest) && !overwrite) {
+      console.log(`  Skipped (exists): ${label}`);
+      skipped++;
+    } else if (dryRun) {
+      console.log(`  [dry-run] Would create: ${label}`);
+      copied++;
+    } else {
+      fs.copyFileSync(src, dest);
+      console.log(`  Created: ${label}`);
+      copied++;
+    }
+  }
+
+  return { copied, skipped };
+}
+
 function getPackageRoot() {
   // When installed via npm, __dirname is node_modules/github-delivery-os/src
   const possibleRoots = [
@@ -129,6 +183,7 @@ function runInstall(options) {
   const pkgRoot = getPackageRoot();
   const workflowsSrc = path.join(pkgRoot, '.github', 'workflows');
   const templatesSrc = path.join(pkgRoot, '.github', 'ISSUE_TEMPLATE');
+  const scriptsSrc = path.join(pkgRoot, '.github', 'scripts');
   const skillSrc = path.join(pkgRoot, SKILL_REL_PATH);
   const targetAbs = path.resolve(process.cwd(), targetDir);
 
@@ -151,41 +206,42 @@ function runInstall(options) {
   // Ensure target structure
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
   const templatesDest = path.join(targetAbs, '.github', 'ISSUE_TEMPLATE');
+  const scriptsDest = path.join(targetAbs, '.github', 'scripts');
 
   if (!dryRun) {
     fs.mkdirSync(workflowsDest, { recursive: true });
     fs.mkdirSync(templatesDest, { recursive: true });
+    fs.mkdirSync(scriptsDest, { recursive: true });
   }
 
   let workflowsCopied = 0;
   let templatesCopied = 0;
+  let scriptsCopied = 0;
   let skillCopied = 0;
-  let workflowsSkipped = 0;
+  let workflowsSkipped;
+  let scriptsSkipped;
+
+  // Copy workflows (always on — not optional)
+  ({ copied: workflowsCopied, skipped: workflowsSkipped } = copyManagedFiles(
+    WORKFLOWS,
+    '.yml',
+    workflowsSrc,
+    workflowsDest,
+    { overwrite, dryRun, relDir: '.github/workflows' }
+  ));
+
+  // Copy the scripts the workflows above require() at runtime — required,
+  // not optional, so (unlike templates/skill) this always runs too.
+  ({ copied: scriptsCopied, skipped: scriptsSkipped } = copyManagedFiles(
+    SCRIPTS,
+    '.js',
+    scriptsSrc,
+    scriptsDest,
+    { overwrite, dryRun, relDir: '.github/scripts' }
+  ));
+
   let templatesSkipped = 0;
   let skillSkipped = 0;
-
-  // Copy workflows
-  for (const wf of WORKFLOWS) {
-    const src = path.join(workflowsSrc, `${wf}.yml`);
-    const dest = path.join(workflowsDest, `${wf}.yml`);
-
-    if (!fs.existsSync(src)) {
-      console.log(`  Warning: source not found: ${wf}.yml`);
-      continue;
-    }
-
-    if (fs.existsSync(dest) && !overwrite) {
-      console.log(`  Skipped (exists): ${wf}.yml`);
-      workflowsSkipped++;
-    } else if (dryRun) {
-      console.log(`  [dry-run] Would create: ${wf}.yml`);
-      workflowsCopied++;
-    } else {
-      fs.copyFileSync(src, dest);
-      console.log(`  Created: ${wf}.yml`);
-      workflowsCopied++;
-    }
-  }
 
   // Copy templates
   if (withTemplates && fs.existsSync(templatesSrc)) {
@@ -291,12 +347,28 @@ function runInstall(options) {
   }
 
   // Record what got installed so `status` can report a version and detect
-  // drift. Only claim a version when the on-disk files actually match it: an
-  // overwrite, or a fresh install where nothing had to be skipped. A partial
-  // skip-mode install would leave older file content on disk, so don't
-  // overwrite a previously recorded (possibly accurate, possibly newer)
-  // version with a number that isn't actually true on disk yet.
-  const cleanInstall = overwrite || (workflowsSkipped === 0 && templatesSkipped === 0 && skillSkipped === 0);
+  // drift. Only claim a version when the on-disk files actually match it.
+  //
+  // Two ways this can go wrong, both of which must block the claim:
+  //  1. A skip-mode install left older content on disk for something that
+  //     WAS requested this run (tracked by the *Skipped counters below).
+  //  2. An --overwrite run touches only what was explicitly requested
+  //     (workflows + scripts always; templates/skill only if their flags
+  //     were passed) — templates or skill already on disk from an earlier
+  //     install, but not requested this run, are left untouched and stale,
+  //     even though --overwrite makes every *Skipped counter read 0. Naively
+  //     trusting `overwrite` alone would then claim the whole install is
+  //     current when part of it demonstrably wasn't touched.
+  const templatesPresentButNotTouched =
+    !withTemplates && TEMPLATES.some((t) => fs.existsSync(path.join(templatesDest, t)));
+  const skillPresentButNotTouched = !withSkill && fs.existsSync(skillPath(targetAbs));
+  const cleanInstall =
+    workflowsSkipped === 0 &&
+    templatesSkipped === 0 &&
+    scriptsSkipped === 0 &&
+    skillSkipped === 0 &&
+    !templatesPresentButNotTouched &&
+    !skillPresentButNotTouched;
   if (!dryRun && cleanInstall) {
     const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
     writeManifest(targetAbs, pkgVersion);
@@ -305,19 +377,28 @@ function runInstall(options) {
   // Summary
   console.log('');
   if (!dryRun && !cleanInstall) {
-    console.log('  Note: some files already existed and were skipped, so the recorded');
-    console.log('  Delivery OS version was not updated. Re-run with --overwrite to sync');
-    console.log('  all files (and the recorded version) to the latest release.');
+    if (templatesPresentButNotTouched || skillPresentButNotTouched) {
+      console.log('  Note: previously-installed templates and/or the Claude Code skill exist');
+      console.log('  on disk but were not requested this run, so the recorded Delivery OS');
+      console.log('  version was not updated. Re-run with --overwrite plus --with-templates');
+      console.log('  and/or --with-skill to bring everything (and the recorded version) in sync.');
+    } else {
+      console.log('  Note: some files already existed and were skipped, so the recorded');
+      console.log('  Delivery OS version was not updated. Re-run with --overwrite to sync');
+      console.log('  all files (and the recorded version) to the latest release.');
+    }
     console.log('');
   }
-  if (workflowsCopied > 0 || templatesCopied > 0 || skillCopied > 0 || labelsCreated > 0) {
+  if (workflowsCopied > 0 || templatesCopied > 0 || scriptsCopied > 0 || skillCopied > 0 || labelsCreated > 0) {
     if (dryRun) {
       if (workflowsCopied > 0) console.log(`Would install ${workflowsCopied} workflow(s).`);
       if (templatesCopied > 0) console.log(`Would copy ${templatesCopied} issue template(s).`);
+      if (scriptsCopied > 0) console.log(`Would install ${scriptsCopied} supporting script(s).`);
       if (skillCopied > 0) console.log('Would add the Claude Code delivery-ops skill.');
     } else {
       if (workflowsCopied > 0) console.log(`Installed ${workflowsCopied} workflow(s).`);
       if (templatesCopied > 0) console.log(`Copied ${templatesCopied} issue template(s).`);
+      if (scriptsCopied > 0) console.log(`Installed ${scriptsCopied} supporting script(s).`);
       if (skillCopied > 0) console.log('Added the Claude Code delivery-ops skill.');
       if (labelsCreated > 0) console.log(`Created ${labelsCreated} label(s).`);
     }
@@ -380,7 +461,18 @@ async function runStatus(options) {
   );
   const skillInstalled = fs.existsSync(skillPath(targetAbs));
 
-  if (installedWorkflows.length > 0 || installedTemplates.length > 0) {
+  // A workflow can be present while the script it require()s at runtime is
+  // not — e.g. an install from before this check existed, or a manual
+  // partial copy. That workflow will fail (MODULE_NOT_FOUND) the next time
+  // it actually runs, silently, since nothing here executes the workflow
+  // itself to notice.
+  const brokenWorkflows = installedWorkflows.filter((wf) => {
+    const requiredScript = REQUIRED_SCRIPT_BY_WORKFLOW[wf];
+    if (!requiredScript) return false;
+    return !fs.existsSync(path.join(targetAbs, '.github', 'scripts', `${requiredScript}.js`));
+  });
+
+  if (installedWorkflows.length > 0 || installedTemplates.length > 0 || skillInstalled) {
     const manifest = readManifest(targetAbs);
     if (manifest && manifest.version) {
       const installedOn = manifest.installedAt ? ` (installed ${manifest.installedAt.slice(0, 10)})` : '';
@@ -411,6 +503,17 @@ async function runStatus(options) {
     installedWorkflows.forEach((wf) => console.log(`  ✓ ${wf}.yml`));
     console.log('');
   }
+
+  if (brokenWorkflows.length > 0) {
+    console.log('⚠️  Broken install detected:');
+    brokenWorkflows.forEach((wf) => {
+      console.log(`  ${wf}.yml requires .github/scripts/${REQUIRED_SCRIPT_BY_WORKFLOW[wf]}.js, which is missing.`);
+    });
+    console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
+    console.log('  Fix: npx github-delivery-os@latest install --overwrite .');
+    console.log('');
+  }
+
   if (installedTemplates.length > 0) {
     console.log('Templates:');
     installedTemplates.forEach((t) => console.log(`  ✓ ${t}`));
@@ -424,7 +527,7 @@ async function runStatus(options) {
     console.log('');
   }
 
-  if (installedWorkflows.length > 0 || installedTemplates.length > 0) {
+  if (installedWorkflows.length > 0 || installedTemplates.length > 0 || skillInstalled) {
     console.log('Claude Code skill:');
     console.log(
       skillInstalled
@@ -434,7 +537,7 @@ async function runStatus(options) {
     console.log('');
   }
 
-  if (installedWorkflows.length === 0 && installedTemplates.length === 0) {
+  if (installedWorkflows.length === 0 && installedTemplates.length === 0 && !skillInstalled) {
     console.log('Delivery OS is not installed in this repository.');
     console.log('Run: npx github-delivery-os install --with-templates .');
   } else {
@@ -450,6 +553,7 @@ function runUninstall(options) {
   const targetAbs = path.resolve(process.cwd(), targetDir);
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
   const templatesDest = path.join(targetAbs, '.github', 'ISSUE_TEMPLATE');
+  const scriptsDest = path.join(targetAbs, '.github', 'scripts');
 
   console.log('=== GitHub Delivery Operating System — Uninstall ===');
   console.log(`Target: ${targetAbs}`);
@@ -458,6 +562,7 @@ function runUninstall(options) {
 
   let workflowsRemoved = 0;
   let templatesRemoved = 0;
+  let scriptsRemoved = 0;
 
   for (const wf of WORKFLOWS) {
     const dest = path.join(workflowsDest, `${wf}.yml`);
@@ -469,6 +574,21 @@ function runUninstall(options) {
         console.log(`  Removed: ${wf}.yml`);
       }
       workflowsRemoved++;
+    }
+  }
+
+  // Scripts are a required dependency of the workflows above, not optional,
+  // so (like workflows) they're always removed, not gated behind a flag.
+  for (const name of SCRIPTS) {
+    const dest = path.join(scriptsDest, `${name}.js`);
+    if (fs.existsSync(dest)) {
+      if (dryRun) {
+        console.log(`  [dry-run] Would remove: .github/scripts/${name}.js`);
+      } else {
+        fs.unlinkSync(dest);
+        console.log(`  Removed: .github/scripts/${name}.js`);
+      }
+      scriptsRemoved++;
     }
   }
 
@@ -501,11 +621,25 @@ function runUninstall(options) {
     }
   }
 
-  // Remove the version manifest too — it has no meaning once Delivery OS is
-  // gone, and leaving it behind would make a later install/status think a
-  // stale version is still installed.
+  // Remove the version manifest too — but only once nothing Delivery-OS-
+  // related actually remains. Templates and the skill are kept by default
+  // (only removed with their own flags), and if they're still on disk, the
+  // manifest's version is still meaningful for them — deleting it would make
+  // a later `status` report "unknown version" for files that are, in fact,
+  // still fully present and version-tracked.
+  const anyWorkflowsRemain = WORKFLOWS.some((wf) => fs.existsSync(path.join(workflowsDest, `${wf}.yml`)));
+  const anyTemplatesRemain = TEMPLATES.some((t) => fs.existsSync(path.join(templatesDest, t)));
+  // Scripts are removed unconditionally just above, so this is normally
+  // always false by the time we get here — included anyway for the same
+  // reason the other three are checked explicitly rather than assumed:
+  // defensive completeness against a future change (e.g. a failed unlink,
+  // or script removal ever becoming flag-gated like templates/skill).
+  const anyScriptsRemain = SCRIPTS.some((name) => fs.existsSync(path.join(scriptsDest, `${name}.js`)));
+  const skillRemains = fs.existsSync(skillPath(targetAbs));
+  const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains;
+
   const manifestDest = manifestPath(targetAbs);
-  if (fs.existsSync(manifestDest)) {
+  if (nothingLeft && fs.existsSync(manifestDest)) {
     if (dryRun) {
       console.log('  [dry-run] Would remove: delivery-os.json');
     } else {
@@ -527,6 +661,9 @@ function runUninstall(options) {
       }
       if (!withSkill) {
         console.log('Claude Code skill (if installed) was kept. Re-run with --with-skill to remove it.');
+      }
+      if (!nothingLeft) {
+        console.log('delivery-os.json was kept — something Delivery-OS-related is still on disk.');
       }
     }
   } else {
@@ -550,5 +687,7 @@ module.exports = {
     SKILL_REL_PATH,
     WORKFLOWS,
     TEMPLATES,
+    SCRIPTS,
+    REQUIRED_SCRIPT_BY_WORKFLOW,
   },
 };

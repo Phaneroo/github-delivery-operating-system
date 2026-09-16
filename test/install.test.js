@@ -6,8 +6,16 @@ const os = require('os');
 const path = require('path');
 const { test } = require('./harness');
 const { runInstall, runStatus, runUninstall, __test__ } = require('../src/install');
-const { manifestPath, readManifest, writeManifest, skillPath, SKILL_REL_PATH, WORKFLOWS, TEMPLATES } =
-  __test__;
+const {
+  manifestPath,
+  readManifest,
+  writeManifest,
+  skillPath,
+  SKILL_REL_PATH,
+  WORKFLOWS,
+  TEMPLATES,
+  SCRIPTS,
+} = __test__;
 
 const pkgVersion = require('../package.json').version;
 
@@ -77,11 +85,22 @@ test('fresh install writes a manifest matching the current package version', () 
 
     const workflowsDest = path.join(dir, '.github', 'workflows');
     const templatesDest = path.join(dir, '.github', 'ISSUE_TEMPLATE');
+    const scriptsDest = path.join(dir, '.github', 'scripts');
     for (const wf of WORKFLOWS) {
       assert.ok(fs.existsSync(path.join(workflowsDest, `${wf}.yml`)), `missing ${wf}.yml`);
     }
     for (const t of TEMPLATES) {
       assert.ok(fs.existsSync(path.join(templatesDest, t)), `missing template ${t}`);
+    }
+    // Regression guard: these three workflows require() these scripts at
+    // runtime (see .github/workflows/*.yml). A published package that
+    // shipped the workflows without them installed correctly here but
+    // crashed with MODULE_NOT_FOUND the first time one of those workflows
+    // actually ran on GitHub Actions — install() reported success while
+    // producing a broken install. Confirmed live on the published 1.1.0/
+    // 1.2.0 packages before this test existed.
+    for (const name of SCRIPTS) {
+      assert.ok(fs.existsSync(path.join(scriptsDest, `${name}.js`)), `missing .github/scripts/${name}.js`);
     }
   } finally {
     rm(dir);
@@ -114,6 +133,54 @@ test('--overwrite install syncs the manifest to the current package version', ()
   }
 });
 
+test('--overwrite without --with-templates does not claim clean install while stale templates remain untouched', () => {
+  // Regression guard: `overwrite || (skip counters all zero)` used to treat
+  // ANY --overwrite run as fully clean, even when templates/skill already on
+  // disk from an earlier install were never touched this run because their
+  // flags weren't passed — status would then report "up to date" for files
+  // that were, in fact, still at the old version.
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true })); // templates installed at current version
+    writeManifest(dir, '0.0.1'); // simulate: this repo is recorded as being on an old version
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true })); // overwrite workflows only — no --with-templates
+    const manifest = readManifest(dir);
+    assert.equal(
+      manifest.version,
+      '0.0.1',
+      'must not claim clean when pre-existing templates were not touched by this --overwrite run'
+    );
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--overwrite without --with-skill does not claim clean install while a stale skill file remains untouched', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    writeManifest(dir, '0.0.1');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, overwrite: true })); // no --with-skill this time
+    const manifest = readManifest(dir);
+    assert.equal(manifest.version, '0.0.1');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--overwrite still claims a clean install when nothing pre-existing is left untouched', () => {
+  const dir = mkTmpRepo();
+  try {
+    // Nothing pre-exists here — templates/skill were never installed before,
+    // so their absence must not block a clean-install claim.
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, overwrite: true }));
+    const manifest = readManifest(dir);
+    assert.equal(manifest.version, pkgVersion);
+  } finally {
+    rm(dir);
+  }
+});
+
 test('dry-run install does not write a manifest or any files', () => {
   const dir = mkTmpRepo();
   try {
@@ -136,6 +203,35 @@ test('uninstall removes the manifest along with workflows/templates', () => {
       fs.existsSync(path.join(dir, '.github', 'workflows', 'sprint-child-creator.yml')),
       false
     );
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall without --with-templates keeps the manifest when templates remain fully present', () => {
+  // Regression guard: the manifest used to be removed unconditionally, even
+  // when templates were deliberately kept (no --with-templates on uninstall)
+  // — a later status would then report "unknown version" for templates that
+  // were, in fact, still completely present and accurately version-tracked.
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.' })); // no --with-templates: templates kept
+    assert.ok(readManifest(dir), 'manifest should survive since templates are still fully present');
+    for (const t of TEMPLATES) {
+      assert.ok(fs.existsSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', t)));
+    }
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall removes the manifest once nothing Delivery-OS-related actually remains', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    assert.equal(readManifest(dir), null);
   } finally {
     rm(dir);
   }
@@ -315,6 +411,78 @@ test('status reports the skill as missing when not installed', async () => {
     const output = lines.join('\n');
     assert.match(output, /delivery-ops \(not installed/);
     assert.match(output, /skill: no/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status detects a workflow whose required script is missing', async () => {
+  // Regression guard for the missing-.github/scripts bug: reproduces the
+  // exact broken state that shipped in 1.1.0/1.2.0 (workflow present,
+  // required script absent) and confirms status actually flags it instead
+  // of silently reporting a clean install.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    fs.unlinkSync(path.join(dir, '.github', 'scripts', 'auto-close-sprint.js'));
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /Broken install detected/);
+    assert.match(output, /auto-close-sprint\.yml requires \.github\/scripts\/auto-close-sprint\.js/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status reports no broken-install warning when all required scripts are present', async () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+    assert.doesNotMatch(lines.join('\n'), /Broken install detected/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status reports installed when only the Claude Code skill is present', async () => {
+  // Regression guard: the "is anything installed" checks used to ignore
+  // skillInstalled entirely, so a repo with only the skill present (no
+  // workflows/templates) would incorrectly report "not installed" and never
+  // show the skill line.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.', withTemplates: true })); // removes workflows+templates, keeps skill
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.doesNotMatch(output, /not installed/i);
+    assert.match(output, /✓ delivery-ops/);
   } finally {
     console.log = origLog;
     rm(dir);

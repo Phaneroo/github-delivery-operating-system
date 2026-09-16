@@ -106,6 +106,13 @@ SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator"
 copy_managed_files "$SCRIPTS" ".js" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
 SCRIPTS_COPIED=$COPIED
 
+# 2c. Copy the CommonJS-pinning package.json alongside them — without it, a
+# target repo whose own package.json has "type": "module" makes Node treat
+# these .js files as ES modules too, breaking require() with "module is not
+# defined in ES module scope". Counted together with the scripts above.
+copy_managed_files "package" ".json" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
+SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
+
 # 3. Optionally copy issue templates
 TEMPLATES_COPIED=0
 if [ "$WITH_TEMPLATES" = true ]; then

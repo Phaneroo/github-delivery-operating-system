@@ -252,24 +252,19 @@ function runInstall(options) {
   ));
 
   // The CommonJS-pinning package.json (see SCRIPTS_PACKAGE_JSON above) —
-  // always installed alongside SCRIPTS, counted the same way.
-  const scriptsPkgSrc = path.join(scriptsSrc, SCRIPTS_PACKAGE_JSON);
-  const scriptsPkgDest = path.join(scriptsDest, SCRIPTS_PACKAGE_JSON);
-  const scriptsPkgLabel = `.github/scripts/${SCRIPTS_PACKAGE_JSON}`;
-  if (!fs.existsSync(scriptsPkgSrc)) {
-    console.log(`  Warning: source not found: ${scriptsPkgLabel}`);
-    scriptsSkipped++;
-  } else if (fs.existsSync(scriptsPkgDest) && !overwrite) {
-    console.log(`  Skipped (exists): ${scriptsPkgLabel}`);
-    scriptsSkipped++;
-  } else if (dryRun) {
-    console.log(`  [dry-run] Would create: ${scriptsPkgLabel}`);
-    scriptsCopied++;
-  } else {
-    fs.copyFileSync(scriptsPkgSrc, scriptsPkgDest);
-    console.log(`  Created: ${scriptsPkgLabel}`);
-    scriptsCopied++;
-  }
+  // always installed alongside SCRIPTS, via the same helper, counted the
+  // same way (mirrors how scripts/install.sh reuses copy_managed_files for
+  // this exact file rather than hand-rolling the copy).
+  const { name: scriptsPkgName, ext: scriptsPkgExt } = path.parse(SCRIPTS_PACKAGE_JSON);
+  const scriptsPkgResult = copyManagedFiles(
+    [scriptsPkgName],
+    scriptsPkgExt,
+    scriptsSrc,
+    scriptsDest,
+    { overwrite, dryRun, relDir: '.github/scripts' }
+  );
+  scriptsCopied += scriptsPkgResult.copied;
+  scriptsSkipped += scriptsPkgResult.skipped;
 
   let templatesSkipped = 0;
   let skillSkipped = 0;

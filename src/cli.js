@@ -20,6 +20,7 @@ program
   .description('Install workflows and templates into a repository')
   .option('-t, --with-templates', 'Copy issue templates (sprint, task, bug, QA, production release)')
   .option('-l, --with-labels', 'Create labels via gh CLI (requires gh auth)')
+  .option('-s, --with-skill', 'Add the delivery-ops Claude Code skill (.claude/skills/delivery-ops/SKILL.md)')
   .option('-o, --overwrite', 'Replace existing workflow/template files')
   .option('--no-overwrite', 'Skip existing files (default)')
   .option('-d, --dry-run', 'Show what would happen without changing files')
@@ -29,6 +30,7 @@ program
       targetDir,
       withTemplates: options.withTemplates ?? false,
       withLabels: options.withLabels ?? false,
+      withSkill: options.withSkill ?? false,
       overwrite: options.overwrite ?? false,
       dryRun: options.dryRun ?? false,
     });
@@ -46,11 +48,13 @@ program
   .command('uninstall [target]')
   .description('Remove Delivery OS workflows (and optionally templates)')
   .option('-t, --with-templates', 'Also remove issue templates')
+  .option('-s, --with-skill', 'Also remove the delivery-ops Claude Code skill')
   .option('-d, --dry-run', 'Show what would be removed without deleting')
   .action((target, options) => {
     runUninstall({
       targetDir: target || '.',
       withTemplates: options.withTemplates ?? false,
+      withSkill: options.withSkill ?? false,
       dryRun: options.dryRun ?? false,
     });
   });

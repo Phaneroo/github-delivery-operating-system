@@ -4,7 +4,12 @@ const https = require('https');
 const { execFileSync } = require('child_process');
 
 const MANIFEST_FILE = 'delivery-os.json'; // written to .github/delivery-os.json in the target repo
+const SKILL_REL_PATH = path.join('.claude', 'skills', 'delivery-ops', 'SKILL.md'); // opt-in via --with-skill
 
+// If you add/remove/rename an entry here, also update package.json's "files"
+// array — it lists these paths explicitly (not the whole .github/workflows
+// directory) so this package's own maintainer workflows (ci.yml, release.yml,
+// pages.yml) don't get bundled into what ships to consumers.
 const WORKFLOWS = [
   'sprint-child-creator',
   'auto-close-sprint',
@@ -35,6 +40,10 @@ const LABELS = [
 
 function manifestPath(targetAbs) {
   return path.join(targetAbs, '.github', MANIFEST_FILE);
+}
+
+function skillPath(targetAbs) {
+  return path.join(targetAbs, SKILL_REL_PATH);
 }
 
 function readManifest(targetAbs) {
@@ -112,6 +121,7 @@ function runInstall(options) {
     targetDir = '.',
     withTemplates = false,
     withLabels = false,
+    withSkill = false,
     overwrite = false,
     dryRun = false,
   } = options;
@@ -119,6 +129,7 @@ function runInstall(options) {
   const pkgRoot = getPackageRoot();
   const workflowsSrc = path.join(pkgRoot, '.github', 'workflows');
   const templatesSrc = path.join(pkgRoot, '.github', 'ISSUE_TEMPLATE');
+  const skillSrc = path.join(pkgRoot, SKILL_REL_PATH);
   const targetAbs = path.resolve(process.cwd(), targetDir);
 
   console.log('=== GitHub Delivery Operating System ===');
@@ -148,8 +159,10 @@ function runInstall(options) {
 
   let workflowsCopied = 0;
   let templatesCopied = 0;
+  let skillCopied = 0;
   let workflowsSkipped = 0;
   let templatesSkipped = 0;
+  let skillSkipped = 0;
 
   // Copy workflows
   for (const wf of WORKFLOWS) {
@@ -194,6 +207,25 @@ function runInstall(options) {
         console.log(`  Created template: ${name}`);
         templatesCopied++;
       }
+    }
+  }
+
+  // Copy the delivery-ops Claude Code skill (opt-in — most consumer repos
+  // aren't using Claude Code, so this is never written unless asked for)
+  if (withSkill && fs.existsSync(skillSrc)) {
+    const skillDest = skillPath(targetAbs);
+
+    if (fs.existsSync(skillDest) && !overwrite) {
+      console.log(`  Skipped (exists): ${SKILL_REL_PATH}`);
+      skillSkipped++;
+    } else if (dryRun) {
+      console.log(`  [dry-run] Would create: ${SKILL_REL_PATH}`);
+      skillCopied++;
+    } else {
+      fs.mkdirSync(path.dirname(skillDest), { recursive: true });
+      fs.copyFileSync(skillSrc, skillDest);
+      console.log(`  Created: ${SKILL_REL_PATH}`);
+      skillCopied++;
     }
   }
 
@@ -264,7 +296,7 @@ function runInstall(options) {
   // skip-mode install would leave older file content on disk, so don't
   // overwrite a previously recorded (possibly accurate, possibly newer)
   // version with a number that isn't actually true on disk yet.
-  const cleanInstall = overwrite || (workflowsSkipped === 0 && templatesSkipped === 0);
+  const cleanInstall = overwrite || (workflowsSkipped === 0 && templatesSkipped === 0 && skillSkipped === 0);
   if (!dryRun && cleanInstall) {
     const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
     writeManifest(targetAbs, pkgVersion);
@@ -278,13 +310,15 @@ function runInstall(options) {
     console.log('  all files (and the recorded version) to the latest release.');
     console.log('');
   }
-  if (workflowsCopied > 0 || templatesCopied > 0 || labelsCreated > 0) {
+  if (workflowsCopied > 0 || templatesCopied > 0 || skillCopied > 0 || labelsCreated > 0) {
     if (dryRun) {
       if (workflowsCopied > 0) console.log(`Would install ${workflowsCopied} workflow(s).`);
       if (templatesCopied > 0) console.log(`Would copy ${templatesCopied} issue template(s).`);
+      if (skillCopied > 0) console.log('Would add the Claude Code delivery-ops skill.');
     } else {
       if (workflowsCopied > 0) console.log(`Installed ${workflowsCopied} workflow(s).`);
       if (templatesCopied > 0) console.log(`Copied ${templatesCopied} issue template(s).`);
+      if (skillCopied > 0) console.log('Added the Claude Code delivery-ops skill.');
       if (labelsCreated > 0) console.log(`Created ${labelsCreated} label(s).`);
     }
     console.log('');
@@ -296,8 +330,14 @@ function runInstall(options) {
     console.log('     - QA_APPROVER: GitHub username of QA approver');
     console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
     console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
+    let nextStep = 4;
     if (!withTemplates) {
-      console.log('  4. Copy templates: re-run with --with-templates');
+      console.log(`  ${nextStep}. Copy templates: re-run with --with-templates`);
+      nextStep++;
+    }
+    if (!withSkill) {
+      console.log(`  ${nextStep}. Add the Claude Code delivery-ops skill (optional, for Claude Code users): re-run with --with-skill`);
+      nextStep++;
     }
     console.log('');
     console.log('See https://phaneroo.github.io/github-delivery-operating-system/ for full docs.');
@@ -338,6 +378,7 @@ async function runStatus(options) {
   const installedTemplates = TEMPLATES.filter((t) =>
     fs.existsSync(path.join(templatesDest, t))
   );
+  const skillInstalled = fs.existsSync(skillPath(targetAbs));
 
   if (installedWorkflows.length > 0 || installedTemplates.length > 0) {
     const manifest = readManifest(targetAbs);
@@ -383,18 +424,29 @@ async function runStatus(options) {
     console.log('');
   }
 
+  if (installedWorkflows.length > 0 || installedTemplates.length > 0) {
+    console.log('Claude Code skill:');
+    console.log(
+      skillInstalled
+        ? '  ✓ delivery-ops'
+        : '  ○ delivery-ops (not installed — re-run install with --with-skill)'
+    );
+    console.log('');
+  }
+
   if (installedWorkflows.length === 0 && installedTemplates.length === 0) {
     console.log('Delivery OS is not installed in this repository.');
     console.log('Run: npx github-delivery-os install --with-templates .');
   } else {
-    const total = installedWorkflows.length + installedTemplates.length;
-    console.log(`Summary: ${installedWorkflows.length}/${WORKFLOWS.length} workflows, ${installedTemplates.length}/${TEMPLATES.length} templates`);
+    console.log(
+      `Summary: ${installedWorkflows.length}/${WORKFLOWS.length} workflows, ${installedTemplates.length}/${TEMPLATES.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
+    );
   }
   console.log('');
 }
 
 function runUninstall(options) {
-  const { targetDir = '.', withTemplates = false, dryRun = false } = options;
+  const { targetDir = '.', withTemplates = false, withSkill = false, dryRun = false } = options;
   const targetAbs = path.resolve(process.cwd(), targetDir);
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
   const templatesDest = path.join(targetAbs, '.github', 'ISSUE_TEMPLATE');
@@ -435,6 +487,20 @@ function runUninstall(options) {
     }
   }
 
+  let skillRemoved = 0;
+  if (withSkill) {
+    const skillDest = skillPath(targetAbs);
+    if (fs.existsSync(skillDest)) {
+      if (dryRun) {
+        console.log(`  [dry-run] Would remove: ${SKILL_REL_PATH}`);
+      } else {
+        fs.unlinkSync(skillDest);
+        console.log(`  Removed: ${SKILL_REL_PATH}`);
+      }
+      skillRemoved++;
+    }
+  }
+
   // Remove the version manifest too — it has no meaning once Delivery OS is
   // gone, and leaving it behind would make a later install/status think a
   // stale version is still installed.
@@ -449,13 +515,18 @@ function runUninstall(options) {
   }
 
   console.log('');
-  if (workflowsRemoved > 0 || templatesRemoved > 0) {
+  if (workflowsRemoved > 0 || templatesRemoved > 0 || skillRemoved > 0) {
+    const templateNote = withTemplates ? `, ${templatesRemoved} template(s)` : '';
+    const skillNote = withSkill ? `, ${skillRemoved} skill file(s)` : '';
     if (dryRun) {
-      console.log(`Would remove ${workflowsRemoved} workflow(s)${withTemplates ? `, ${templatesRemoved} template(s)` : ''}.`);
+      console.log(`Would remove ${workflowsRemoved} workflow(s)${templateNote}${skillNote}.`);
     } else {
-      console.log(`Removed ${workflowsRemoved} workflow(s)${withTemplates ? `, ${templatesRemoved} template(s)` : ''}.`);
+      console.log(`Removed ${workflowsRemoved} workflow(s)${templateNote}${skillNote}.`);
       if (!withTemplates) {
         console.log('Templates were kept. Re-run with --with-templates to remove them.');
+      }
+      if (!withSkill) {
+        console.log('Claude Code skill (if installed) was kept. Re-run with --with-skill to remove it.');
       }
     }
   } else {
@@ -470,5 +541,14 @@ module.exports = {
   runStatus,
   runUninstall,
   // Exposed for tests only — not part of the CLI's public API.
-  __test__: { manifestPath, readManifest, writeManifest, fetchLatestVersion, WORKFLOWS, TEMPLATES },
+  __test__: {
+    manifestPath,
+    readManifest,
+    writeManifest,
+    fetchLatestVersion,
+    skillPath,
+    SKILL_REL_PATH,
+    WORKFLOWS,
+    TEMPLATES,
+  },
 };

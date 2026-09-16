@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-15
+
+### Added
+
+- New opt-in `--with-skill` flag on `install`, `status`, and `uninstall`. `install --with-skill` writes `.claude/skills/delivery-ops/SKILL.md` into the target repo — a [Claude Code](https://claude.com/claude-code) skill for operating that repo's Delivery OS from Claude Code (creating sprint/production-release/QA-request/bug/task issues in the shape the workflows parse, commenting as an approver with the recognized keyword conventions, checking status). Never written unless asked for; retroactively addable by re-running `install --with-skill` later, same as `--with-templates`. `status` reports whether it's installed; `uninstall --with-skill` removes it (kept by default, like templates).
+
 ## [1.1.0] - 2026-09-11
 
 ### Added

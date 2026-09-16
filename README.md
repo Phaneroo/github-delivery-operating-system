@@ -30,7 +30,7 @@ The **GitHub Delivery Operating System (Delivery OS)** embeds structured intake,
 npx github-delivery-os install --with-templates .
 ```
 
-From your repo root. Add `--with-labels` to create labels via `gh` CLI (requires `gh auth`). Use `--dry-run` to preview first.
+From your repo root. Add `--with-labels` to create labels via `gh` CLI (requires `gh auth`). Add `--with-skill` to also drop in a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code — creating sprint/release/QA issues, commenting as an approver, checking status. Use `--dry-run` to preview first.
 
 **Alternative — clone and run script:**
 
@@ -76,6 +76,8 @@ npx github-delivery-os uninstall --dry-run .      # Preview (no changes)
 Workflows and templates are **copied directly** into your repo. No `workflow_call` or external references.
 
 Installing via `npx github-delivery-os` (not the `scripts/install.sh` clone path) also writes `.github/delivery-os.json`, a small manifest recording the installed version — this is what powers the update check in `status`. It's only written when the files it describes are actually current (a fresh install, or `--overwrite`); a skip-mode install over existing files leaves it untouched rather than claiming a version that isn't really on disk. `uninstall` removes it.
+
+With `--with-skill`, a `.claude/skills/delivery-ops/SKILL.md` file is also written — a Claude Code skill scoped to this repo, so anyone working here with Claude Code can create issues that correctly trigger the workflows above, comment as an approver, and check status without knowing the underlying `gh` commands or issue-body formats by heart. It's opt-in and retroactive: `--with-skill` on any later `install` call adds it if it isn't there yet.
 
 ---
 

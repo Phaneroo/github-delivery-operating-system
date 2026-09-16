@@ -45,6 +45,7 @@ Common flags:
 |------|---------|
 | `--with-templates` | Copy issue templates (recommended for sprint and release forms). |
 | `--with-labels` | Create labels using the GitHub CLI (`gh`); requires authentication. |
+| `--with-skill` | Add a Claude Code skill for operating this repo's Delivery OS from Claude Code. Optional. |
 | `--dry-run` | Show planned changes without writing files. |
 | `--overwrite` | Replace existing Delivery OS files (use when upgrading; prefer `--dry-run` first). |
 

@@ -6,7 +6,8 @@ const os = require('os');
 const path = require('path');
 const { test } = require('./harness');
 const { runInstall, runStatus, runUninstall, __test__ } = require('../src/install');
-const { manifestPath, readManifest, writeManifest, WORKFLOWS, TEMPLATES } = __test__;
+const { manifestPath, readManifest, writeManifest, skillPath, SKILL_REL_PATH, WORKFLOWS, TEMPLATES } =
+  __test__;
 
 const pkgVersion = require('../package.json').version;
 
@@ -172,6 +173,148 @@ test('status (checkUpdates: false) reports installed workflows without network a
     assert.match(output, /Installed version:/);
     assert.match(output, new RegExp(`7\\/${WORKFLOWS.length} workflows`));
     assert.doesNotMatch(output, /Update available|Up to date|Could not check npm/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('--with-skill copies the delivery-ops Claude Code skill', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    assert.ok(fs.existsSync(skillPath(dir)), `expected ${SKILL_REL_PATH} to exist`);
+    const content = fs.readFileSync(skillPath(dir), 'utf8');
+    assert.match(content, /^---\nname: delivery-ops/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('install without --with-skill does not create the skill file (opt-in, not default)', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    assert.equal(fs.existsSync(skillPath(dir)), false);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('skip-mode --with-skill install leaves an existing skill file untouched', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    fs.mkdirSync(path.dirname(skillPath(dir)), { recursive: true });
+    fs.writeFileSync(skillPath(dir), 'custom local edits');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true })); // skip-mode
+    assert.equal(fs.readFileSync(skillPath(dir), 'utf8'), 'custom local edits');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--with-skill --overwrite replaces an existing skill file', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    fs.writeFileSync(skillPath(dir), 'stale content');
+    inRepoQuietly(dir, () =>
+      runInstall({ targetDir: '.', withTemplates: true, withSkill: true, overwrite: true })
+    );
+    assert.notEqual(fs.readFileSync(skillPath(dir), 'utf8'), 'stale content');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('dry-run --with-skill does not create the skill file', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () =>
+      runInstall({ targetDir: '.', withTemplates: true, withSkill: true, dryRun: true })
+    );
+    assert.equal(fs.existsSync(skillPath(dir)), false);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a skipped skill file (while everything else is clean) still blocks the recorded version from updating', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    writeManifest(dir, '0.0.1');
+    fs.writeFileSync(skillPath(dir), 'local edits that must not be clobbered');
+    // Everything else would be a "clean" skip-free install except the skill file already exists.
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    const manifest = readManifest(dir);
+    assert.equal(manifest.version, '0.0.1', 'a skipped skill file must count toward "not a clean install"');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall without --with-skill keeps the skill file', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.', withTemplates: true }));
+    assert.ok(fs.existsSync(skillPath(dir)), 'skill file should survive uninstall without --with-skill');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall --with-skill removes the skill file', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    assert.equal(fs.existsSync(skillPath(dir)), false);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('status reports the skill as installed or not', async () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /✓ delivery-ops/);
+    assert.match(output, /skill: yes/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status reports the skill as missing when not installed', async () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true })); // no --with-skill
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /delivery-ops \(not installed/);
+    assert.match(output, /skill: no/);
   } finally {
     console.log = origLog;
     rm(dir);

@@ -55,6 +55,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `-t, --with-templates` | Copy issue templates |
 | `-l, --with-labels` | Create labels via `gh` CLI |
+| `-s, --with-skill` | Add the `delivery-ops` Claude Code skill |
 | `-o, --overwrite` | Replace existing files |
 | `-d, --dry-run` | Preview without changing files |
 
@@ -64,6 +65,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `--with-templates` | Copy issue templates (sprint, task, bug, QA, production release) |
 | `--with-labels` | Create labels via `gh` CLI (requires `gh auth` and GitHub remote) |
+| `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status |
 | `--overwrite` | Replace existing workflow/template files |
 | `--no-overwrite` | Explicitly skip existing files (default behavior) |
 | `--dry-run` | Show what would happen without changing any files |
@@ -102,6 +104,8 @@ The manifest is only written/updated when the files it describes are actually cu
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
 | `telegram-issues.yml` | Sends Telegram alerts for bugs, QA, sprints, releases, PR merges |
 | `setup-labels.yml` | One-time workflow to create all required labels |
+
+With `--with-skill`, also: `.claude/skills/delivery-ops/SKILL.md` — a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code (creating sprint/release/QA/bug/task issues in the shape these workflows parse, commenting as an approver with the right keyword conventions, checking status). Optional — most repos aren't using Claude Code, so this isn't written unless asked for.
 
 ---
 
@@ -204,10 +208,11 @@ The consumer repo must allow workflows to write. In your consumer repo:
 ```bash
 npx github-delivery-os uninstall .                    # Remove workflows only
 npx github-delivery-os uninstall --with-templates .   # Also remove issue templates
+npx github-delivery-os uninstall --with-skill .       # Also remove the delivery-ops Claude Code skill
 npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
 ```
 
-This removes the seven workflow files, optionally the issue templates, and `.github/delivery-os.json` if present. It does not touch repo variables or secrets.
+This removes the seven workflow files, optionally the issue templates and the Claude Code skill, and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
 
 **Manual alternative** — delete these files from `.github/workflows/`:
 - `sprint-child-creator.yml`

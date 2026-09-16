@@ -117,6 +117,44 @@ function fetchLatestVersion(timeoutMs = 3000) {
   });
 }
 
+// Copies each `${name}${ext}` from srcDir to destDir for a fixed list of
+// expected filenames — the shared logic behind copying WORKFLOWS and SCRIPTS
+// (both: a required, always-on set of individually-named files, as opposed
+// to templates, which copies whatever's found in a directory, or the skill,
+// a single optional file). `label` is what's printed for each entry, e.g.
+// `.github/scripts/auto-close-sprint.js` — pass names already including
+// their directory prefix so log lines are self-explanatory on their own.
+function copyManagedFiles(names, ext, srcDir, destDir, { overwrite, dryRun, relDir }) {
+  let copied = 0;
+  let skipped = 0;
+
+  for (const name of names) {
+    const src = path.join(srcDir, `${name}${ext}`);
+    const dest = path.join(destDir, `${name}${ext}`);
+    const label = `${relDir}/${name}${ext}`;
+
+    if (!fs.existsSync(src)) {
+      console.log(`  Warning: source not found: ${label}`);
+      skipped++; // missing source must block a "clean install" claim, not just warn
+      continue;
+    }
+
+    if (fs.existsSync(dest) && !overwrite) {
+      console.log(`  Skipped (exists): ${label}`);
+      skipped++;
+    } else if (dryRun) {
+      console.log(`  [dry-run] Would create: ${label}`);
+      copied++;
+    } else {
+      fs.copyFileSync(src, dest);
+      console.log(`  Created: ${label}`);
+      copied++;
+    }
+  }
+
+  return { copied, skipped };
+}
+
 function getPackageRoot() {
   // When installed via npm, __dirname is node_modules/github-delivery-os/src
   const possibleRoots = [
@@ -180,59 +218,30 @@ function runInstall(options) {
   let templatesCopied = 0;
   let scriptsCopied = 0;
   let skillCopied = 0;
-  let workflowsSkipped = 0;
-  let templatesSkipped = 0;
-  let scriptsSkipped = 0;
-  let skillSkipped = 0;
+  let workflowsSkipped;
+  let scriptsSkipped;
 
-  // Copy workflows
-  for (const wf of WORKFLOWS) {
-    const src = path.join(workflowsSrc, `${wf}.yml`);
-    const dest = path.join(workflowsDest, `${wf}.yml`);
-
-    if (!fs.existsSync(src)) {
-      console.log(`  Warning: source not found: ${wf}.yml`);
-      workflowsSkipped++; // missing source must block a "clean install" claim, not just warn
-      continue;
-    }
-
-    if (fs.existsSync(dest) && !overwrite) {
-      console.log(`  Skipped (exists): ${wf}.yml`);
-      workflowsSkipped++;
-    } else if (dryRun) {
-      console.log(`  [dry-run] Would create: ${wf}.yml`);
-      workflowsCopied++;
-    } else {
-      fs.copyFileSync(src, dest);
-      console.log(`  Created: ${wf}.yml`);
-      workflowsCopied++;
-    }
-  }
+  // Copy workflows (always on — not optional)
+  ({ copied: workflowsCopied, skipped: workflowsSkipped } = copyManagedFiles(
+    WORKFLOWS,
+    '.yml',
+    workflowsSrc,
+    workflowsDest,
+    { overwrite, dryRun, relDir: '.github/workflows' }
+  ));
 
   // Copy the scripts the workflows above require() at runtime — required,
-  // not optional, so (unlike templates/skill) this always runs.
-  for (const name of SCRIPTS) {
-    const src = path.join(scriptsSrc, `${name}.js`);
-    const dest = path.join(scriptsDest, `${name}.js`);
+  // not optional, so (unlike templates/skill) this always runs too.
+  ({ copied: scriptsCopied, skipped: scriptsSkipped } = copyManagedFiles(
+    SCRIPTS,
+    '.js',
+    scriptsSrc,
+    scriptsDest,
+    { overwrite, dryRun, relDir: '.github/scripts' }
+  ));
 
-    if (!fs.existsSync(src)) {
-      console.log(`  Warning: source not found: .github/scripts/${name}.js`);
-      scriptsSkipped++;
-      continue;
-    }
-
-    if (fs.existsSync(dest) && !overwrite) {
-      console.log(`  Skipped (exists): .github/scripts/${name}.js`);
-      scriptsSkipped++;
-    } else if (dryRun) {
-      console.log(`  [dry-run] Would create: .github/scripts/${name}.js`);
-      scriptsCopied++;
-    } else {
-      fs.copyFileSync(src, dest);
-      console.log(`  Created: .github/scripts/${name}.js`);
-      scriptsCopied++;
-    }
-  }
+  let templatesSkipped = 0;
+  let skillSkipped = 0;
 
   // Copy templates
   if (withTemplates && fs.existsSync(templatesSrc)) {
@@ -620,8 +629,14 @@ function runUninstall(options) {
   // still fully present and version-tracked.
   const anyWorkflowsRemain = WORKFLOWS.some((wf) => fs.existsSync(path.join(workflowsDest, `${wf}.yml`)));
   const anyTemplatesRemain = TEMPLATES.some((t) => fs.existsSync(path.join(templatesDest, t)));
+  // Scripts are removed unconditionally just above, so this is normally
+  // always false by the time we get here — included anyway for the same
+  // reason the other three are checked explicitly rather than assumed:
+  // defensive completeness against a future change (e.g. a failed unlink,
+  // or script removal ever becoming flag-gated like templates/skill).
+  const anyScriptsRemain = SCRIPTS.some((name) => fs.existsSync(path.join(scriptsDest, `${name}.js`)));
   const skillRemains = fs.existsSync(skillPath(targetAbs));
-  const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !skillRemains;
+  const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains;
 
   const manifestDest = manifestPath(targetAbs);
   if (nothingLeft && fs.existsSync(manifestDest)) {

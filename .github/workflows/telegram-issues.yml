@@ -103,18 +103,20 @@ jobs:
             # Case-insensitive actor comparison: GitHub logins are case-insensitive,
             # but a plain bash == is not, so a RELEASE_APPROVER var with different
             # casing than the actual login would otherwise never match here.
-            # Anchored to the start of a line, matching the same keyword set and
-            # convention as authorize-deployment.yml's DECLINE_RE, so this alert
-            # can't fire for a comment that workflow wouldn't actually treat as a
-            # decline (e.g. "not approved" appearing mid-sentence).
-            if [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)"; then
+            # Anchored to the start of a line + word boundary (\b), matching the
+            # same keyword set and convention as authorize-deployment.yml's real
+            # DECLINE_RE/APPROVE_RE, so this alert can't fire for a comment that
+            # workflow wouldn't actually treat as a decline/approval (e.g. "not
+            # approved" mid-sentence, or "okay, I'll look at this tomorrow" —
+            # "ok" without \b would otherwise match as a false approval).
+            if [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)\b"; then
               MESSAGE="🔴🛑 RELEASE DECLINED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             # Matches authorize-deployment.yml's full APPROVE_RE keyword set
             # (approved|approve|ok|go ahead), not just "approved" — it used to
             # miss "ok"/"go ahead"/"approve", so a release could be approved
             # for real with no Telegram alert sent for it.
-            elif [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(approved|approve|ok|go ahead)"; then
+            elif [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(approved|approve|ok|go ahead)\b"; then
               MESSAGE="🟢🛡️ RELEASE APPROVED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'bug') }}" == "true" ]]; then

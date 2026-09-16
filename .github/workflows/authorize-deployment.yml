@@ -58,6 +58,14 @@ jobs:
 
             const { releaseVerdict, qaApproved } = computeVerdict(comments, releaseApprover, qaApprover);
 
+            // Nothing to act on this run (most comments on a production issue
+            // are routine discussion, not a verdict-changing approval/decline)
+            // — return before the live label fetch below, which only matters
+            // once we actually have a verdict to check against current state.
+            const hasActionableVerdict =
+              releaseVerdict === "declined" || (releaseVerdict === "approved" && qaApproved);
+            if (!hasActionableVerdict) return;
+
             // Fetch labels live rather than trusting context.payload.issue.labels:
             // that's a snapshot fixed at the triggering event's delivery time.
             // Two comments posted seconds apart queue under the concurrency

@@ -5,6 +5,35 @@
 
 set -e
 
+# Copies each "<name><ext>" from src_dir to dest_dir for a fixed list of
+# expected filenames — the shared logic behind copying workflows and
+# scripts (both: a required, always-on set of individually-named files).
+# Sets COPIED to the result (bash has no clean multi-value return).
+# Usage: copy_managed_files "name1 name2 ..." ext src_dir dest_dir rel_dir
+copy_managed_files() {
+  local names="$1" ext="$2" src_dir="$3" dest_dir="$4" rel_dir="$5"
+  COPIED=0
+  for name in $names; do
+    local src="${src_dir}/${name}${ext}"
+    local dest="${dest_dir}/${name}${ext}"
+    local label="${rel_dir}/${name}${ext}"
+    if [ ! -f "$src" ]; then
+      echo "  Warning: source not found: ${label}"
+      continue
+    fi
+    if [ -f "$dest" ] && [ "$OVERWRITE" != "true" ]; then
+      echo "  Skipped (exists): ${label}"
+    elif [ "$DRY_RUN" = "true" ]; then
+      echo "  [dry-run] Would create: ${label}"
+      COPIED=$((COPIED + 1))
+    else
+      cp "$src" "$dest"
+      echo "  Created: ${label}"
+      COPIED=$((COPIED + 1))
+    fi
+  done
+}
+
 usage() {
   echo "Usage: $0 [options] [target_dir]"
   echo ""
@@ -67,49 +96,15 @@ mkdir -p "${TARGET_ABS}/.github/ISSUE_TEMPLATE"
 mkdir -p "${TARGET_ABS}/.github/scripts"
 
 # 2. Copy workflows
-WORKFLOWS=(sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels)
-WORKFLOWS_COPIED=0
-for wf in "${WORKFLOWS[@]}"; do
-  src="${WORKFLOWS_SRC}/${wf}.yml"
-  dest="${TARGET_ABS}/.github/workflows/${wf}.yml"
-  if [ ! -f "$src" ]; then
-    echo "  Warning: source not found: ${wf}.yml"
-    continue
-  fi
-  if [ -f "$dest" ] && [ "$OVERWRITE" != "true" ]; then
-    echo "  Skipped (exists): ${wf}.yml"
-  elif [ "$DRY_RUN" = "true" ]; then
-    echo "  [dry-run] Would create: ${wf}.yml"
-    WORKFLOWS_COPIED=$((WORKFLOWS_COPIED + 1))
-  else
-    cp "$src" "$dest"
-    echo "  Created: ${wf}.yml"
-    WORKFLOWS_COPIED=$((WORKFLOWS_COPIED + 1))
-  fi
-done
+WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels"
+copy_managed_files "$WORKFLOWS" ".yml" "$WORKFLOWS_SRC" "${TARGET_ABS}/.github/workflows" ".github/workflows"
+WORKFLOWS_COPIED=$COPIED
 
 # 2b. Copy the scripts some workflows require() at runtime — required, not
 # optional, so (like workflows) this always runs.
-SCRIPTS=(authorize-deployment-verdict auto-close-sprint sprint-child-creator)
-SCRIPTS_COPIED=0
-for sc in "${SCRIPTS[@]}"; do
-  src="${SCRIPTS_SRC}/${sc}.js"
-  dest="${TARGET_ABS}/.github/scripts/${sc}.js"
-  if [ ! -f "$src" ]; then
-    echo "  Warning: source not found: .github/scripts/${sc}.js"
-    continue
-  fi
-  if [ -f "$dest" ] && [ "$OVERWRITE" != "true" ]; then
-    echo "  Skipped (exists): .github/scripts/${sc}.js"
-  elif [ "$DRY_RUN" = "true" ]; then
-    echo "  [dry-run] Would create: .github/scripts/${sc}.js"
-    SCRIPTS_COPIED=$((SCRIPTS_COPIED + 1))
-  else
-    cp "$src" "$dest"
-    echo "  Created: .github/scripts/${sc}.js"
-    SCRIPTS_COPIED=$((SCRIPTS_COPIED + 1))
-  fi
-done
+SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator"
+copy_managed_files "$SCRIPTS" ".js" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
+SCRIPTS_COPIED=$COPIED
 
 # 3. Optionally copy issue templates
 TEMPLATES_COPIED=0

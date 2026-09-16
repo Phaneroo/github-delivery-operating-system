@@ -63,15 +63,15 @@ npx github-delivery-os uninstall --dry-run .      # Preview (no changes)
 
 **What gets installed:**
 
-| Workflow | Purpose |
-|----------|---------|
-| `sprint-child-creator` | Creates child issues when a sprint (title `SPRINT -`) is opened |
-| `auto-close-sprint` | Burn-down, sprint health, auto-close at 100% |
-| `notify-release-approver` | Pings approver when production release issue opens |
-| `authorize-deployment` | Dual approval (release approver + QA) |
-| `auto-assign-qa` | Assigns QA team to `qa` / `qa-request` issues |
-| `telegram-issues` | Telegram alerts for bugs, QA, sprints, releases |
-| `setup-labels` | One-time workflow to create required labels |
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `sprint-child-creator` | Issue opened, title contains `SPRINT -` | Parses "Sprint Features (One Per Line)" and creates one child issue per line, each linked back with `Parent Sprint: #N` |
+| `auto-close-sprint` | Issue closed, body contains `Parent Sprint` | Recomputes the parent sprint's burn-down/health and rewrites its status section; auto-closes the sprint at 100% |
+| `notify-release-approver` | Issue opened, labeled `production` | Comments on the issue tagging the repo's `RELEASE_APPROVER` |
+| `authorize-deployment` | Comment posted on a `production`-labeled issue | Checks the commenter and keyword against `RELEASE_APPROVER`/`QA_APPROVER`; once both approve, adds `ready-for-deploy` |
+| `auto-assign-qa` | Issue opened/labeled `qa` or `qa-request` | Assigns the repo's configured `QA_ASSIGNEES` |
+| `telegram-issues` | Issue/comment/PR events | Sends a Telegram alert if `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are configured |
+| `setup-labels` | Manual (`workflow_dispatch`) | One-time run that creates all labels Delivery OS needs |
 
 Workflows and templates are **copied directly** into your repo. No `workflow_call` or external references.
 

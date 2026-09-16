@@ -61,6 +61,19 @@ npx github-delivery-os uninstall --dry-run .      # Preview (no changes)
 
 `status` also checks npm for a newer release and tells you if you're behind (e.g. `⬆️ Update available: 1.0.3 → 1.1.0`), along with the exact command to update. That check is silent and non-fatal if you're offline — use `--offline` to skip it outright (e.g. in CI).
 
+**Command variations — which one to run when:**
+
+| Command | When to run it |
+|---------|-----------------|
+| `npx github-delivery-os install --with-templates .` | First install of Delivery OS in a repo without Claude Code — workflows + issue templates. The default recommendation above. |
+| `npx github-delivery-os install --with-templates --with-labels .` | Same, plus creating all required labels immediately via `gh` CLI — skips the manual "Actions → Setup Labels → Run workflow" step. Needs `gh auth`. |
+| `npx github-delivery-os install --with-templates --with-skill .` | You (or your team) will operate this repo's Delivery OS from [Claude Code](https://claude.com/claude-code) — adds the `delivery-ops` skill so issues/comments/status checks can be done in plain language. |
+| `npx github-delivery-os install --with-templates --with-labels --with-skill .` | Everything at once — the fastest path to a fully working, Claude-Code-operable install in one command. |
+| `npx github-delivery-os install --with-templates --with-skill --dry-run .` | Preview any of the above combinations first — prints what would be created without writing anything. Combine with any other flags. |
+| `npx github-delivery-os install --with-templates --with-skill --overwrite .` | Updating an existing install to the latest release, or retroactively adding `--with-templates`/`--with-skill` to a repo that skipped them originally. **Only** command here that replaces existing files — everything above is always skip-existing/safe. |
+| `npx github-delivery-os status .` | Not sure what's currently installed, whether it's up to date, or whether a workflow is broken (e.g. a required script silently missing). Safe, read-only. |
+| `npx github-delivery-os uninstall --with-templates --with-skill .` | Removing Delivery OS entirely — workflows, scripts, templates, and the skill. Omit either flag to keep that part (both are kept by default). |
+
 **What gets installed:**
 
 | Workflow | Trigger | Purpose |

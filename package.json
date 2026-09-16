@@ -38,7 +38,13 @@
   "files": [
     "bin",
     "src",
-    ".github/workflows",
+    ".github/workflows/sprint-child-creator.yml",
+    ".github/workflows/auto-close-sprint.yml",
+    ".github/workflows/notify-release-approver.yml",
+    ".github/workflows/authorize-deployment.yml",
+    ".github/workflows/auto-assign-qa.yml",
+    ".github/workflows/telegram-issues.yml",
+    ".github/workflows/setup-labels.yml",
     ".github/ISSUE_TEMPLATE",
     ".claude/skills/delivery-ops"
   ],

@@ -6,6 +6,10 @@ const { execFileSync } = require('child_process');
 const MANIFEST_FILE = 'delivery-os.json'; // written to .github/delivery-os.json in the target repo
 const SKILL_REL_PATH = path.join('.claude', 'skills', 'delivery-ops', 'SKILL.md'); // opt-in via --with-skill
 
+// If you add/remove/rename an entry here, also update package.json's "files"
+// array — it lists these paths explicitly (not the whole .github/workflows
+// directory) so this package's own maintainer workflows (ci.yml, release.yml,
+// pages.yml) don't get bundled into what ships to consumers.
 const WORKFLOWS = [
   'sprint-child-creator',
   'auto-close-sprint',

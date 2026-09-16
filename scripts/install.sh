@@ -43,6 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKFLOWS_SRC="${REPO_ROOT}/.github/workflows"
 TEMPLATES_SRC="${REPO_ROOT}/.github/ISSUE_TEMPLATE"
+SCRIPTS_SRC="${REPO_ROOT}/.github/scripts"
 TARGET_ABS="$(cd "$TARGET_DIR" && pwd)"
 
 echo "=== GitHub Delivery Operating System ==="
@@ -63,6 +64,7 @@ fi
 # 1. Ensure target .github structure
 mkdir -p "${TARGET_ABS}/.github/workflows"
 mkdir -p "${TARGET_ABS}/.github/ISSUE_TEMPLATE"
+mkdir -p "${TARGET_ABS}/.github/scripts"
 
 # 2. Copy workflows
 WORKFLOWS=(sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels)
@@ -83,6 +85,29 @@ for wf in "${WORKFLOWS[@]}"; do
     cp "$src" "$dest"
     echo "  Created: ${wf}.yml"
     WORKFLOWS_COPIED=$((WORKFLOWS_COPIED + 1))
+  fi
+done
+
+# 2b. Copy the scripts some workflows require() at runtime — required, not
+# optional, so (like workflows) this always runs.
+SCRIPTS=(authorize-deployment-verdict auto-close-sprint sprint-child-creator)
+SCRIPTS_COPIED=0
+for sc in "${SCRIPTS[@]}"; do
+  src="${SCRIPTS_SRC}/${sc}.js"
+  dest="${TARGET_ABS}/.github/scripts/${sc}.js"
+  if [ ! -f "$src" ]; then
+    echo "  Warning: source not found: .github/scripts/${sc}.js"
+    continue
+  fi
+  if [ -f "$dest" ] && [ "$OVERWRITE" != "true" ]; then
+    echo "  Skipped (exists): .github/scripts/${sc}.js"
+  elif [ "$DRY_RUN" = "true" ]; then
+    echo "  [dry-run] Would create: .github/scripts/${sc}.js"
+    SCRIPTS_COPIED=$((SCRIPTS_COPIED + 1))
+  else
+    cp "$src" "$dest"
+    echo "  Created: .github/scripts/${sc}.js"
+    SCRIPTS_COPIED=$((SCRIPTS_COPIED + 1))
   fi
 done
 
@@ -164,13 +189,15 @@ if [ "$WITH_LABELS" = true ]; then
 fi
 
 echo ""
-if [ $WORKFLOWS_COPIED -gt 0 ] || [ $TEMPLATES_COPIED -gt 0 ] || [ $LABELS_CREATED -gt 0 ]; then
+if [ $WORKFLOWS_COPIED -gt 0 ] || [ $TEMPLATES_COPIED -gt 0 ] || [ $SCRIPTS_COPIED -gt 0 ] || [ $LABELS_CREATED -gt 0 ]; then
   if [ "$DRY_RUN" = "true" ]; then
     [ $WORKFLOWS_COPIED -gt 0 ] && echo "Would install ${WORKFLOWS_COPIED} workflow(s)."
     [ $TEMPLATES_COPIED -gt 0 ] && echo "Would copy ${TEMPLATES_COPIED} issue template(s)."
+    [ $SCRIPTS_COPIED -gt 0 ] && echo "Would install ${SCRIPTS_COPIED} supporting script(s)."
   else
     [ $WORKFLOWS_COPIED -gt 0 ] && echo "Installed ${WORKFLOWS_COPIED} workflow(s)."
     [ $TEMPLATES_COPIED -gt 0 ] && echo "Copied ${TEMPLATES_COPIED} issue template(s)."
+    [ $SCRIPTS_COPIED -gt 0 ] && echo "Installed ${SCRIPTS_COPIED} supporting script(s)."
     [ $LABELS_CREATED -gt 0 ] && echo "Created ${LABELS_CREATED} label(s)."
   fi
   echo ""

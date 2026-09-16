@@ -110,7 +110,11 @@ jobs:
             if [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)"; then
               MESSAGE="🔴🛑 RELEASE DECLINED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
-            elif [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iq "^approved"; then
+            # Matches authorize-deployment.yml's full APPROVE_RE keyword set
+            # (approved|approve|ok|go ahead), not just "approved" — it used to
+            # miss "ok"/"go ahead"/"approve", so a release could be approved
+            # for real with no Telegram alert sent for it.
+            elif [[ "${ACTOR,,}" == "${RELEASE_APPROVER,,}" ]] && echo "$COMMENT_BODY" | grep -iqE "^(approved|approve|ok|go ahead)"; then
               MESSAGE="🟢🛡️ RELEASE APPROVED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'bug') }}" == "true" ]]; then

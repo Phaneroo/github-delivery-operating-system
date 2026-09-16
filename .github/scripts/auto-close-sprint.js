@@ -45,10 +45,16 @@ function parseSprintDates(sprintBody) {
  * @param {Date} endDate
  * @param {Date} now
  * @returns {number} percent of the sprint's duration elapsed as of `now`,
- *   clamped to [0, 100].
+ *   clamped to [0, 100]. Returns 100 for a zero-or-negative-length sprint
+ *   (Start >= End — a data-entry mistake) instead of dividing by zero: that
+ *   NaN would otherwise flow into the posted burn-down as "Time Elapsed:
+ *   NaN%", and every NaN comparison in computeHealthEmoji is false, so it'd
+ *   silently default to the green/no-warning branch instead of flagging the
+ *   broken dates.
  */
 function computeTimePercent(startDate, endDate, now) {
   const totalDuration = endDate - startDate;
+  if (totalDuration <= 0) return 100;
   const elapsed = now - startDate;
   return Math.max(0, Math.min(100, Math.round((elapsed / totalDuration) * 100)));
 }

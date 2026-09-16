@@ -15,6 +15,7 @@ const {
   WORKFLOWS,
   TEMPLATES,
   SCRIPTS,
+  SCRIPTS_PACKAGE_JSON,
 } = __test__;
 
 const pkgVersion = require('../package.json').version;
@@ -102,6 +103,16 @@ test('fresh install writes a manifest matching the current package version', () 
     for (const name of SCRIPTS) {
       assert.ok(fs.existsSync(path.join(scriptsDest, `${name}.js`)), `missing .github/scripts/${name}.js`);
     }
+    // Regression guard: a consumer repo whose own package.json has
+    // "type": "module" makes Node treat every .js file as an ES module by
+    // default, including these CommonJS scripts — breaking require() with
+    // "module is not defined in ES module scope" the moment a workflow
+    // actually runs. Confirmed live against a real "type": "module" repo
+    // before this file (and this test) existed. This package.json pins
+    // .github/scripts to CommonJS regardless of the consumer's own type field.
+    const scriptsPkgPath = path.join(scriptsDest, SCRIPTS_PACKAGE_JSON);
+    assert.ok(fs.existsSync(scriptsPkgPath), `missing .github/scripts/${SCRIPTS_PACKAGE_JSON}`);
+    assert.equal(JSON.parse(fs.readFileSync(scriptsPkgPath, 'utf8')).type, 'commonjs');
   } finally {
     rm(dir);
   }
@@ -232,6 +243,19 @@ test('uninstall removes the manifest once nothing Delivery-OS-related actually r
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
     inRepoQuietly(dir, () => runUninstall({ targetDir: '.', withTemplates: true, withSkill: true }));
     assert.equal(readManifest(dir), null);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall removes the CommonJS-pinning scripts/package.json', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    const scriptsPkgPath = path.join(dir, '.github', 'scripts', SCRIPTS_PACKAGE_JSON);
+    assert.ok(fs.existsSync(scriptsPkgPath));
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.', withTemplates: true }));
+    assert.equal(fs.existsSync(scriptsPkgPath), false);
   } finally {
     rm(dir);
   }
@@ -438,6 +462,28 @@ test('status detects a workflow whose required script is missing', async () => {
     const output = lines.join('\n');
     assert.match(output, /Broken install detected/);
     assert.match(output, /auto-close-sprint\.yml requires \.github\/scripts\/auto-close-sprint\.js/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status flags a missing scripts/package.json as a broken install', async () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    fs.unlinkSync(path.join(dir, '.github', 'scripts', SCRIPTS_PACKAGE_JSON));
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, new RegExp(`\\.github/scripts/${SCRIPTS_PACKAGE_JSON} is missing`));
   } finally {
     console.log = origLog;
     rm(dir);

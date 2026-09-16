@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-09-16
+
+### Fixed
+
+- **Critical:** `.github/scripts/*.js` (the `require()`-based logic behind `authorize-deployment.yml`, `auto-close-sprint.yml`, and `sprint-child-creator.yml`) is CommonJS, but a consumer repo whose own `package.json` has `"type": "module"` makes Node treat every `.js` file in the repo as an ES module by default — including these — breaking `require()`/`module.exports` at runtime with `ReferenceError: module is not defined in ES module scope`. Found live against a real `"type": "module"` consumer repo: `sprint-child-creator` failed on open, silently producing zero child issues instead of the expected one per feature line. Fixed by shipping a `.github/scripts/package.json` (`{"type": "commonjs"}`) alongside the scripts — Node resolves module type from the nearest `package.json`, so this pins the scripts subtree to CommonJS regardless of the consumer repo's own root config. Installed and removed by both the npm CLI and `scripts/install.sh`, same as the scripts themselves; `status` now also detects and reports an install missing this file as broken, with the fix command.
+
 ## [1.2.1] - 2026-09-16
 
 ### Fixed

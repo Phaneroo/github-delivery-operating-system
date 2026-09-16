@@ -27,6 +27,17 @@ const WORKFLOWS = [
 // them explicitly in package.json's "files".
 const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator'];
 
+// These scripts are CommonJS (`require`/`module.exports`). Node picks CJS vs.
+// ESM per-file by walking up to the nearest package.json — so a consumer repo
+// whose own root package.json has `"type": "module"` would otherwise make
+// Node treat these .js files as ES modules too, breaking `require()` at
+// runtime with "ReferenceError: module is not defined in ES module scope".
+// This override pins the .github/scripts subtree to CommonJS regardless of
+// the consumer's own type field. Always installed alongside SCRIPTS, same as
+// SCRIPTS is alongside WORKFLOWS — not itself require()'d by anything, but a
+// required dependency of every script that is.
+const SCRIPTS_PACKAGE_JSON = 'package.json';
+
 // Which workflow requires which script, so `status` can flag a workflow
 // that's present but whose required script is missing (an install that will
 // fail with MODULE_NOT_FOUND the next time that workflow actually runs).
@@ -239,6 +250,21 @@ function runInstall(options) {
     scriptsDest,
     { overwrite, dryRun, relDir: '.github/scripts' }
   ));
+
+  // The CommonJS-pinning package.json (see SCRIPTS_PACKAGE_JSON above) —
+  // always installed alongside SCRIPTS, via the same helper, counted the
+  // same way (mirrors how scripts/install.sh reuses copy_managed_files for
+  // this exact file rather than hand-rolling the copy).
+  const { name: scriptsPkgName, ext: scriptsPkgExt } = path.parse(SCRIPTS_PACKAGE_JSON);
+  const scriptsPkgResult = copyManagedFiles(
+    [scriptsPkgName],
+    scriptsPkgExt,
+    scriptsSrc,
+    scriptsDest,
+    { overwrite, dryRun, relDir: '.github/scripts' }
+  );
+  scriptsCopied += scriptsPkgResult.copied;
+  scriptsSkipped += scriptsPkgResult.skipped;
 
   let templatesSkipped = 0;
   let skillSkipped = 0;
@@ -472,6 +498,19 @@ async function runStatus(options) {
     return !fs.existsSync(path.join(targetAbs, '.github', 'scripts', `${requiredScript}.js`));
   });
 
+  // A script can be present while the CommonJS-pinning package.json (see
+  // SCRIPTS_PACKAGE_JSON in src/install.js) is missing — e.g. an install from
+  // before this fix existed. That's fine in a repo whose own package.json
+  // has no "type" field or "type": "commonjs", but breaks with
+  // "ReferenceError: module is not defined in ES module scope" the moment
+  // the consumer repo's package.json has "type": "module". Flagged
+  // separately from brokenWorkflows since it's silent until that condition
+  // is hit, not an immediate break.
+  const scriptsRequiringPkgJson = installedWorkflows.some((wf) => REQUIRED_SCRIPT_BY_WORKFLOW[wf]);
+  const scriptsPkgJsonMissing =
+    scriptsRequiringPkgJson &&
+    !fs.existsSync(path.join(targetAbs, '.github', 'scripts', SCRIPTS_PACKAGE_JSON));
+
   if (installedWorkflows.length > 0 || installedTemplates.length > 0 || skillInstalled) {
     const manifest = readManifest(targetAbs);
     if (manifest && manifest.version) {
@@ -510,6 +549,15 @@ async function runStatus(options) {
       console.log(`  ${wf}.yml requires .github/scripts/${REQUIRED_SCRIPT_BY_WORKFLOW[wf]}.js, which is missing.`);
     });
     console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
+    console.log('  Fix: npx github-delivery-os@latest install --overwrite .');
+    console.log('');
+  }
+
+  if (scriptsPkgJsonMissing) {
+    console.log(`⚠️  .github/scripts/${SCRIPTS_PACKAGE_JSON} is missing.`);
+    console.log('  If this repo\'s own package.json has "type": "module", every workflow that');
+    console.log('  require()s a script under .github/scripts will fail with "module is not');
+    console.log('  defined in ES module scope" the next time it runs.');
     console.log('  Fix: npx github-delivery-os@latest install --overwrite .');
     console.log('');
   }
@@ -592,6 +640,19 @@ function runUninstall(options) {
     }
   }
 
+  // The CommonJS-pinning package.json travels with SCRIPTS — same
+  // unconditional removal.
+  const scriptsPkgDest = path.join(scriptsDest, SCRIPTS_PACKAGE_JSON);
+  if (fs.existsSync(scriptsPkgDest)) {
+    if (dryRun) {
+      console.log(`  [dry-run] Would remove: .github/scripts/${SCRIPTS_PACKAGE_JSON}`);
+    } else {
+      fs.unlinkSync(scriptsPkgDest);
+      console.log(`  Removed: .github/scripts/${SCRIPTS_PACKAGE_JSON}`);
+    }
+    scriptsRemoved++;
+  }
+
   if (withTemplates) {
     for (const t of TEMPLATES) {
       const dest = path.join(templatesDest, t);
@@ -634,7 +695,9 @@ function runUninstall(options) {
   // reason the other three are checked explicitly rather than assumed:
   // defensive completeness against a future change (e.g. a failed unlink,
   // or script removal ever becoming flag-gated like templates/skill).
-  const anyScriptsRemain = SCRIPTS.some((name) => fs.existsSync(path.join(scriptsDest, `${name}.js`)));
+  const anyScriptsRemain =
+    SCRIPTS.some((name) => fs.existsSync(path.join(scriptsDest, `${name}.js`))) ||
+    fs.existsSync(path.join(scriptsDest, SCRIPTS_PACKAGE_JSON));
   const skillRemains = fs.existsSync(skillPath(targetAbs));
   const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains;
 
@@ -688,6 +751,7 @@ module.exports = {
     WORKFLOWS,
     TEMPLATES,
     SCRIPTS,
+    SCRIPTS_PACKAGE_JSON,
     REQUIRED_SCRIPT_BY_WORKFLOW,
   },
 };

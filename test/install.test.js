@@ -10,6 +10,7 @@ const {
   manifestPath,
   readManifest,
   writeManifest,
+  buildOverwriteCommand,
   skillPath,
   SKILL_REL_PATH,
   WORKFLOWS,
@@ -293,6 +294,63 @@ test('status (checkUpdates: false) reports installed workflows without network a
     assert.match(output, /Installed version:/);
     assert.match(output, new RegExp(`7\\/${WORKFLOWS.length} workflows`));
     assert.doesNotMatch(output, /Update available|Up to date|Could not check npm/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('buildOverwriteCommand includes --with-templates/--with-skill only when those are actually installed', () => {
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: false, hasSkill: false }),
+    'npx github-delivery-os@latest install --overwrite .'
+  );
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: true, hasSkill: false }),
+    'npx github-delivery-os@latest install --with-templates --overwrite .'
+  );
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: false, hasSkill: true }),
+    'npx github-delivery-os@latest install --with-skill --overwrite .'
+  );
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: true, hasSkill: true }),
+    'npx github-delivery-os@latest install --with-templates --with-skill --overwrite .'
+  );
+});
+
+test('status\'s "unknown version" hint includes --with-templates/--with-skill when those are installed (regression: bare --overwrite left them stale forever)', async () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    // Simulate "installed before version tracking was added": files on
+    // disk, no manifest.
+    fs.rmSync(manifestPath(dir));
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /Installed version: unknown/);
+    // The bug: this hint used to always suggest a bare `install --overwrite`,
+    // which for a repo with templates/skill already installed leaves them
+    // present-but-untouched — runInstall's cleanInstall check then refuses
+    // to record a version at all, so status loops on the same broken
+    // suggestion forever. The hint must name both flags here.
+    assert.match(output, /Run: npx github-delivery-os@latest install --with-templates --with-skill --overwrite \./);
+
+    // Prove the suggested command is actually a clean install, not just
+    // right-looking text.
+    inRepoQuietly(dir, () =>
+      runInstall({ targetDir: '.', withTemplates: true, withSkill: true, overwrite: true })
+    );
+    const manifest = readManifest(dir);
+    assert.equal(manifest.version, pkgVersion, 'the suggested command must record a version');
   } finally {
     console.log = origLog;
     rm(dir);

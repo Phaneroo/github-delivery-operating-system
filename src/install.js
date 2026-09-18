@@ -460,6 +460,20 @@ function runInstall(options) {
   console.log('=== Installation complete ===');
 }
 
+// runInstall only records a new manifest version when everything already
+// installed actually gets touched this run (see the cleanInstall check
+// there) — so a repo with templates and/or the skill already on disk needs
+// --with-templates/--with-skill passed again on an update, not just
+// --overwrite, or the recorded version never advances and `status` keeps
+// suggesting the same command forever. Build the hint from what's actually
+// on disk so it's never wrong.
+function buildOverwriteCommand({ hasTemplates, hasSkill }) {
+  const flags = [hasTemplates ? '--with-templates' : null, hasSkill ? '--with-skill' : null, '--overwrite']
+    .filter(Boolean)
+    .join(' ');
+  return `npx github-delivery-os@latest install ${flags} .`;
+}
+
 const TEMPLATES = [
   'config.yml',
   'sprint_planning.yml',
@@ -518,7 +532,9 @@ async function runStatus(options) {
       console.log(`Installed version: ${manifest.version}${installedOn}`);
     } else {
       console.log('Installed version: unknown (installed before version tracking was added)');
-      console.log('  Run install with --overwrite to record the current version.');
+      console.log(
+        `  Run: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+      );
     }
 
     if (checkUpdates) {
@@ -529,7 +545,9 @@ async function runStatus(options) {
         console.log(`✓ Up to date (latest is ${latest})`);
       } else if (manifest && manifest.version) {
         console.log(`⬆️  Update available: ${manifest.version} → ${latest}`);
-        console.log('    Run: npx github-delivery-os@latest install --overwrite .');
+        console.log(
+          `    Run: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+        );
       } else {
         console.log(`Latest published version: ${latest}`);
       }
@@ -746,6 +764,7 @@ module.exports = {
     readManifest,
     writeManifest,
     fetchLatestVersion,
+    buildOverwriteCommand,
     skillPath,
     SKILL_REL_PATH,
     WORKFLOWS,

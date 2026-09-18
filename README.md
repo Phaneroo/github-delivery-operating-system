@@ -90,7 +90,7 @@ Workflows and templates are **copied directly** into your repo. No `workflow_cal
 
 Installing via `npx github-delivery-os` (not the `scripts/install.sh` clone path) also writes `.github/delivery-os.json`, a small manifest recording the installed version — this is what powers the update check in `status`. It's only written when the files it describes are actually current (a fresh install, or `--overwrite`); a skip-mode install over existing files leaves it untouched rather than claiming a version that isn't really on disk. `uninstall` removes it.
 
-With `--with-skill`, a `.claude/skills/delivery-ops/SKILL.md` file is also written — a Claude Code skill scoped to this repo, so anyone working here with Claude Code can create issues that correctly trigger the workflows above, comment as an approver, and check status without knowing the underlying `gh` commands or issue-body formats by heart. It's opt-in and retroactive: `--with-skill` on any later `install` call adds it if it isn't there yet.
+With `--with-skill`, a `.claude/skills/delivery-ops/SKILL.md` file is also written — a Claude Code skill scoped to this repo, so anyone working here with Claude Code can create issues that correctly trigger the workflows above, comment as an approver, check status, and run autonomous task tracking (identify and file tasks/bugs, group them into phases via sprints, maintain a roadmap issue, and update/close issues as work progresses) without knowing the underlying `gh` commands or issue-body formats by heart. It's opt-in and retroactive: `--with-skill` on any later `install` call adds it if it isn't there yet.
 
 ---
 
@@ -122,6 +122,8 @@ When you open an issue using the **Sprint Planning** template with a title like 
 Installing with `--with-skill` drops a `.claude/skills/delivery-ops/SKILL.md` skill into the repo, scoped to *this* repo's Delivery OS install. It lets anyone using [Claude Code](https://claude.com/claude-code) drive the workflows above by asking in plain language — e.g. "create a sprint for the checkout redesign" — instead of hand-building `gh issue create` calls and remembering each template's exact field names.
 
 Before doing anything, it checks the target repo: confirms Delivery OS is actually installed, that `Setup Labels` has been run, and that `RELEASE_APPROVER` / `QA_APPROVER` / `QA_ASSIGNEES` are configured — flagging (or offering to fix) gaps instead of silently creating an issue that does nothing. It also always shows the constructed title/body/labels or comment text for confirmation before creating or posting for real, since these are visible actions in the repo's activity, not a local preview.
+
+It can also run the full lifecycle of a piece of work on its own: notice something worth tracking, classify it, file it, keep its status/comments in sync as work happens, and close it out — acting without asking when the outcome is clear (always posting a one-line notice in the conversation so nothing happens invisibly), and asking first only when the classification or "is this actually done" is genuinely ambiguous. A "phase" is just a Sprint Planning issue; a "roadmap" is one persistent issue Claude keeps rewritten with each phase's state — no new issue types or automation involved.
 
 ### Create a sprint
 1. Ask: *"Create a sprint called Sprint 14 for \<goal>, running \<start> to \<end>, with features: \<one per line>"*

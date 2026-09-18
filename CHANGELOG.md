@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-17
+
+### Added
+
+- **delivery-ops skill**: autonomous task tracking. Beyond filing one issue on request, the skill can now run a piece of work's whole lifecycle — notice it, classify it (Task / Bug / Sprint / QA / Production Release), file it, keep its `### Status` field and comments in sync as work happens, and close it out with a summary. Acts without asking when the classification and outcome are clear, always posting a one-line in-session notice ("Filed #23...", "Updated #17 to In Progress", "Closed #17..."); asks first only when genuinely ambiguous (unclear category, unclear which existing issue it maps to, unclear whether it's actually done). Introduces no new issue types or automation — a "phase" is a Sprint Planning issue (children linked via `Parent Sprint: #N`, same as `sprint-child-creator`), and a "roadmap" is a single persistent issue Claude keeps rewritten to list phases and their state. Reconciles against `gh issue list` at the start of relevant work rather than relying on memory, so picking work back up in a new session doesn't need any local state.
+
+### Known limitation
+
+- Autonomous tracking only reacts while a Claude session is actively working — nothing reconciles state that changes in the background (a human merging a PR or closing an issue with no session running). Deferred deliberately rather than solved now; tracked as [#12](https://github.com/Phaneroo/github-delivery-operating-system/issues/12).
+
 ## [1.2.2] - 2026-09-16
 
 ### Fixed

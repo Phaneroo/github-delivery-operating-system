@@ -10,6 +10,7 @@ const {
   manifestPath,
   readManifest,
   writeManifest,
+  buildOverwriteCommand,
   skillPath,
   SKILL_REL_PATH,
   WORKFLOWS,
@@ -299,6 +300,63 @@ test('status (checkUpdates: false) reports installed workflows without network a
   }
 });
 
+test('buildOverwriteCommand includes --with-templates/--with-skill only when those are actually installed', () => {
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: false, hasSkill: false }),
+    'npx github-delivery-os@latest install --overwrite .'
+  );
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: true, hasSkill: false }),
+    'npx github-delivery-os@latest install --with-templates --overwrite .'
+  );
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: false, hasSkill: true }),
+    'npx github-delivery-os@latest install --with-skill --overwrite .'
+  );
+  assert.equal(
+    buildOverwriteCommand({ hasTemplates: true, hasSkill: true }),
+    'npx github-delivery-os@latest install --with-templates --with-skill --overwrite .'
+  );
+});
+
+test('status\'s "unknown version" hint includes --with-templates/--with-skill when those are installed (regression: bare --overwrite left them stale forever)', async () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, withSkill: true }));
+    // Simulate "installed before version tracking was added": files on
+    // disk, no manifest.
+    fs.rmSync(manifestPath(dir));
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /Installed version: unknown/);
+    // The bug: this hint used to always suggest a bare `install --overwrite`,
+    // which for a repo with templates/skill already installed leaves them
+    // present-but-untouched — runInstall's cleanInstall check then refuses
+    // to record a version at all, so status loops on the same broken
+    // suggestion forever. The hint must name both flags here.
+    assert.match(output, /Run: npx github-delivery-os@latest install --with-templates --with-skill --overwrite \./);
+
+    // Prove the suggested command is actually a clean install, not just
+    // right-looking text.
+    inRepoQuietly(dir, () =>
+      runInstall({ targetDir: '.', withTemplates: true, withSkill: true, overwrite: true })
+    );
+    const manifest = readManifest(dir);
+    assert.equal(manifest.version, pkgVersion, 'the suggested command must record a version');
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
 test('--with-skill copies the delivery-ops Claude Code skill', () => {
   const dir = mkTmpRepo();
   try {
@@ -462,6 +520,11 @@ test('status detects a workflow whose required script is missing', async () => {
     const output = lines.join('\n');
     assert.match(output, /Broken install detected/);
     assert.match(output, /auto-close-sprint\.yml requires \.github\/scripts\/auto-close-sprint\.js/);
+    // Regression: this "Fix:" hint must also carry --with-templates when
+    // templates are installed, same bug as the version hints (see
+    // buildOverwriteCommand test) — a bare --overwrite here would leave
+    // templates present-but-untouched and never advance the recorded version.
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --overwrite \./);
   } finally {
     console.log = origLog;
     rm(dir);
@@ -484,6 +547,7 @@ test('status flags a missing scripts/package.json as a broken install', async ()
 
     const output = lines.join('\n');
     assert.match(output, new RegExp(`\\.github/scripts/${SCRIPTS_PACKAGE_JSON} is missing`));
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --overwrite \./);
   } finally {
     console.log = origLog;
     rm(dir);

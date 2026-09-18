@@ -45,6 +45,7 @@
         <li><a href="#features">What you get</a></li>
         <li><a href="#workflows">Workflows</a></li>
         <li><a href="#quick-start">Quick start</a></li>
+        <li><a href="#claude-code">Claude Code</a></li>
         <li><a href="#documentation">Resources</a></li>
       </ul>
     </aside>
@@ -163,6 +164,201 @@
         </ol>
       </section>
 
+      <section id="claude-code">
+        <h2>Operating from Claude Code</h2>
+        <p>Installing with <code>--with-skill</code> drops a <code>.claude/skills/delivery-ops/SKILL.md</code> skill into the repo, scoped to that repo's Delivery OS install. It lets anyone using <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> drive the workflows above by asking in plain language, instead of hand-building <code>gh issue create</code> calls and remembering each template's exact field names.</p>
+        <p>Before doing anything, it checks the target repo — confirms Delivery OS is installed, labels exist, and approvers/QA assignees are configured — and always shows the exact issue or comment content for confirmation before creating or posting for real. It can also run a task's whole lifecycle on its own (notice, classify, file, keep in sync, close) — acting without asking when the outcome is clear and always posting a one-line notice so nothing happens invisibly — or turn a spec/feature description into a full phase-and-task breakdown, always shown for confirmation first since that creates many issues at once.</p>
+
+        <div class="table-wrap">
+          <table class="workflows-table">
+            <thead>
+              <tr><th>Ask Claude</th><th>What happens</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>"Create a sprint called Sprint 14 for &lt;goal&gt;, running &lt;start&gt; to &lt;end&gt;, with features: …"</td><td>Opens a Sprint Planning issue; <code>sprint-child-creator</code> splits each feature into its own child issue</td></tr>
+              <tr><td>"Open a production release for &lt;project&gt; v2.4.1, sprint #N, summary: …"</td><td>Opens a release issue; <code>notify-release-approver</code> tags the configured approver</td></tr>
+              <tr><td>"Approve release #N" / "Decline release #N — &lt;reason&gt;"</td><td>Verifies the authenticated login matches <code>RELEASE_APPROVER</code>, then posts a comment with the right keyword</td></tr>
+              <tr><td>"Open a QA request for &lt;feature&gt;, related to #N, testing …"</td><td>Opens a QA request; <code>auto-assign-qa</code> assigns the configured team</td></tr>
+              <tr><td>"Mark QA #N as approved"</td><td>Same login check against <code>QA_APPROVER</code>, then posts the right keyword</td></tr>
+              <tr><td>"File a bug: &lt;summary&gt;, severity &lt;level&gt;, steps: …"</td><td>Opens a bug report with platform, severity, steps, expected/actual result</td></tr>
+              <tr><td>"Create a task to &lt;summary&gt;, owner &lt;name&gt;, priority P1"</td><td>Opens a Task issue — plain tracking, no workflow trigger</td></tr>
+              <tr><td>"How's Sprint 14 doing?" / "What releases are waiting on approval?"</td><td>Reads burn-down/status, or lists issues by label — no issue number needed</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>See <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/how-to.md" target="_blank" rel="noopener noreferrer">How To</a> for the underlying workflows this drives, field by field, or the <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/.claude/skills/delivery-ops/SKILL.md" target="_blank" rel="noopener noreferrer">full skill reference</a> for the exact recipes and confirmation rules.</p>
+
+        <details class="example-details">
+          <summary>Example: filing a bug and a task, step by step</summary>
+          <p>Illustrative walkthrough against <code>acme/storefront</code>, a repo with Delivery OS installed (same example repo as the full walkthrough below).</p>
+
+          <p><strong>Filing the bug:</strong></p>
+          <ol>
+            <li>In Claude Code, inside (or pointed at, via <code>--repo</code>) the target repo, describe the bug in plain language:<br>
+              <em>"File a bug on acme/storefront — the order request form submits with an empty phone number, severity high. Steps: fill in the form, leave phone blank, submit. Expected: should block submission. Actual: submits anyway, so there's no way to contact the customer. Tested on Chrome, desktop, production."</em></li>
+            <li>Claude pre-flights the repo — confirms Delivery OS is installed and the <code>bug</code>/<code>qa</code> labels exist.</li>
+            <li>Claude shows the exact issue it's about to create before doing anything: Title <code>[BUG] Order request form submits with empty phone number</code>; Labels <code>bug</code>, <code>qa</code>; body fields (Platform, Severity: High, Build/Version, Steps to Reproduce, Expected/Actual Result, Test Environment) filled in from what you said.</li>
+            <li>Confirm ("yes") when asked to create it.</li>
+            <li>Claude runs <code>gh issue create</code> and reports back the issue — e.g. <code>acme/storefront#42</code>. Nothing else happens automatically; bug reports don't trigger a workflow, they're just labeled and tracked.</li>
+          </ol>
+
+          <p><strong>Filing the follow-up task:</strong></p>
+          <ol>
+            <li>Ask Claude to turn the bug into tracked work, referencing the bug's issue number:<br>
+              <em>"Create a task to add phone number validation to the order form, owner @alex, priority P1, status Backlog, acceptance: form blocks submission until a valid phone number is entered. Link it to #42."</em></li>
+            <li>Claude shows the constructed issue: Title <code>TASK - Add phone number validation to order form</code>; Labels <code>task</code>; body: Task Summary, Description (references #42), Owner → @alex, Priority → P1 - High, Status → Backlog, Acceptance Criteria, Artifacts/Links → Related bug: #42.</li>
+            <li>Confirm ("yes") to create it.</li>
+            <li>Claude runs <code>gh issue create</code>. Same as the bug — no workflow trigger, just labeled and tracked, now linked back to the bug it addresses.</li>
+          </ol>
+        </details>
+
+        <details class="example-details">
+          <summary>Full example: shipping a feature end-to-end</summary>
+          <p>A realistic Claude Code session, run from inside the consumer repo (the skill defaults to it since it was installed with <code>--with-skill</code> there). <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> are already configured.</p>
+          <pre><code>You: Create a sprint called "Sprint 14 - Checkout Revamp", running 2026-09-16 to
+     2026-09-30, goal is shipping the new checkout flow, features:
+     - Redesign cart summary
+     - Add saved payment methods
+     - Fix tax rounding bug
+
+Claude: This will create an issue in acme/storefront:
+
+          Title:  SPRINT - Sprint 14 - Checkout Revamp
+          Labels: sprint, planning
+          Body:
+            ### Sprint Name
+            Sprint 14 - Checkout Revamp
+            ### Sprint Start
+            2026-09-16
+            ### Sprint End
+            2026-09-30
+            ### Sprint Goal
+            Ship the new checkout flow
+            ### Sprint Features (One Per Line)
+            Redesign cart summary
+            Add saved payment methods
+            Fix tax rounding bug
+            ### Sprint Approved
+            Pending
+
+        Create this issue?
+
+You: yes
+
+Claude: Created #52. sprint-child-creator will fire on open and create one child
+        issue per feature — #53 "Redesign cart summary", #54 "Add saved payment
+        methods", #55 "Fix tax rounding bug" — each labeled sprint-active and
+        linked back with "Parent Sprint: #52".
+
+  [ ... engineers do the work, close #53 and #54 as they land ... ]
+
+You: How's Sprint 14 doing?
+
+Claude: Reading #52... ## 🚦 Sprint Status: 67% complete (2/3 closed), 20% of
+        sprint time elapsed, 🟢 on track.
+
+You: QA found a rounding issue in the tax calc — file a bug. Severity high,
+     repros on checkout with 3+ items, expected total matches line items,
+     actual is off by $0.01.
+
+Claude: This will create an issue in acme/storefront:
+
+          Title:  [BUG] Tax rounding off by $0.01 with 3+ items
+          Labels: bug, qa
+          Body: (Platform, Severity: High, Steps to Reproduce, Expected vs.
+                 Actual Result, Test Environment filled in from what you said)
+
+        Create this issue?
+
+You: yes
+
+Claude: Created #56.
+
+  [ ... #55 fixed, referencing #56 ... ]
+
+You: Open a QA request for the tax rounding fix, related to #55, test on
+     staging, acceptance: totals match to the cent for carts of 1-10 items.
+
+Claude: This will create an issue in acme/storefront:
+
+          Title:  QA REQUEST - Tax rounding fix
+          Labels: qa-request
+          Body: (Related Sprint Task Issue #55, What to Test, Environment +
+                 Build Link: staging, Acceptance Criteria filled in)
+
+        Create this issue?
+
+You: yes
+
+Claude: Created #57. auto-assign-qa will assign it to the configured
+        QA_ASSIGNEES.
+
+  [ ... QA tests it, comes back clean ... ]
+
+You: Mark QA #57 as approved, looks good.
+
+Claude: Checking gh auth status... authenticated as jane-qa, which matches this
+        repo's QA_APPROVER. Posting:
+
+          "looks good — verified on staging, totals match to the cent"
+
+        on #57.
+
+You: yes, post it
+
+Claude: Posted. Now close #55 to update the sprint burn-down?
+
+You: yes
+
+Claude: Closed #55. Sprint 14 is now 100% complete — auto-close-sprint closed
+        #52 and posted a completion comment.
+
+You: Open a production release for storefront v2.4.1, sprint #52, summary
+     "checkout revamp: new cart summary, saved payment methods, tax rounding
+     fix", QA evidence: #57.
+
+Claude: This will create an issue in acme/storefront:
+
+          Title:  PRODUCTION RELEASE - storefront - v2.4.1
+          Labels: release, production, approval
+          Body:
+            ### Sprint Reference (Sprint Planning Issue #)
+            #52
+            ### Version / Build Number
+            v2.4.1
+            ### Release Summary
+            Checkout revamp: new cart summary, saved payment methods, tax
+            rounding fix
+            ### QA Summary + Evidence Links
+            #57
+            ### Overall QA Recommendation
+            Approve for Production
+            ### Deployment Authorized
+            No
+
+        Create this issue?
+
+You: yes
+
+Claude: Created #58. notify-release-approver posted a comment tagging this
+        repo's RELEASE_APPROVER (john-lead).
+
+  [ ... some time later, as john-lead ... ]
+
+You: Approve release #58.
+
+Claude: Checking gh auth status... authenticated as john-lead, which matches
+        RELEASE_APPROVER. Posting "approved" on #58.
+
+You: yes
+
+Claude: Posted. authorize-deployment will add ready-for-deploy once both
+        approvers (release + QA) have a qualifying comment on record.</code></pre>
+          <p>Each "yes" above is a real confirmation gate — Claude shows the exact issue/comment content before it creates or posts anything, since it's a visible action in the repo.</p>
+        </details>
+      </section>
+
       <section id="documentation">
         <h2>Documentation</h2>
         <div class="inline-links">
@@ -181,6 +377,7 @@
         <li><a href="#features">What you get</a></li>
         <li><a href="#workflows">Workflows</a></li>
         <li><a href="#quick-start">Quick start</a></li>
+        <li><a href="#claude-code">Claude Code</a></li>
         <li><a href="#documentation">Resources</a></li>
       </ul>
     </aside>

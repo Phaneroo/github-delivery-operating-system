@@ -168,28 +168,28 @@ See [How To](docs/how-to.md) for the underlying workflows this drives, field by 
 
 ### Example: filing a bug and a task, step by step
 
-Worked against `jkaweesi22/klero`, a repo with Delivery OS installed. The bug part of this was actually run — that issue really exists at [jkaweesi22/klero#1](https://github.com/jkaweesi22/klero/issues/1); the task part follows the identical steps but wasn't actually created, shown for the field shape only.
+Illustrative walkthrough against `acme/storefront`, a repo with Delivery OS installed (same example repo used in the full walkthrough below).
 
 **Filing the bug:**
 
 1. In Claude Code, inside (or pointed at, via `--repo`) the target repo, describe the bug in plain language:
-   > *File a bug on jkaweesi22/klero — the order request form submits with an empty phone number, severity high. Steps: fill in the form, leave phone blank, submit. Expected: should block submission. Actual: submits anyway, so there's no way to contact the customer. Tested on Chrome, desktop, production.*
+   > *File a bug on acme/storefront — the order request form submits with an empty phone number, severity high. Steps: fill in the form, leave phone blank, submit. Expected: should block submission. Actual: submits anyway, so there's no way to contact the customer. Tested on Chrome, desktop, production.*
 2. Claude pre-flights the repo — confirms Delivery OS is installed and the `bug`/`qa` labels exist.
 3. Claude shows the exact issue it's about to create before doing anything:
    - Title: `[BUG] Order request form submits with empty phone number`
    - Labels: `bug`, `qa`
    - Body, field by field: `Platform(s) Affected` → Web, `Severity` → High, `Build / Version` → main (as deployed), `Bug Summary`, `Steps to Reproduce` (numbered), `Expected Result`, `Actual Result`, `Test Environment` → Chrome, desktop, production.
 4. Confirm ("yes") when asked to create it.
-5. Claude runs `gh issue create` and reports back the issue — [jkaweesi22/klero#1](https://github.com/jkaweesi22/klero/issues/1). Nothing else happens automatically; bug reports don't trigger a workflow, they're just labeled and tracked.
+5. Claude runs `gh issue create` and reports back the issue — e.g. `acme/storefront#42`. Nothing else happens automatically; bug reports don't trigger a workflow, they're just labeled and tracked.
 
 **Filing the follow-up task:**
 
 1. Ask Claude to turn the bug into tracked work, referencing the bug's issue number:
-   > *Create a task to add phone number validation to the order form, owner @jkaweesi22, priority P1, status Backlog, acceptance: form blocks submission until a valid phone number is entered. Link it to #1.*
+   > *Create a task to add phone number validation to the order form, owner @alex, priority P1, status Backlog, acceptance: form blocks submission until a valid phone number is entered. Link it to #42.*
 2. Claude shows the constructed issue:
    - Title: `TASK - Add phone number validation to order form`
    - Labels: `task`
-   - Body: `Task Summary`, `Description` (references #1), `Owner` → @jkaweesi22, `Priority` → P1 - High, `Status` → Backlog, `Acceptance Criteria`, `Artifacts / Links` → Related bug: #1.
+   - Body: `Task Summary`, `Description` (references #42), `Owner` → @alex, `Priority` → P1 - High, `Status` → Backlog, `Acceptance Criteria`, `Artifacts / Links` → Related bug: #42.
 3. Confirm ("yes") to create it.
 4. Claude runs `gh issue create`. Same as the bug — no workflow trigger, just labeled and tracked, now linked back to the bug it addresses.
 

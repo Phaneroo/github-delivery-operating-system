@@ -30,6 +30,8 @@ Before creating anything that depends on configuration, check the target repo ac
 
 **Show the constructed title, body, and labels before actually creating the issue** — this is a real, visible action in someone else's repo, not a preview in this conversation. Get confirmation on the content, not just the target repo, before calling `gh issue create`.
 
+This confirm-first default is for issues created **on explicit request** ("file a bug for this", "create a sprint"). The "Autonomous tracking" section below describes a *different* mode — noticing and filing work on its own during a session — and overrides this default there: act first, confirm after, per its own "Confirm only when unsure" rule. Don't apply both rules to the same action.
+
 **Sprint Planning** — triggers `sprint-child-creator` (one child issue per feature line, each labeled `sprint-active`, on open):
 - Title **must contain** the literal string `SPRINT -`, e.g. `SPRINT - Sprint 14`
 - Labels: `sprint`, `planning`
@@ -193,11 +195,13 @@ No new issue type needed — reuse what's already documented above:
 
 ### Reconcile by querying, never by remembering
 
-Don't rely on recalling an issue number from earlier in the conversation, and never assume it's still accurate after a gap. Before updating or closing something, requery:
+Don't rely on recalling an issue number from earlier in the conversation, and never assume it's still accurate after a gap. Before updating or closing something, requery — by keyword search, not just by label, since a filed issue may carry no label at all (labels like `task`/`bug` only exist once `Setup Labels` has been run for that repo; see the pre-flight check) or may be a Bug/Sprint-child/QA item instead of a Task:
 
 ```
-gh issue list --repo <owner>/<repo> --label task --state open --search "<keywords from the work>"
+gh issue list --repo <owner>/<repo> --state open --search "<keywords from the work>"
 ```
+
+Narrow with `--label task` (or `bug`, `sprint-active`, `qa-request`) only once the category is known and the target repo actually has that label — don't assume `--label task` alone finds everything relevant.
 
 This is also what makes picking work back up in a *new* session possible without any local memory — the issue list itself is the state.
 

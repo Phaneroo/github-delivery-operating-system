@@ -190,6 +190,30 @@
         <p>See <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/how-to.md" target="_blank" rel="noopener noreferrer">How To</a> for the underlying workflows this drives, field by field, or the <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/.claude/skills/delivery-ops/SKILL.md" target="_blank" rel="noopener noreferrer">full skill reference</a> for the exact recipes and confirmation rules.</p>
 
         <details class="example-details">
+          <summary>Example: filing a bug and a task, step by step</summary>
+          <p>Illustrative walkthrough against <code>acme/storefront</code>, a repo with Delivery OS installed (same example repo as the full walkthrough below).</p>
+
+          <p><strong>Filing the bug:</strong></p>
+          <ol>
+            <li>In Claude Code, inside (or pointed at, via <code>--repo</code>) the target repo, describe the bug in plain language:<br>
+              <em>"File a bug on acme/storefront — the order request form submits with an empty phone number, severity high. Steps: fill in the form, leave phone blank, submit. Expected: should block submission. Actual: submits anyway, so there's no way to contact the customer. Tested on Chrome, desktop, production."</em></li>
+            <li>Claude pre-flights the repo — confirms Delivery OS is installed and the <code>bug</code>/<code>qa</code> labels exist.</li>
+            <li>Claude shows the exact issue it's about to create before doing anything: Title <code>[BUG] Order request form submits with empty phone number</code>; Labels <code>bug</code>, <code>qa</code>; body fields (Platform, Severity: High, Build/Version, Steps to Reproduce, Expected/Actual Result, Test Environment) filled in from what you said.</li>
+            <li>Confirm ("yes") when asked to create it.</li>
+            <li>Claude runs <code>gh issue create</code> and reports back the issue — e.g. <code>acme/storefront#42</code>. Nothing else happens automatically; bug reports don't trigger a workflow, they're just labeled and tracked.</li>
+          </ol>
+
+          <p><strong>Filing the follow-up task:</strong></p>
+          <ol>
+            <li>Ask Claude to turn the bug into tracked work, referencing the bug's issue number:<br>
+              <em>"Create a task to add phone number validation to the order form, owner @alex, priority P1, status Backlog, acceptance: form blocks submission until a valid phone number is entered. Link it to #42."</em></li>
+            <li>Claude shows the constructed issue: Title <code>TASK - Add phone number validation to order form</code>; Labels <code>task</code>; body: Task Summary, Description (references #42), Owner → @alex, Priority → P1 - High, Status → Backlog, Acceptance Criteria, Artifacts/Links → Related bug: #42.</li>
+            <li>Confirm ("yes") to create it.</li>
+            <li>Claude runs <code>gh issue create</code>. Same as the bug — no workflow trigger, just labeled and tracked, now linked back to the bug it addresses.</li>
+          </ol>
+        </details>
+
+        <details class="example-details">
           <summary>Full example: shipping a feature end-to-end</summary>
           <p>A realistic Claude Code session, run from inside the consumer repo (the skill defaults to it since it was installed with <code>--with-skill</code> there). <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> are already configured.</p>
           <pre><code>You: Create a sprint called "Sprint 14 - Checkout Revamp", running 2026-09-16 to

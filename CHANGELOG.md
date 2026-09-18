@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-18
+
+### Added
+
+- **delivery-ops skill**: turn a spec (SRS/PRD) or a plain-language feature description into a real phase-and-task breakdown filed as actual GitHub issues. Decomposes requirements into phases (each a Sprint Planning issue) and files a full Task issue per requirement — owner/priority/acceptance criteria drawn from the spec — rather than relying on `sprint-child-creator`'s bare auto-created children, which only carry a title. Always shows the full plan for confirmation before creating anything, since this creates many issues at once. Works around the sprint template's required "Sprint Features" field (one placeholder line, whose single auto-created child is closed immediately as superseded) while still tagging real Task issues with `sprint-active` + `Parent Sprint: #N` so `auto-close-sprint`'s burn-down picks them up correctly. For a small feature that doesn't need phase-level sequencing, files standalone Task issues without the Sprint wrapper.
+
 ## [1.3.1] - 2026-09-18
 
 ### Fixed

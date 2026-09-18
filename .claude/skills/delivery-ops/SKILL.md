@@ -1,6 +1,6 @@
 ---
 name: delivery-ops
-description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), and run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses). Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, or demo/test Delivery OS against a given repo.
+description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses), and turn a spec (SRS/PRD) or a plain-language feature description into a full phase-and-task breakdown filed as real issues. Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, break a spec/SRS/feature into phases and tasks, or demo/test Delivery OS against a given repo.
 ---
 
 # Operate Delivery OS
@@ -219,6 +219,25 @@ Close with `gh issue close <number> --repo <owner>/<repo> --comment "<summary of
 ### Known limitation
 
 This only tracks what happens while a Claude session is actively working — nothing reconciles state that changes in the background (a human merges a PR or closes an issue manually with no session running). That gap is tracked as its own deferred item rather than solved here: [Phaneroo/github-delivery-operating-system#12](https://github.com/Phaneroo/github-delivery-operating-system/issues/12). Mitigate it by always reconciling via `gh issue list` at the start of relevant work (see above) rather than trusting anything remembered from earlier.
+
+## Turning a spec or feature into phases and tasks
+
+Given an SRS/PRD, or just a plain-language feature description, break it into a real phase/task breakdown filed as actual issues — not a document, GitHub itself.
+
+**Why this doesn't just lean on `sprint-child-creator`:** that automation (see "Sprint Planning" under "Creating issues") turns a Sprint issue's feature list into child issues automatically, but each child is bare — just a title and `Parent Sprint: #N`, nothing else (`.github/scripts/sprint-child-creator.js` only ever builds that one-line body). A spec implies real per-item detail — acceptance criteria, priority, sometimes an owner — that the auto-created children can't carry. So this recipe works *around* that automation for the actual task content, while still linking into it enough for burn-down tracking to work.
+
+1. **Read the spec and decompose it.** Identify discrete requirements/features. Group them into phases by logical sequencing or dependency, not just document order — each phase becomes one Sprint.
+
+2. **Show the full plan before creating anything.** All phases, each with its Sprint Goal and the requirements that become Task issues under it. This creates many issues at once — always confirm first here, regardless of the "confirm only when unsure" default elsewhere in autonomous tracking; the blast radius is too large to skip.
+
+3. **Per phase, once confirmed:**
+   - Create the Sprint Planning issue with the usual recipe (`SPRINT - <phase name>`, dates, goal). "Sprint Features (One Per Line)" is template-required, so it can't be left empty — put one line noting the real breakdown is in linked Task issues (e.g. `See linked Task issues for this phase's breakdown`). This means exactly one bare placeholder child gets auto-created.
+   - Close that one placeholder immediately: `gh issue close <N> --repo <owner>/<repo> --comment "Superseded by full Task issues for this phase — see #.., #.., #.."`. Otherwise it sits in the sprint's burn-down denominator as an item that can never represent real completed work, and the sprint can never legitimately reach 100%.
+   - File one full Task issue per requirement (the usual Task recipe — Owner, Priority, Acceptance Criteria drawn from the spec text; ask only when the spec genuinely doesn't specify something, like priority). Label each with **both** `task` and `sprint-active`, and include `Parent Sprint: #<sprint-number>` in the body (e.g. under Artifacts / Links) — `sprint-active` + that exact phrase in the body is what `auto-close-sprint` scans for, so without both, these real tasks won't count toward the phase's burn-down at all.
+
+4. **Report back everything created**, grouped by phase — sprint issue number, task issue numbers, and the placeholder-close.
+
+For a single small feature that doesn't warrant phase-level sequencing, skip the Sprint wrapper entirely — just file standalone Task issues (cross-referencing each other via "Related: #N" where relevant) using the normal Task recipe.
 
 ## Finding things
 

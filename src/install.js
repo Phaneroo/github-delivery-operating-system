@@ -567,7 +567,9 @@ async function runStatus(options) {
       console.log(`  ${wf}.yml requires .github/scripts/${REQUIRED_SCRIPT_BY_WORKFLOW[wf]}.js, which is missing.`);
     });
     console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
-    console.log('  Fix: npx github-delivery-os@latest install --overwrite .');
+    console.log(
+      `  Fix: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+    );
     console.log('');
   }
 
@@ -576,7 +578,9 @@ async function runStatus(options) {
     console.log('  If this repo\'s own package.json has "type": "module", every workflow that');
     console.log('  require()s a script under .github/scripts will fail with "module is not');
     console.log('  defined in ES module scope" the next time it runs.');
-    console.log('  Fix: npx github-delivery-os@latest install --overwrite .');
+    console.log(
+      `  Fix: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+    );
     console.log('');
   }
 

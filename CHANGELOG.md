@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **status**: the "update available"/"unknown version" hint always suggested a bare `install --overwrite .`, even for a repo installed with `--with-templates`/`--with-skill`. Running exactly that suggested command leaves those files present-but-untouched, and `install`'s own `cleanInstall` check then refuses to advance the recorded manifest version — so `status` kept reporting the same stale version and suggesting the same broken command indefinitely, with no way out except reading the source. The hint now includes `--with-templates`/`--with-skill` whenever `status` detects those are actually installed.
+- **status**: all four suggested-command hints ("update available", "unknown version", broken-workflow "Fix:", missing-scripts-package.json "Fix:") always suggested a bare `install --overwrite .`, even for a repo installed with `--with-templates`/`--with-skill`. Running exactly that suggested command leaves those files present-but-untouched, and `install`'s own `cleanInstall` check then refuses to advance the recorded manifest version — so `status` kept reporting the same stale version and suggesting the same broken command indefinitely, with no way out except reading the source. All four hints now include `--with-templates`/`--with-skill` whenever `status` detects those are actually installed.
 
 ## [1.3.0] - 2026-09-17
 

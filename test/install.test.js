@@ -520,6 +520,11 @@ test('status detects a workflow whose required script is missing', async () => {
     const output = lines.join('\n');
     assert.match(output, /Broken install detected/);
     assert.match(output, /auto-close-sprint\.yml requires \.github\/scripts\/auto-close-sprint\.js/);
+    // Regression: this "Fix:" hint must also carry --with-templates when
+    // templates are installed, same bug as the version hints (see
+    // buildOverwriteCommand test) — a bare --overwrite here would leave
+    // templates present-but-untouched and never advance the recorded version.
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --overwrite \./);
   } finally {
     console.log = origLog;
     rm(dir);
@@ -542,6 +547,7 @@ test('status flags a missing scripts/package.json as a broken install', async ()
 
     const output = lines.join('\n');
     assert.match(output, new RegExp(`\\.github/scripts/${SCRIPTS_PACKAGE_JSON} is missing`));
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --overwrite \./);
   } finally {
     console.log = origLog;
     rm(dir);

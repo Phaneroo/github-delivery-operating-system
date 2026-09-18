@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-09-18
+
+### Fixed
+
+- **npm package**: `1.4.0` was published from a local checkout that predated the README shortening in the same day's work — the published tarball's `README.md` (and therefore the rendered npm package page) still carried the old ~360-line content instead of the short version merged shortly after. No code or behavior changed; this release exists solely to get the corrected `README.md` onto the registry, since npm doesn't allow overwriting an already-published version.
+
 ## [1.4.0] - 2026-09-18
 
 ### Added

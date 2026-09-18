@@ -1,6 +1,6 @@
 ---
 name: delivery-ops
-description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, and check status (labels, latest comments, burn-down). Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, or demo/test Delivery OS against a given repo.
+description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), and run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses). Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, or demo/test Delivery OS against a given repo.
 ---
 
 # Operate Delivery OS
@@ -162,6 +162,59 @@ gh issue close <number> --repo <owner>/<repo>
 ```
 
 `auto-close-sprint` fires on close, re-reads every `sprint-active` issue whose body contains `Parent Sprint: #<N>`, recomputes progress, and rewrites the sprint issue's `## 🚦 Sprint Status` section. At 100% it also closes the sprint issue itself and posts a completion comment. Re-check the sprint issue's body afterward to see the update — it happens as a side effect of closing the child, not as a response visible on the child issue itself.
+
+## Autonomous tracking (identify → file → update → close)
+
+Beyond filing one issue on request, this skill can run a piece of work's whole lifecycle: notice it, classify it, file it, keep it in sync as work happens, and close it out. GitHub issues are the only source of truth — there is no local state, and nothing here persists across sessions except what's written back to the repo.
+
+### Confirm only when unsure
+
+Don't ask before every action — that defeats the point. Act, then say so in one line of the conversation ("Filed #23: TASK - ...", "Updated #17 to In Progress", "Closed #17 — acceptance criteria met"). Every GitHub-visible action gets that line, regardless of confidence, so nothing happens invisibly even when nothing was asked first.
+
+Ask first only when something is genuinely ambiguous:
+- Unclear whether this is actually a new item or an update to an existing open issue
+- Unclear which category it is (Task vs. Bug vs. part of a Sprint)
+- Unclear whether it's actually done (e.g. a PR opened but CI hasn't run, or the acceptance criteria are only partly met)
+
+A clear-cut case — an obvious bug just reproduced, a PR that visibly closes an issue's acceptance criteria — doesn't need a question, just the confirmation line afterward.
+
+### Classifying a candidate
+
+- Bug reproduced or reported while working → **Bug Report**
+- Scoped, actionable follow-up (including things deliberately deferred, like [Phaneroo/github-delivery-operating-system#12](https://github.com/Phaneroo/github-delivery-operating-system/issues/12)) → **Task**
+- A batch of related work with a start/end date → **Sprint** (see "Phases" below)
+- Something that blocks a release or needs sign-off → **Production Release** / **QA Request** (rare mid-session; only when it's actually that, not just "important")
+
+### Phases = Sprints, roadmap = one tracking issue
+
+No new issue type needed — reuse what's already documented above:
+- **A phase is a Sprint Planning issue.** Group Task issues under it exactly the way `sprint-child-creator` does: each child's body contains `Parent Sprint: #<N>`. This keeps the existing burn-down and auto-close automation working even though Claude, not a human, opened the children.
+- **A roadmap is one persistent issue** that lists phases/sprints and their state. Title it `ROADMAP - <project/area>`. No labels or automation attach to it — Claude keeps its body current with `gh issue edit --body-file`, the same rewrite pattern `auto-close-sprint` uses for a sprint's `## 🚦 Sprint Status` section, just done by Claude on request or after a phase's state changes rather than by a workflow.
+
+### Reconcile by querying, never by remembering
+
+Don't rely on recalling an issue number from earlier in the conversation, and never assume it's still accurate after a gap. Before updating or closing something, requery:
+
+```
+gh issue list --repo <owner>/<repo> --label task --state open --search "<keywords from the work>"
+```
+
+This is also what makes picking work back up in a *new* session possible without any local memory — the issue list itself is the state.
+
+### Keeping a Task issue in sync
+
+The `### Status` field in the Task template body is the thing to keep current:
+- `Backlog` → `In Progress` when work actually starts on it
+- → `Ready for Review` when a PR opens against it
+- → `Done` right before closing
+
+To edit just that field: `gh issue view <number> --repo <owner>/<repo> --json body -q .body`, replace the line under `### Status` with the new value, then `gh issue edit <number> --repo <owner>/<repo> --body-file <file>`. Post a comment alongside any status change that isn't self-explanatory from the status alone (blocked and why, PR link, what shipped) — `gh issue comment <number> --repo <owner>/<repo> --body "<update>"`.
+
+Close with `gh issue close <number> --repo <owner>/<repo> --comment "<summary of what was done>"` once the acceptance criteria are actually met — quote which ones, don't just say "done."
+
+### Known limitation
+
+This only tracks what happens while a Claude session is actively working — nothing reconciles state that changes in the background (a human merges a PR or closes an issue manually with no session running). That gap is tracked as its own deferred item rather than solved here: [Phaneroo/github-delivery-operating-system#12](https://github.com/Phaneroo/github-delivery-operating-system/issues/12). Mitigate it by always reconciling via `gh issue list` at the start of relevant work (see above) rather than trusting anything remembered from earlier.
 
 ## Finding things
 

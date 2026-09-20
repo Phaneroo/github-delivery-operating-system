@@ -179,6 +179,15 @@ function copyManagedFiles(names, ext, srcDir, destDir, { overwrite, dryRun, relD
   return { copied, skipped };
 }
 
+// A single extra file that travels alongside SCRIPTS but isn't itself a
+// `.js` script (SCRIPTS_PACKAGE_JSON, LABELS_TSV) — splits its extension via
+// path.parse so copyManagedFiles' single-extension-per-call shape still
+// applies to a one-off filename instead of a list sharing one extension.
+function copySingleManagedFile(fullName, srcDir, destDir, opts) {
+  const { name, ext } = path.parse(fullName);
+  return copyManagedFiles([name], ext, srcDir, destDir, opts);
+}
+
 function getPackageRoot() {
   // When installed via npm, __dirname is node_modules/github-delivery-os/src
   const possibleRoots = [
@@ -264,34 +273,21 @@ function runInstall(options) {
     { overwrite, dryRun, relDir: '.github/scripts' }
   ));
 
-  // The CommonJS-pinning package.json (see SCRIPTS_PACKAGE_JSON above) —
-  // always installed alongside SCRIPTS, via the same helper, counted the
-  // same way (mirrors how scripts/install.sh reuses copy_managed_files for
-  // this exact file rather than hand-rolling the copy).
-  const { name: scriptsPkgName, ext: scriptsPkgExt } = path.parse(SCRIPTS_PACKAGE_JSON);
-  const scriptsPkgResult = copyManagedFiles(
-    [scriptsPkgName],
-    scriptsPkgExt,
-    scriptsSrc,
-    scriptsDest,
-    { overwrite, dryRun, relDir: '.github/scripts' }
-  );
-  scriptsCopied += scriptsPkgResult.copied;
-  scriptsSkipped += scriptsPkgResult.skipped;
-
-  // labels.tsv travels with labels.js the same way — data file for the
-  // parser SCRIPTS just installed, same helper/extension-splitting pattern
-  // as SCRIPTS_PACKAGE_JSON above.
-  const { name: labelsTsvName, ext: labelsTsvExt } = path.parse(LABELS_TSV);
-  const labelsTsvResult = copyManagedFiles(
-    [labelsTsvName],
-    labelsTsvExt,
-    scriptsSrc,
-    scriptsDest,
-    { overwrite, dryRun, relDir: '.github/scripts' }
-  );
-  scriptsCopied += labelsTsvResult.copied;
-  scriptsSkipped += labelsTsvResult.skipped;
+  // The CommonJS-pinning package.json (see SCRIPTS_PACKAGE_JSON above) and
+  // labels.tsv (the data file labels.js, just copied via SCRIPTS, parses) —
+  // each a single extra file that travels alongside SCRIPTS, always
+  // installed the same way, counted the same way (mirrors how
+  // scripts/install.sh reuses copy_managed_files for these exact files
+  // rather than hand-rolling the copy).
+  for (const extra of [SCRIPTS_PACKAGE_JSON, LABELS_TSV]) {
+    const result = copySingleManagedFile(extra, scriptsSrc, scriptsDest, {
+      overwrite,
+      dryRun,
+      relDir: '.github/scripts',
+    });
+    scriptsCopied += result.copied;
+    scriptsSkipped += result.skipped;
+  }
 
   let templatesSkipped = 0;
   let skillSkipped = 0;
@@ -770,7 +766,8 @@ function runUninstall(options) {
   // or script removal ever becoming flag-gated like templates/skill).
   const anyScriptsRemain =
     SCRIPTS.some((name) => fs.existsSync(path.join(scriptsDest, `${name}.js`))) ||
-    fs.existsSync(path.join(scriptsDest, SCRIPTS_PACKAGE_JSON));
+    fs.existsSync(path.join(scriptsDest, SCRIPTS_PACKAGE_JSON)) ||
+    fs.existsSync(path.join(scriptsDest, LABELS_TSV));
   const skillRemains = fs.existsSync(skillPath(targetAbs));
   const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains;
 

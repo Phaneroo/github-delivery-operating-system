@@ -12,7 +12,13 @@ const path = require('path');
 //
 // Each line: name<TAB>color<TAB>description — description is optional (a
 // line may have only two fields). Returned entries: [name, color,
-// description?].
+// description?]. Invariant a future edit to labels.tsv must preserve: no
+// field ever contains a literal tab, and no line ever has more than 3
+// tab-separated fields — this parser (destructuring the split result) and
+// scripts/install.sh's `read -r name color desc` diverge on either
+// violation (JS drops fields past the 3rd; bash's `read` folds any overflow,
+// including a literal tab, into $desc), silently reintroducing the exact
+// per-consumer inconsistency this file exists to eliminate.
 function readLabels(scriptsDir) {
   const text = fs.readFileSync(path.join(scriptsDir, 'labels.tsv'), 'utf8');
   return text

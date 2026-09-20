@@ -110,17 +110,18 @@ SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator lab
 copy_managed_files "$SCRIPTS" ".js" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
 SCRIPTS_COPIED=$COPIED
 
-# 2c. Copy the CommonJS-pinning package.json alongside them — without it, a
+# 2c. Copy single extra files that travel alongside the scripts above but
+# aren't themselves ".js": the CommonJS-pinning package.json (without it, a
 # target repo whose own package.json has "type": "module" makes Node treat
 # these .js files as ES modules too, breaking require() with "module is not
-# defined in ES module scope". Counted together with the scripts above.
-copy_managed_files "package" ".json" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
-SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
-
-# 2d. Copy labels.tsv — the data file labels.js (just copied above) parses.
-# Counted together with the scripts above, same as package.json.
-copy_managed_files "labels" ".tsv" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
-SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
+# defined in ES module scope") and labels.tsv (the data file labels.js, just
+# copied above, parses). Counted together with the scripts above.
+for extra in "package:.json" "labels:.tsv"; do
+  extra_name="${extra%%:*}"
+  extra_ext="${extra#*:}"
+  copy_managed_files "$extra_name" "$extra_ext" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
+  SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
+done
 
 # 3. Optionally copy issue templates
 TEMPLATES_COPIED=0
@@ -173,8 +174,20 @@ if [ "$WITH_LABELS" = true ]; then
       LABELS_SKIP_REASON="Target repo not on GitHub or no push access."
       echo "  Skipped labels: $LABELS_SKIP_REASON"
     else
-      while IFS=$'\t' read -r name color desc; do
-        [ -z "$name" ] && continue
+      # Read from fd 3, not stdin (fd 0): `gh label create` runs inside this
+      # loop body and would otherwise inherit the still-open labels.tsv file
+      # as its own stdin — harmless today, but if gh ever reads from stdin
+      # (an unexpected prompt, a future version change), it would consume
+      # bytes meant for this loop's remaining lines, silently truncating the
+      # label list with no error.
+      while IFS=$'\t' read -r name color desc <&3; do
+        # Skip a stray blank-ish line (spaces, no tabs) the same way
+        # labels.js's `.trim().filter(Boolean)` does — without this,
+        # IFS=$'\t' alone doesn't strip spaces, so a whitespace-only line
+        # would pass `[ -z "$name" ]` and attempt
+        # `gh label create "   " --color ""`. Checks non-destructively (does
+        # not overwrite $name) so a legitimate name is never mangled.
+        [ -z "${name//[[:space:]]/}" ] && continue
         cmd=(gh label create "$name" --color "$color")
         if [ -n "$desc" ]; then
           cmd+=(--description "$desc")
@@ -188,7 +201,7 @@ if [ "$WITH_LABELS" = true ]; then
         else
           echo "  Failed to create label '$name': $err"
         fi
-      done < "$LABELS_TSV_FILE"
+      done 3< "$LABELS_TSV_FILE"
     fi
   fi
 fi

@@ -18,7 +18,10 @@ const {
   TEMPLATES,
   SCRIPTS,
   SCRIPTS_PACKAGE_JSON,
+  loadLabels,
 } = __test__;
+
+const packageRoot = path.join(__dirname, '..');
 
 const pkgVersion = require('../package.json').version;
 
@@ -299,6 +302,33 @@ test('status (checkUpdates: false) reports installed workflows without network a
     console.log = origLog;
     rm(dir);
   }
+});
+
+test('loadLabels reads the single-source-of-truth .github/scripts/labels.js, not a separate hardcoded copy', () => {
+  // Regression guard for the exact bug this replaced: src/install.js used to
+  // keep its own independent LABELS array that silently drifted out of sync
+  // with setup-labels.yml and scripts/install.sh (see issue #20). Asserting
+  // against the shared file directly proves install.js is actually reading
+  // it, not just returning a coincidentally-similar array of its own.
+  const labels = loadLabels(packageRoot);
+  const fromFileDirectly = require(path.join(packageRoot, '.github', 'scripts', 'labels.js')).LABELS;
+  assert.equal(labels, fromFileDirectly, 'loadLabels must return the exact same array the shared file exports');
+
+  assert.ok(Array.isArray(labels) && labels.length > 0);
+  for (const entry of labels) {
+    assert.ok(Array.isArray(entry) && entry.length >= 2, `malformed label entry: ${JSON.stringify(entry)}`);
+    const [name, color, description] = entry;
+    assert.equal(typeof name, 'string');
+    assert.match(color, /^[0-9A-Fa-f]{6}$/, `${name}: color must be a 6-digit hex code`);
+    if (description !== undefined) {
+      assert.equal(typeof description, 'string');
+      assert.ok(description.length <= 100, `${name}: GitHub label descriptions are capped at 100 chars`);
+    }
+  }
+
+  const sprintChild = labels.find(([name]) => name === 'sprint-child');
+  assert.ok(sprintChild, 'sprint-child label must be defined');
+  assert.ok(sprintChild[2], 'sprint-child must carry a description explaining it predates sprint closure');
 });
 
 test('buildUpdateCommand includes --with-templates/--with-skill only when those are actually installed', () => {

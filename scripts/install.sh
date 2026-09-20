@@ -139,7 +139,10 @@ if [ "$WITH_TEMPLATES" = true ]; then
   fi
 fi
 
-# 4. Optionally create labels via gh CLI (must match setup-labels.yml)
+# 4. Optionally create labels via gh CLI. Definitions live in
+# .github/scripts/labels.js — the single source of truth also read by
+# setup-labels.yml and src/install.js — so this reads that file via node
+# rather than keeping its own hardcoded copy in sync by hand.
 LABELS_CREATED=0
 LABELS_SKIP_REASON=""
 if [ "$WITH_LABELS" = true ]; then
@@ -148,6 +151,9 @@ if [ "$WITH_LABELS" = true ]; then
     echo "  [dry-run] Labels would be created (skipped)"
   elif ! command -v gh &>/dev/null; then
     LABELS_SKIP_REASON="gh CLI not installed. Install from https://cli.github.com/"
+    echo "  Skipped labels: $LABELS_SKIP_REASON"
+  elif ! command -v node &>/dev/null; then
+    LABELS_SKIP_REASON="node not installed (required to read .github/scripts/labels.js)."
     echo "  Skipped labels: $LABELS_SKIP_REASON"
   elif [ ! -d "${TARGET_ABS}/.git" ]; then
     LABELS_SKIP_REASON="Target is not a git repository."
@@ -160,49 +166,36 @@ if [ "$WITH_LABELS" = true ]; then
       LABELS_SKIP_REASON="Target repo not on GitHub or no push access."
       echo "  Skipped labels: $LABELS_SKIP_REASON"
     else
-      # Third field (description) is optional, pipe-delimited so it can hold
-      # punctuation freely without colliding with the name:color separator.
-      LABELS=(
-        "intake:0E8A16"
-        "bug:D93F0B"
-        "sprint:1D76DB"
-        "sprint-child:1D76DB|Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes"
-        "planning:5319E7"
-        "sprint-planning:5319E7"
-        "task:7057FF"
-        "qa:FBCA04"
-        "qa-request:FBCA04"
-        "production:D93F0B"
-        "release:B60205"
-        "approval:0E8A16"
-        "ready-for-deploy:0E8A16"
-        "declined:B60205"
-        "risk:B60205"
-      )
-      # No associative arrays here (avoid bash 4+ `declare -A`; stock macOS
-      # ships bash 3.2, and this installer runs via `env bash`).
-      for entry in "${LABELS[@]}"; do
-        name_color="${entry%%|*}"
-        desc=""
-        if [ "$entry" != "$name_color" ]; then
-          desc="${entry#*|}"
-        fi
-        name="${name_color%%:*}"
-        color="${name_color##*:}"
-        cmd=(gh label create "$name" --color "$color")
-        if [ -n "$desc" ]; then
-          cmd+=(--description "$desc")
-        fi
-        err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
-        if [ $? -eq 0 ]; then
-          echo "  Created label: $name"
-          LABELS_CREATED=$((LABELS_CREATED + 1))
-        elif echo "$err" | grep -qi "already exists"; then
-          echo "  Skipped (exists): $name"
-        else
-          echo "  Failed to create label '$name': $err"
-        fi
-      done
+      # Tab-separated so a description can hold arbitrary punctuation. Read
+      # into a variable first (not piped straight into the while loop) so a
+      # node failure is caught explicitly instead of silently iterating zero
+      # labels.
+      if ! LABELS_TSV=$(LABELS_FILE="${SCRIPTS_SRC}/labels.js" node -e "
+        const { LABELS } = require(process.env.LABELS_FILE);
+        for (const [name, color, description] of LABELS) {
+          process.stdout.write([name, color, description || ''].join('\t') + '\n');
+        }
+      "); then
+        LABELS_SKIP_REASON="Failed to read label definitions from ${SCRIPTS_SRC}/labels.js"
+        echo "  Skipped labels: $LABELS_SKIP_REASON"
+      else
+        while IFS=$'\t' read -r name color desc; do
+          [ -z "$name" ] && continue
+          cmd=(gh label create "$name" --color "$color")
+          if [ -n "$desc" ]; then
+            cmd+=(--description "$desc")
+          fi
+          err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
+          if [ $? -eq 0 ]; then
+            echo "  Created label: $name"
+            LABELS_CREATED=$((LABELS_CREATED + 1))
+          elif echo "$err" | grep -qi "already exists"; then
+            echo "  Skipped (exists): $name"
+          else
+            echo "  Failed to create label '$name': $err"
+          fi
+        done <<< "$LABELS_TSV"
+      fi
     fi
   fi
 fi

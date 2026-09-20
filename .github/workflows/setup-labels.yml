@@ -1,6 +1,7 @@
 # Run once: Actions → Setup Labels → Run workflow
 # Uses built-in GITHUB_TOKEN — no personal token or gh CLI needed.
-# Labels must match scripts/install.sh --with-labels (same order and colors).
+# Label definitions live in .github/scripts/labels.js — the single source of
+# truth also read by scripts/install.sh and src/install.js.
 
 name: Setup Labels
 
@@ -18,29 +19,16 @@ jobs:
       contents: read
       issues: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Create labels
         uses: actions/github-script@v7
         with:
           script: |
-            const labels = [
-              { name: 'intake', color: '0E8A16' },
-              { name: 'bug', color: 'D93F0B' },
-              { name: 'sprint', color: '1D76DB' },
-              { name: 'sprint-child', color: '1D76DB', description: "Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes" },
-              { name: 'planning', color: '5319E7' },
-              { name: 'sprint-planning', color: '5319E7' },
-              { name: 'task', color: '7057FF' },
-              { name: 'qa', color: 'FBCA04' },
-              { name: 'qa-request', color: 'FBCA04' },
-              { name: 'production', color: 'D93F0B' },
-              { name: 'release', color: 'B60205' },
-              { name: 'approval', color: '0E8A16' },
-              { name: 'ready-for-deploy', color: '0E8A16' },
-              { name: 'declined', color: 'B60205' },
-              { name: 'risk', color: 'B60205' },
-            ];
+            const { LABELS } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/labels.js`);
             let created = 0;
-            for (const { name, color, description } of labels) {
+            for (const [name, color, description] of LABELS) {
               try {
                 await github.rest.issues.createLabel({
                   owner: context.repo.owner,

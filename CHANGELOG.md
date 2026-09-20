@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-20
+
+### Changed
+
+- **Single source of truth for label definitions**: `setup-labels.yml`, `scripts/install.sh`, and `src/install.js` each kept an independently hand-maintained copy of the label list (name/color/description) — the direct cause of the `src/install.js` gap fixed in 1.5.0, since there was no single place to update, just three copies to remember to keep in sync. All three now read from `.github/scripts/labels.js`. `setup-labels.yml` gained an `actions/checkout` step so it can `require()` the file once installed into a consumer repo (same pattern already used by `auto-close-sprint.yml`/`sprint-child-creator.yml`); `scripts/install.sh` now reads it via a `node -e` one-liner instead of its own hardcoded bash array, so it picks up a new soft dependency on `node` for `--with-labels` specifically (falls back to a clear skip reason — "node not installed" — rather than failing, same as its existing `gh`-not-installed check). No label names, colors, descriptions, or CLI-visible behavior changed. Tracked as [#20](https://github.com/Phaneroo/github-delivery-operating-system/issues/20), closed by this release.
+
 ## [1.5.0] - 2026-09-20
 
 ### Changed

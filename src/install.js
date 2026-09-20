@@ -24,8 +24,10 @@ const WORKFLOWS = [
 // .github/scripts/<name>.js (see .github/workflows/authorize-deployment.yml
 // etc.) — these are required dependencies of those workflows, not optional,
 // so they're always copied alongside them, the same as WORKFLOWS. Also list
-// them explicitly in package.json's "files".
-const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator'];
+// them explicitly in package.json's "files". `labels` isn't require()'d by
+// logic exactly like the others, but setup-labels.yml requires it the same
+// way once installed — see LABELS below.
+const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'labels'];
 
 // These scripts are CommonJS (`require`/`module.exports`). Node picks CJS vs.
 // ESM per-file by walking up to the nearest package.json — so a consumer repo
@@ -45,25 +47,20 @@ const REQUIRED_SCRIPT_BY_WORKFLOW = {
   'authorize-deployment': 'authorize-deployment-verdict',
   'auto-close-sprint': 'auto-close-sprint',
   'sprint-child-creator': 'sprint-child-creator',
+  'setup-labels': 'labels',
 };
 
-const LABELS = [
-  ['intake', '0E8A16'],
-  ['bug', 'D93F0B'],
-  ['sprint', '1D76DB'],
-  ['sprint-child', '1D76DB', "Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes"],
-  ['planning', '5319E7'],
-  ['sprint-planning', '5319E7'],
-  ['task', '7057FF'],
-  ['qa', 'FBCA04'],
-  ['qa-request', 'FBCA04'],
-  ['production', 'D93F0B'],
-  ['release', 'B60205'],
-  ['approval', '0E8A16'],
-  ['ready-for-deploy', '0E8A16'],
-  ['declined', 'B60205'],
-  ['risk', 'B60205'],
-];
+// Label definitions (name/color/description) live in .github/scripts/labels.js
+// — the single source of truth also read by setup-labels.yml (once installed
+// into a consumer repo) and scripts/install.sh, so there's exactly one place
+// to update instead of three independently hand-maintained copies (see
+// https://github.com/Phaneroo/github-delivery-operating-system/issues/20).
+// Loaded from this package's own tree (not a consumer repo's), so it's
+// resolved via getPackageRoot() at the point of use inside runInstall, same
+// as every other source path.
+function loadLabels(pkgRoot) {
+  return require(path.join(pkgRoot, '.github', 'scripts', 'labels.js')).LABELS;
+}
 
 function manifestPath(targetAbs) {
   return path.join(targetAbs, '.github', MANIFEST_FILE);
@@ -351,7 +348,7 @@ function runInstall(options) {
       }
 
       if (!labelsSkipReason) {
-        for (const [name, color, description] of LABELS) {
+        for (const [name, color, description] of loadLabels(pkgRoot)) {
           try {
             const args = ['label', 'create', name, '--color', color];
             if (description) args.push('--description', description);
@@ -778,6 +775,6 @@ module.exports = {
     SCRIPTS,
     SCRIPTS_PACKAGE_JSON,
     REQUIRED_SCRIPT_BY_WORKFLOW,
-    LABELS,
+    loadLabels,
   },
 };

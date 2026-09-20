@@ -32,8 +32,14 @@ jobs:
             try {
               labels = require(`${scriptsDir}/labels.js`).readLabels(scriptsDir);
             } catch (e) {
-              console.log(`Could not read label definitions from ${scriptsDir}/labels.tsv: ${e.message}`);
-              console.log('No labels were created. Re-run "npx github-delivery-os@latest install --with-templates --update ." to repair this install, then run this workflow again.');
+              // core.setFailed (not just console.log + return): otherwise this
+              // step — and the whole workflow run — shows a green check even
+              // though zero labels were created, since nothing else here ever
+              // throws or reports a non-zero exit.
+              core.setFailed(
+                `Could not read label definitions from ${scriptsDir} (labels.js/labels.tsv): ${e.message}. ` +
+                  'No labels were created. Re-run "npx github-delivery-os@latest install --with-templates --update ." to repair this install, then run this workflow again.'
+              );
               return;
             }
             let created = 0;

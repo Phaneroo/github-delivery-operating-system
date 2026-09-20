@@ -34,6 +34,21 @@ copy_managed_files() {
   done
 }
 
+# Trims leading/trailing whitespace — including a lone trailing \r from a
+# CRLF line ending (POSIX [:space:] includes CR) — from a single value.
+# Bash-only, no subshell/external command. Mirrors what labels.js's
+# `.trim()` does to a whole labels.tsv line before it splits on tabs, so a
+# field read here from the same file never diverges from what the JS parser
+# would produce for it (a stray leading/trailing space, or a CRLF checkout
+# with no .gitattributes pinning this repo to LF, would otherwise land only
+# in whichever field bash's `read` captures it into).
+trim() {
+  local var="$1"
+  var="${var#"${var%%[![:space:]]*}"}"
+  var="${var%"${var##*[![:space:]]}"}"
+  printf '%s' "$var"
+}
+
 usage() {
   echo "Usage: $0 [options] [target_dir]"
   echo ""
@@ -180,24 +195,21 @@ if [ "$WITH_LABELS" = true ]; then
       # (an unexpected prompt, a future version change), it would consume
       # bytes meant for this loop's remaining lines, silently truncating the
       # label list with no error.
-      while IFS=$'\t' read -r name color desc <&3; do
-        # Skip a stray blank-ish line (spaces, no tabs) the same way
-        # labels.js's `.trim().filter(Boolean)` does — without this,
-        # IFS=$'\t' alone doesn't strip spaces, so a whitespace-only line
-        # would pass `[ -z "$name" ]` and attempt
-        # `gh label create "   " --color ""`. Checks non-destructively (does
-        # not overwrite $name) so a legitimate name is never mangled.
-        [ -z "${name//[[:space:]]/}" ] && continue
-        # Strip a trailing \r (CRLF checkout — no .gitattributes commits this
-        # repo to LF beyond the pin on labels.tsv itself, and a general git
-        # clone on Windows with core.autocrlf=true would otherwise land one
-        # here). IFS=$'\t' only splits on tabs, so a \r from the line ending
-        # lands on whichever field `read` captures last (color on a
-        # 2-field line, desc on a 3-field one) — labels.js's `.trim()` is
-        # immune to this the same way it is to the whitespace-only case
-        # above, so this keeps both parsers of the shared file in sync.
-        color="${color%$'\r'}"
-        desc="${desc%$'\r'}"
+      #
+      # `|| [ -n "$name" ]` on the loop condition: bash's `read` returns
+      # non-zero on the final line of a file with no trailing newline, even
+      # though it still populated the variables with that line's content —
+      # without this, a labels.tsv missing its final newline (an editor that
+      # strips it on save, a scripted rewrite) would silently drop the last
+      # label with no error, while labels.js (which splits on '\n', not a
+      # line-reader) is unaffected either way.
+      while IFS=$'\t' read -r name color desc <&3 || [ -n "$name" ]; do
+        name="$(trim "$name")"
+        color="$(trim "$color")"
+        desc="$(trim "$desc")"
+        # Skip a stray blank-ish line the same way labels.js's
+        # `.trim().filter(Boolean)` does.
+        [ -z "$name" ] && continue
         cmd=(gh label create "$name" --color "$color")
         if [ -n "$desc" ]; then
           cmd+=(--description "$desc")

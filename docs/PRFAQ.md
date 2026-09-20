@@ -47,7 +47,7 @@ Common flags:
 | `--with-labels` | Create labels using the GitHub CLI (`gh`); requires authentication. |
 | `--with-skill` | Add a Claude Code skill for operating this repo's Delivery OS from Claude Code. Optional. |
 | `--dry-run` | Show planned changes without writing files. |
-| `--overwrite` | Replace existing Delivery OS files (use when upgrading; prefer `--dry-run` first). |
+| `--update` | Replace existing Delivery OS files (use when upgrading; prefer `--dry-run` first). |
 
 Other commands include `status` and `uninstall`. By default, existing files are **not** overwritten unless you opt in.
 

@@ -180,7 +180,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Task | Action |
 |------|--------|
 | Install | `./scripts/install.sh --with-templates /path/to/repo` |
-| Update install | Add `--overwrite` |
+| Update install | Add `--update` |
 | Create sprint | New issue → SPRINT PLANNING |
 | Request release | New issue → PRODUCTION RELEASE & QA SIGN-OFF |
 | Approve release | Comment `approved` (dual: both approvers) |

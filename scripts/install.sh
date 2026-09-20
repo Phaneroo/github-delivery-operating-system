@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # GitHub Delivery Operating System — Installer
 # Copies workflows and templates directly (Phanerooapp-style).
-# Default: skip existing files (safe). Use --overwrite to replace.
+# Default: skip existing files (safe). Use --update to replace.
 
 set -e
 
@@ -40,16 +40,16 @@ usage() {
   echo "Options:"
   echo "  --with-templates   Copy issue templates"
   echo "  --with-labels      Create labels via gh CLI"
-  echo "  --overwrite        Replace existing workflows/templates (default: skip)"
-  echo "  --no-overwrite     Explicitly skip existing files (default behavior)"
+  echo "  --update           Replace existing workflows/templates (default: skip)"
+  echo "  --no-update        Explicitly skip existing files (default behavior)"
   echo "  --dry-run          Show what would happen without changing files"
   echo "  -h, --help         Show this help"
   echo ""
-  echo "Default: existing files are NOT overwritten. Use --overwrite to replace."
+  echo "Default: existing files are NOT overwritten. Use --update to replace."
 }
 
-# Parse args: [--with-templates] [--with-labels] [--overwrite|--no-overwrite] [--dry-run] [target_dir]
-# Default: skip existing files (safe). Use --overwrite to replace.
+# Parse args: [--with-templates] [--with-labels] [--update|--no-update] [--dry-run] [target_dir]
+# Default: skip existing files (safe). Use --update to replace.
 TARGET_DIR="."
 WITH_TEMPLATES=false
 WITH_LABELS=false
@@ -59,6 +59,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --with-templates) WITH_TEMPLATES=true; shift ;;
     --with-labels) WITH_LABELS=true; shift ;;
+    --update) OVERWRITE=true; shift ;;
+    --no-update) OVERWRITE=false; shift ;;
+    # Pre-1.5.0 names, kept working silently (not shown in usage()) so
+    # existing scripts/CI calling this installer don't break.
     --overwrite) OVERWRITE=true; shift ;;
     --no-overwrite) OVERWRITE=false; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
@@ -156,11 +160,13 @@ if [ "$WITH_LABELS" = true ]; then
       LABELS_SKIP_REASON="Target repo not on GitHub or no push access."
       echo "  Skipped labels: $LABELS_SKIP_REASON"
     else
+      # Third field (description) is optional, pipe-delimited so it can hold
+      # punctuation freely without colliding with the name:color separator.
       LABELS=(
         "intake:0E8A16"
         "bug:D93F0B"
         "sprint:1D76DB"
-        "sprint-active:1D76DB"
+        "sprint-child:1D76DB|Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes"
         "planning:5319E7"
         "sprint-planning:5319E7"
         "task:7057FF"
@@ -176,17 +182,18 @@ if [ "$WITH_LABELS" = true ]; then
       # No associative arrays here (avoid bash 4+ `declare -A`; stock macOS
       # ships bash 3.2, and this installer runs via `env bash`).
       for entry in "${LABELS[@]}"; do
-        name="${entry%%:*}"
-        color="${entry##*:}"
+        name_color="${entry%%|*}"
         desc=""
-        if [ "$name" = "sprint-active" ]; then
-          desc="Part of a sprint's task breakdown — label doesn't change when the sprint closes"
+        if [ "$entry" != "$name_color" ]; then
+          desc="${entry#*|}"
         fi
+        name="${name_color%%:*}"
+        color="${name_color##*:}"
+        cmd=(gh label create "$name" --color "$color")
         if [ -n "$desc" ]; then
-          err=$(cd "$TARGET_ABS" && gh label create "$name" --color "$color" --description "$desc" 2>&1)
-        else
-          err=$(cd "$TARGET_ABS" && gh label create "$name" --color "$color" 2>&1)
+          cmd+=(--description "$desc")
         fi
+        err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
         if [ $? -eq 0 ]; then
           echo "  Created label: $name"
           LABELS_CREATED=$((LABELS_CREATED + 1))
@@ -231,7 +238,7 @@ else
     echo "Dry run complete. No files were changed."
   else
     echo "No new files created (existing files were skipped)."
-    echo "To update: use --overwrite (run with --dry-run first to preview)."
+    echo "To update: use --update (run with --dry-run first to preview)."
   fi
 fi
 echo ""

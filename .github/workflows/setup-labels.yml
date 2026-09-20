@@ -26,7 +26,7 @@ jobs:
               { name: 'intake', color: '0E8A16' },
               { name: 'bug', color: 'D93F0B' },
               { name: 'sprint', color: '1D76DB' },
-              { name: 'sprint-active', color: '1D76DB', description: "Part of a sprint's task breakdown — label doesn't change when the sprint closes" },
+              { name: 'sprint-child', color: '1D76DB', description: "Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes" },
               { name: 'planning', color: '5319E7' },
               { name: 'sprint-planning', color: '5319E7' },
               { name: 'task', color: '7057FF' },

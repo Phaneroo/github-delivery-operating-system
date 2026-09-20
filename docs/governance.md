@@ -31,7 +31,7 @@ flowchart LR
 | Bug | `bug`, `qa` | Bug report (template auto-applies) |
 | Task | `task` | Structured task |
 | Sprint | `sprint`, `planning` | Sprint planning issue |
-| Sprint task | `sprint-active` | Child issue (workflow adds) |
+| Sprint task | `sprint-child` | Child issue (workflow adds; `sprint-active` on issues created before 1.5.0) |
 | QA | `qa`, `qa-request` | QA testing requested |
 | Production | `production`, `release`, `approval` | Release candidate (template auto-applies) |
 | Ready | `ready-for-deploy` | Dual approval received (workflow adds) |
@@ -67,7 +67,7 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 
 | Event | Workflow | Action |
 |-------|----------|--------|
-| Sprint issue opened (title "SPRINT -") | sprint-child-creator | Creates child issues with `sprint-active` |
+| Sprint issue opened (title "SPRINT -") | sprint-child-creator | Creates child issues with `sprint-child` |
 | Child issue closed (body has Parent Sprint) | auto-close-sprint | Updates burn-down; auto-closes at 100% |
 | Production release opened | notify-release-approver | Pings RELEASE_APPROVER |
 | Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy |

@@ -77,7 +77,10 @@ jobs:
               fi
             fi
 
-            if [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-active') }}" == "true" ]]; then
+            # sprint-active is the pre-1.5.0 label name; still checked here so
+            # issues created before a repo upgrades don't go silent on close.
+            if [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-child') }}" == "true" ]] || \
+               [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-active') }}" == "true" ]]; then
               if [ "$ACTION" = "opened" ]; then
                 MESSAGE="🟡🛠️ SPRINT TASK CREATED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
               elif [ "$ACTION" = "closed" ]; then
@@ -129,7 +132,8 @@ jobs:
             elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production') }}" == "true" ]]; then
               MESSAGE="💬🚀 RELEASE COMMENT%0A$TITLE%0A$URL%0A---%0A$COMMENT%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
-            elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-active') }}" == "true" ]]; then
+            elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-child') }}" == "true" ]] || \
+                 [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-active') }}" == "true" ]]; then
               MESSAGE="💬🛠️ SPRINT TASK COMMENT%0A$TITLE%0A$URL%0A---%0A$COMMENT%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
             fi
           fi

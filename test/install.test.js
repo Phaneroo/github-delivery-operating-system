@@ -4,13 +4,14 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { test } = require('./harness');
 const { runInstall, runStatus, runUninstall, __test__ } = require('../src/install');
 const {
   manifestPath,
   readManifest,
   writeManifest,
-  buildOverwriteCommand,
+  buildUpdateCommand,
   skillPath,
   SKILL_REL_PATH,
   WORKFLOWS,
@@ -300,26 +301,26 @@ test('status (checkUpdates: false) reports installed workflows without network a
   }
 });
 
-test('buildOverwriteCommand includes --with-templates/--with-skill only when those are actually installed', () => {
+test('buildUpdateCommand includes --with-templates/--with-skill only when those are actually installed', () => {
   assert.equal(
-    buildOverwriteCommand({ hasTemplates: false, hasSkill: false }),
-    'npx github-delivery-os@latest install --overwrite .'
+    buildUpdateCommand({ hasTemplates: false, hasSkill: false }),
+    'npx github-delivery-os@latest install --update .'
   );
   assert.equal(
-    buildOverwriteCommand({ hasTemplates: true, hasSkill: false }),
-    'npx github-delivery-os@latest install --with-templates --overwrite .'
+    buildUpdateCommand({ hasTemplates: true, hasSkill: false }),
+    'npx github-delivery-os@latest install --with-templates --update .'
   );
   assert.equal(
-    buildOverwriteCommand({ hasTemplates: false, hasSkill: true }),
-    'npx github-delivery-os@latest install --with-skill --overwrite .'
+    buildUpdateCommand({ hasTemplates: false, hasSkill: true }),
+    'npx github-delivery-os@latest install --with-skill --update .'
   );
   assert.equal(
-    buildOverwriteCommand({ hasTemplates: true, hasSkill: true }),
-    'npx github-delivery-os@latest install --with-templates --with-skill --overwrite .'
+    buildUpdateCommand({ hasTemplates: true, hasSkill: true }),
+    'npx github-delivery-os@latest install --with-templates --with-skill --update .'
   );
 });
 
-test('status\'s "unknown version" hint includes --with-templates/--with-skill when those are installed (regression: bare --overwrite left them stale forever)', async () => {
+test('status\'s "unknown version" hint includes --with-templates/--with-skill when those are installed (regression: bare --update left them stale forever)', async () => {
   const dir = mkTmpRepo();
   const lines = [];
   const origLog = console.log;
@@ -337,12 +338,12 @@ test('status\'s "unknown version" hint includes --with-templates/--with-skill wh
 
     const output = lines.join('\n');
     assert.match(output, /Installed version: unknown/);
-    // The bug: this hint used to always suggest a bare `install --overwrite`,
+    // The bug: this hint used to always suggest a bare `install --update`,
     // which for a repo with templates/skill already installed leaves them
     // present-but-untouched — runInstall's cleanInstall check then refuses
     // to record a version at all, so status loops on the same broken
     // suggestion forever. The hint must name both flags here.
-    assert.match(output, /Run: npx github-delivery-os@latest install --with-templates --with-skill --overwrite \./);
+    assert.match(output, /Run: npx github-delivery-os@latest install --with-templates --with-skill --update \./);
 
     // Prove the suggested command is actually a clean install, not just
     // right-looking text.
@@ -522,9 +523,9 @@ test('status detects a workflow whose required script is missing', async () => {
     assert.match(output, /auto-close-sprint\.yml requires \.github\/scripts\/auto-close-sprint\.js/);
     // Regression: this "Fix:" hint must also carry --with-templates when
     // templates are installed, same bug as the version hints (see
-    // buildOverwriteCommand test) — a bare --overwrite here would leave
+    // buildUpdateCommand test) — a bare --update here would leave
     // templates present-but-untouched and never advance the recorded version.
-    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --overwrite \./);
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --update \./);
   } finally {
     console.log = origLog;
     rm(dir);
@@ -547,7 +548,7 @@ test('status flags a missing scripts/package.json as a broken install', async ()
 
     const output = lines.join('\n');
     assert.match(output, new RegExp(`\\.github/scripts/${SCRIPTS_PACKAGE_JSON} is missing`));
-    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --overwrite \./);
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --update \./);
   } finally {
     console.log = origLog;
     rm(dir);
@@ -595,6 +596,31 @@ test('status reports installed when only the Claude Code skill is present', asyn
     assert.match(output, /✓ delivery-ops/);
   } finally {
     console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('the CLI\'s --overwrite still works as a hidden alias for --update (pre-1.5.0 scripts/CI must not break)', () => {
+  // Exercises the real src/cli.js commander parsing (every other test here
+  // calls runInstall() directly, bypassing it) since that's the layer that
+  // actually defines --overwrite as a hidden Option — a unit test against
+  // runInstall alone can't catch a regression here.
+  const dir = mkTmpRepo();
+  const binPath = path.join(__dirname, '..', 'bin', 'delivery-os.js');
+  try {
+    const help = execFileSync('node', [binPath, 'install', '--help'], { encoding: 'utf8' });
+    assert.match(help, /-u, --update/, 'the new flag name must be documented in --help');
+    assert.doesNotMatch(help, /--overwrite/, 'the deprecated alias must stay hidden from --help');
+
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.github', 'workflows', 'sprint-child-creator.yml'), 'stale content');
+    execFileSync('node', [binPath, 'install', '--overwrite', dir], { encoding: 'utf8' });
+    assert.notEqual(
+      fs.readFileSync(path.join(dir, '.github', 'workflows', 'sprint-child-creator.yml'), 'utf8'),
+      'stale content',
+      '--overwrite must still actually replace existing files, same as --update'
+    );
+  } finally {
     rm(dir);
   }
 });

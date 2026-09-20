@@ -10,10 +10,10 @@ This guide explains how to install the Delivery Operating System into your repos
 |-----------|---------|--------------|
 | **New repo** (no Delivery OS yet) | `./scripts/install.sh --with-templates /path/to/repo` | Installs all workflows and templates |
 | **Repo with existing workflows/templates** (yours + others) | `./scripts/install.sh --with-templates /path/to/repo` | Adds only *missing* Delivery OS files. **Your existing files are NOT touched.** |
-| **Update Delivery OS** (get latest fixes) | `./scripts/install.sh --with-templates --overwrite /path/to/repo` | **Replaces** Delivery OS workflows/templates. Your *other* workflows (different names) stay intact. |
+| **Update Delivery OS** (get latest fixes) | `./scripts/install.sh --with-templates --update /path/to/repo` | **Replaces** Delivery OS workflows/templates. Your *other* workflows (different names) stay intact. |
 | **Preview before installing** | `./scripts/install.sh --with-templates --dry-run /path/to/repo` | Shows what would be copied. No files changed. |
 
-**Warning:** `--overwrite` replaces only Delivery OS files (same names). It does **not** delete your other workflows or templates. Use `--dry-run` first if unsure.
+**Warning:** `--update` replaces only Delivery OS files (same names). It does **not** delete your other workflows or templates. Use `--dry-run` first if unsure.
 
 ---
 
@@ -39,14 +39,14 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 # Copy workflows + templates + create labels via gh CLI
 ./scripts/install.sh --with-templates --with-labels /path/to/your-repo
 
-# Update existing install (overwrite workflows and templates)
-./scripts/install.sh --with-templates --overwrite /path/to/your-repo
+# Update existing install (replace workflows and templates)
+./scripts/install.sh --with-templates --update /path/to/your-repo
 
 # Preview what would happen (no files changed)
 ./scripts/install.sh --with-templates --dry-run /path/to/your-repo
 
 # Explicitly skip existing (same as default)
-./scripts/install.sh --no-overwrite /path/to/your-repo
+./scripts/install.sh --no-update /path/to/your-repo
 ```
 
 **CLI options (with `npx github-delivery-os install`):**
@@ -56,7 +56,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 | `-t, --with-templates` | Copy issue templates |
 | `-l, --with-labels` | Create labels via `gh` CLI |
 | `-s, --with-skill` | Add the `delivery-ops` Claude Code skill |
-| `-o, --overwrite` | Replace existing files |
+| `-u, --update` | Replace existing files |
 | `-d, --dry-run` | Preview without changing files |
 
 **Options:**
@@ -66,11 +66,11 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 | `--with-templates` | Copy issue templates (sprint, task, bug, QA, production release) |
 | `--with-labels` | Create labels via `gh` CLI (requires `gh auth` and GitHub remote) |
 | `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status |
-| `--overwrite` | Replace existing workflow/template files |
-| `--no-overwrite` | Explicitly skip existing files (default behavior) |
+| `--update` | Replace existing workflow/template files |
+| `--no-update` | Explicitly skip existing files (default behavior) |
 | `--dry-run` | Show what would happen without changing any files |
 
-By default, existing files are **skipped** (never overwritten). Use `--overwrite` to replace. Use `--dry-run` to preview changes safely.
+By default, existing files are **skipped** (never overwritten). Use `--update` to replace. Use `--dry-run` to preview changes safely. (`--overwrite`/`--no-overwrite` still work as hidden aliases from before 1.5.0.)
 
 ---
 
@@ -83,11 +83,11 @@ npx github-delivery-os status --offline .  # Same, without checking npm for the 
 
 Installing via `npx github-delivery-os` writes `.github/delivery-os.json` — a small manifest recording which version was installed. `status` reads it and, unless `--offline` is passed, checks npm for the latest published version:
 
-- `⬆️  Update available: 1.0.3 → 1.1.0` — a newer release exists; the message includes the exact `install --overwrite` command to run.
+- `⬆️  Update available: 1.0.3 → 1.1.0` — a newer release exists; the message includes the exact `install --update` command to run.
 - `✓ Up to date` — you're on the latest.
 - A quiet note instead, if npm can't be reached — the check never fails the command.
 
-The manifest is only written/updated when the files it describes are actually current on disk (a fresh install, or one run with `--overwrite`). A skip-mode install over pre-existing files leaves it as-is rather than claiming a version that isn't really installed — `status` will tell you when that's happened.
+The manifest is only written/updated when the files it describes are actually current on disk (a fresh install, or one run with `--update`). A skip-mode install over pre-existing files leaves it as-is rather than claiming a version that isn't really installed — `status` will tell you when that's happened.
 
 **Note:** this version tracking only applies to the `npx github-delivery-os` install path. The `scripts/install.sh` clone-and-run alternative does not currently write or read this manifest.
 
@@ -162,7 +162,7 @@ Run **Actions → Setup Labels → Run workflow** once, or use `--with-labels` w
 | intake | 0E8A16 |
 | bug | D93F0B |
 | sprint | 1D76DB |
-| sprint-active | 1D76DB |
+| sprint-child | 1D76DB |
 | planning | 5319E7 |
 | sprint-planning | 5319E7 |
 | task | 7057FF |
@@ -174,6 +174,12 @@ Run **Actions → Setup Labels → Run workflow** once, or use `--with-labels` w
 | ready-for-deploy | 0E8A16 |
 | declined | B60205 |
 | risk | B60205 |
+
+**Upgrading from before 1.5.0:** sprint child issues were previously labeled `sprint-active`. New child issues use `sprint-child` instead; existing issues keep whatever label they already have (nothing renames it for you). To unify an existing repo onto the new name — this retroactively relabels every issue that already has it, no per-issue edits needed:
+
+```
+gh label edit sprint-active --repo <owner>/<repo> --name sprint-child
+```
 
 ---
 

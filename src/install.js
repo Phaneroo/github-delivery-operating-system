@@ -79,8 +79,12 @@ function setupLabelsRequiresLabelsFormat(workflowsDest) {
   }
 }
 
-function setupLabelsMissingFiles(targetAbs, workflowsDest) {
-  if (!setupLabelsRequiresLabelsFormat(workflowsDest)) return []; // pre-1.5.1, self-contained, requires nothing
+// `requiresLabelsFormat` is the caller-computed result of
+// setupLabelsRequiresLabelsFormat() — passed in rather than recomputed here
+// so callers checking both this and scriptsRequiringPkgJson (see runStatus)
+// only read setup-labels.yml's content once per `status` invocation.
+function setupLabelsMissingFiles(targetAbs, requiresLabelsFormat) {
+  if (!requiresLabelsFormat) return []; // pre-1.5.1, self-contained, requires nothing
   const scriptsDir = path.join(targetAbs, '.github', 'scripts');
   const missing = [];
   if (!fs.existsSync(path.join(scriptsDir, 'labels.js'))) missing.push('labels.js');
@@ -564,6 +568,12 @@ async function runStatus(options) {
   );
   const skillInstalled = fs.existsSync(skillPath(targetAbs));
 
+  // Read setup-labels.yml's content (if installed) exactly once and reuse
+  // the result below — both brokenWorkflowDetails and scriptsRequiringPkgJson
+  // otherwise each independently re-read the same file.
+  const setupLabelsInstalled = installedWorkflows.includes('setup-labels');
+  const setupLabelsOnCurrentFormat = setupLabelsInstalled && setupLabelsRequiresLabelsFormat(workflowsDest);
+
   // A workflow can be present while the script(s) it require()s at runtime
   // are not — e.g. an install from before this check existed, or a manual
   // partial copy. That workflow will fail (MODULE_NOT_FOUND) the next time
@@ -574,7 +584,7 @@ async function runStatus(options) {
   const brokenWorkflowDetails = installedWorkflows
     .map((wf) => {
       if (wf === 'setup-labels') {
-        return { wf, missing: setupLabelsMissingFiles(targetAbs, workflowsDest) };
+        return { wf, missing: setupLabelsMissingFiles(targetAbs, setupLabelsOnCurrentFormat) };
       }
       const requiredScript = REQUIRED_SCRIPT_BY_WORKFLOW[wf];
       if (!requiredScript) return { wf, missing: [] };
@@ -593,7 +603,7 @@ async function runStatus(options) {
   // separately from brokenWorkflowDetails since it's silent until that
   // condition is hit, not an immediate break.
   const scriptsRequiringPkgJson = installedWorkflows.some((wf) => {
-    if (wf === 'setup-labels') return setupLabelsRequiresLabelsFormat(workflowsDest);
+    if (wf === 'setup-labels') return setupLabelsOnCurrentFormat;
     return Boolean(REQUIRED_SCRIPT_BY_WORKFLOW[wf]);
   });
   const scriptsPkgJsonMissing =

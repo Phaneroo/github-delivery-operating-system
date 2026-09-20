@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-09-20
+
+### Changed
+
+- **`sprint-child` label recolored** from `1D76DB` (same blue as `sprint`) to `1ABC9C` (teal — a distinct hue from every other label color in the palette, not just a shade of blue) — the two were visually indistinguishable in an issue list, making it harder to tell a `SPRINT -` parent issue apart from its `TASK` children at a glance. Only affects newly-created labels; existing repos can pick it up with `gh label edit sprint-child --repo <owner>/<repo> --color 1ABC9C`.
+
 ## [1.5.1] - 2026-09-20
 
 ### Changed

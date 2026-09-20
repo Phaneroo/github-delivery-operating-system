@@ -1,7 +1,7 @@
 intake	0E8A16
 bug	D93F0B
 sprint	1D76DB
-sprint-child	1D76DB	Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes
+sprint-child	1ABC9C	Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes
 planning	5319E7
 sprint-planning	5319E7
 task	7057FF

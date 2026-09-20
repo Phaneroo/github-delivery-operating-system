@@ -18,7 +18,12 @@ const {
   TEMPLATES,
   SCRIPTS,
   SCRIPTS_PACKAGE_JSON,
+  LABELS_TSV,
+  setupLabelsMissingFiles,
+  loadLabels,
 } = __test__;
+
+const packageRoot = path.join(__dirname, '..');
 
 const pkgVersion = require('../package.json').version;
 
@@ -115,6 +120,10 @@ test('fresh install writes a manifest matching the current package version', () 
     const scriptsPkgPath = path.join(scriptsDest, SCRIPTS_PACKAGE_JSON);
     assert.ok(fs.existsSync(scriptsPkgPath), `missing .github/scripts/${SCRIPTS_PACKAGE_JSON}`);
     assert.equal(JSON.parse(fs.readFileSync(scriptsPkgPath, 'utf8')).type, 'commonjs');
+    // Regression guard: labels.js (in SCRIPTS above) is only a parser —
+    // without its sibling data file labels.tsv also landing on disk,
+    // setup-labels.yml's require() would MODULE_NOT_FOUND at runtime.
+    assert.ok(fs.existsSync(path.join(scriptsDest, LABELS_TSV)), `missing .github/scripts/${LABELS_TSV}`);
   } finally {
     rm(dir);
   }
@@ -297,6 +306,50 @@ test('status (checkUpdates: false) reports installed workflows without network a
     assert.doesNotMatch(output, /Update available|Up to date|Could not check npm/);
   } finally {
     console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('loadLabels reads the single-source-of-truth .github/scripts/labels.tsv, not a separate hardcoded copy', () => {
+  // Regression guard for the exact bug this replaced: src/install.js used to
+  // keep its own independent LABELS array that silently drifted out of sync
+  // with setup-labels.yml and scripts/install.sh (see issue #20). Asserting
+  // against the shared parser+data directly proves install.js is actually
+  // reading them, not just returning a coincidentally-similar array of its
+  // own.
+  const labels = loadLabels(packageRoot);
+  const scriptsDir = path.join(packageRoot, '.github', 'scripts');
+  const fromFileDirectly = require(path.join(scriptsDir, 'labels.js')).readLabels(scriptsDir);
+  assert.deepEqual(labels, fromFileDirectly, 'loadLabels must return what the shared parser produces from labels.tsv');
+
+  assert.ok(Array.isArray(labels) && labels.length > 0);
+  for (const entry of labels) {
+    assert.ok(Array.isArray(entry) && entry.length >= 2, `malformed label entry: ${JSON.stringify(entry)}`);
+    const [name, color, description] = entry;
+    assert.equal(typeof name, 'string');
+    assert.match(color, /^[0-9A-Fa-f]{6}$/, `${name}: color must be a 6-digit hex code`);
+    if (description !== undefined) {
+      assert.equal(typeof description, 'string');
+      assert.ok(description.length <= 100, `${name}: GitHub label descriptions are capped at 100 chars`);
+    }
+  }
+
+  const sprintChild = labels.find(([name]) => name === 'sprint-child');
+  assert.ok(sprintChild, 'sprint-child label must be defined');
+  assert.ok(sprintChild[2], 'sprint-child must carry a description explaining it predates sprint closure');
+});
+
+test('readLabels throws (rather than returning something silently wrong) when labels.tsv is missing', () => {
+  // The try/catch around loadLabels() in runInstall (and the equivalent
+  // try/catch in setup-labels.yml's inline script) relies on this throwing
+  // — proves the contract that fix depends on, without needing to exercise
+  // the full gh-authenticated --with-labels path to reach it.
+  const dir = mkTmpRepo();
+  try {
+    const scriptsDir = path.join(packageRoot, '.github', 'scripts');
+    const { readLabels } = require(path.join(scriptsDir, 'labels.js'));
+    assert.throws(() => readLabels(dir), /ENOENT/);
+  } finally {
     rm(dir);
   }
 });
@@ -573,6 +626,110 @@ test('status reports no broken-install warning when all required scripts are pre
   }
 });
 
+test('status does not false-positive flag a pre-1.5.1 install (setup-labels.yml with no labels.js/labels.tsv) as broken', async () => {
+  // Regression guard: an earlier commit on this branch added
+  // REQUIRED_SCRIPT_BY_WORKFLOW['setup-labels'] = 'labels' without accounting
+  // for setup-labels.yml having required no script at all before this
+  // release — every repo that installed it pre-1.5.1 would have been
+  // false-positive flagged "Broken install detected" the moment that map
+  // entry shipped, even though their actually-installed workflow requires
+  // nothing and works fine. Caught by code review before merge. Simulates a
+  // pre-1.5.1 install by copying only the workflow file, the way an old
+  // install genuinely would have it on disk.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.github', 'workflows', 'setup-labels.yml'),
+      '# pre-1.5.1 self-contained setup-labels.yml (no require(), no checkout step)'
+    );
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.doesNotMatch(output, /Broken install detected/);
+    assert.doesNotMatch(output, /labels\.js|labels\.tsv/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status DOES flag a genuinely broken 1.5.1+ install (workflow content requires labels.js, which is missing) — independent of manifest state', async () => {
+  // The other half of the false-positive fix above: never detecting a real
+  // break would be just as wrong as false-positiving old installs. An
+  // earlier version of this check compared the manifest's recorded version
+  // against 1.5.1 — reverted (see setupLabelsMissingFiles's own comment)
+  // because the manifest can be stale relative to what's actually on disk.
+  // This test deliberately has NO manifest at all, to prove detection
+  // doesn't depend on it: what matters is the installed workflow file's own
+  // content.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.github', 'workflows', 'setup-labels.yml'),
+      "require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/labels.js`)"
+    );
+    // Deliberately no manifest and no .github/scripts/labels.js on disk.
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /Broken install detected/);
+    assert.match(output, /setup-labels\.yml requires \.github\/scripts\/labels\.js and \.github\/scripts\/labels\.tsv, which are missing/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('status names the actually-missing file, not always "labels.js" (labels.js present, only labels.tsv missing)', async () => {
+  // Regression guard: an earlier version of this check ORed together
+  // "script missing" and "data file missing" but only ever logged
+  // "labels.js" — wrong when labels.js is right there and labels.tsv is
+  // the one actually absent.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.mkdirSync(path.join(dir, '.github', 'scripts'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.github', 'workflows', 'setup-labels.yml'),
+      "require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/labels.js`)"
+    );
+    fs.writeFileSync(path.join(dir, '.github', 'scripts', 'labels.js'), 'module.exports = { readLabels() {} };');
+    // Deliberately no labels.tsv.
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /Broken install detected/);
+    assert.match(output, /setup-labels\.yml requires \.github\/scripts\/labels\.tsv, which is missing/);
+    assert.doesNotMatch(output, /requires \.github\/scripts\/labels\.js,/, 'must not falsely name labels.js as missing when it is present');
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
 test('status reports installed when only the Claude Code skill is present', async () => {
   // Regression guard: the "is anything installed" checks used to ignore
   // skillInstalled entirely, so a repo with only the skill present (no
@@ -622,6 +779,197 @@ test('the CLI\'s --overwrite still works as a hidden alias for --update (pre-1.5
     );
   } finally {
     rm(dir);
+  }
+});
+
+test('scripts/install.sh copies every entry in SCRIPTS, including labels.js, not just the JS installer\'s copy', () => {
+  // Regression guard: src/install.js's SCRIPTS array and scripts/install.sh's
+  // bash SCRIPTS variable are two independent lists with no compiler tie
+  // between them (see #20's own lesson). An earlier draft of this PR updated
+  // src/install.js to add 'labels' but not the bash script, which would have
+  // shipped a setup-labels.yml that MODULE_NOT_FOUNDs on every consumer who
+  // installs via scripts/install.sh instead of npx — caught by code review,
+  // not by any existing test, since no test exercised scripts/install.sh at
+  // all before this one. Asserts against SCRIPTS itself (not a second
+  // hardcoded list in this test) so it can't silently drift the same way.
+  const dir = mkTmpRepo();
+  const installShPath = path.join(__dirname, '..', 'scripts', 'install.sh');
+  try {
+    execFileSync('bash', [installShPath, '--with-templates', dir], { encoding: 'utf8' });
+    for (const name of SCRIPTS) {
+      assert.ok(
+        fs.existsSync(path.join(dir, '.github', 'scripts', `${name}.js`)),
+        `scripts/install.sh did not copy .github/scripts/${name}.js`
+      );
+    }
+    // labels.js is only a parser — labels.tsv (the actual data) must also
+    // be copied, or setup-labels.yml's require() MODULE_NOT_FOUNDs on the
+    // data file even with the parser present.
+    assert.ok(
+      fs.existsSync(path.join(dir, '.github', 'scripts', LABELS_TSV)),
+      `scripts/install.sh did not copy .github/scripts/${LABELS_TSV}`
+    );
+  } finally {
+    rm(dir);
+  }
+});
+
+// A minimal `gh` stub on its own PATH dir, so scripts/install.sh --with-labels
+// can be exercised as a real subprocess without hitting the network or a real
+// GitHub repo. `behavior` is the body of the `gh label create` branch only —
+// auth status/repo view always succeed, everything else exits 0.
+function mkFakeGh(behavior) {
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-gh-'));
+  fs.writeFileSync(
+    path.join(binDir, 'gh'),
+    `#!/usr/bin/env bash\n` +
+      `if [ "$1" = "auth" ] && [ "$2" = "status" ]; then exit 0; fi\n` +
+      `if [ "$1" = "repo" ] && [ "$2" = "view" ]; then exit 0; fi\n` +
+      `if [ "$1" = "label" ] && [ "$2" = "create" ]; then\n${behavior}\nfi\n` +
+      `exit 0\n`,
+    { mode: 0o755 }
+  );
+  return binDir;
+}
+
+test('scripts/install.sh --with-labels does not abort the whole install when a label already exists', () => {
+  // Regression guard, found by code review: the label-creation loop used a
+  // bare `err=$(...)` assignment followed by a separate `if [ $? -eq 0 ]`.
+  // Under `set -e` (active at the top of this script), a failing command
+  // substitution used as a plain assignment statement aborts the entire
+  // script immediately — so the very first "already exists" (the normal
+  // case on any re-run, since labels created on a prior run still exist)
+  // would have killed the installer after creating only 1 of 15 labels,
+  // with no "Installation complete" footer and no error message explaining
+  // why. Empirically confirmed this exact bash behavior in isolation
+  // (`bash -c 'set -e; x=$(false); echo unreached'` never prints) before
+  // fixing it by guarding the assignment as an `if` condition instead.
+  const binDir = mkFakeGh(
+    `  echo "$3" >> "$GH_CALL_LOG"\n` +
+      `  if [ "$3" = "intake" ]; then echo "already exists" >&2; exit 1; fi\n` +
+      `  exit 0\n`
+  );
+  const logFile = path.join(binDir, 'calls.log');
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  const installShPath = path.join(__dirname, '..', 'scripts', 'install.sh');
+  try {
+    const output = execFileSync('bash', [installShPath, '--with-labels', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, GH_CALL_LOG: logFile },
+    });
+    assert.match(output, /Skipped \(exists\): intake/);
+    assert.match(output, /=== Installation complete ===/, 'script must reach its normal end, not abort early');
+    const attempted = fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean);
+    assert.equal(attempted.length, 15, `expected all 15 labels attempted, got: ${JSON.stringify(attempted)}`);
+  } finally {
+    rm(dir);
+    rm(binDir);
+  }
+});
+
+test('scripts/install.sh --with-labels is immune to CRLF line endings in labels.tsv', () => {
+  // Regression guard, found by code review: IFS=$'\t' only splits on tabs,
+  // so a CRLF-checked-out labels.tsv (e.g. a Windows clone with
+  // core.autocrlf=true and no .gitattributes pinning this repo to LF) would
+  // leave a trailing \r on whichever field `read` captures last — corrupting
+  // --color/--description — while labels.js's `.trim()` is immune, silently
+  // reintroducing a JS-vs-bash divergence in the exact file meant to
+  // eliminate that class of bug. Builds a throwaway copy of the real
+  // .github tree with labels.tsv's line endings swapped to CRLF, so this
+  // exercises the actual shipped script/data, not a hand-rolled fixture.
+  const binDir = mkFakeGh(`  echo "$*" >> "$GH_CALL_LOG"\n  exit 0\n`);
+  const logFile = path.join(binDir, 'calls.log');
+  const repoRoot = path.join(__dirname, '..');
+  const crlfRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'crlf-repo-'));
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  try {
+    fs.cpSync(path.join(repoRoot, '.github'), path.join(crlfRepo, '.github'), { recursive: true });
+    fs.cpSync(path.join(repoRoot, 'scripts'), path.join(crlfRepo, 'scripts'), { recursive: true });
+    const lf = fs.readFileSync(path.join(crlfRepo, '.github', 'scripts', LABELS_TSV), 'utf8');
+    fs.writeFileSync(path.join(crlfRepo, '.github', 'scripts', LABELS_TSV), lf.replace(/\n/g, '\r\n'));
+
+    execFileSync('bash', [path.join(crlfRepo, 'scripts', 'install.sh'), '--with-labels', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, GH_CALL_LOG: logFile },
+    });
+
+    const calls = fs.readFileSync(logFile, 'utf8');
+    assert.doesNotMatch(calls, /\r/, `a gh invocation carried a raw \\r: ${JSON.stringify(calls)}`);
+    assert.match(calls, /--description Applied to a sprint's task-breakdown children/);
+  } finally {
+    rm(dir);
+    rm(binDir);
+    rm(crlfRepo);
+  }
+});
+
+test('scripts/install.sh --with-labels does not drop the last label when labels.tsv has no trailing newline', () => {
+  // Regression guard, found by code review: bash's `read` returns non-zero
+  // on a file's final line if it isn't newline-terminated, even though it
+  // still populated the read variables with that line's content — a bare
+  // `while read ...; do ... done < file` loop condition treats that
+  // non-zero return as "stop", silently never running the body for the
+  // last label. labels.js is unaffected (splits the whole file content on
+  // '\n', not a line-at-a-time reader).
+  const binDir = mkFakeGh(`  echo "$*" >> "$GH_CALL_LOG"\n  exit 0\n`);
+  const logFile = path.join(binDir, 'calls.log');
+  const repoRoot = path.join(__dirname, '..');
+  const noNlRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'no-nl-repo-'));
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  try {
+    fs.cpSync(path.join(repoRoot, '.github'), path.join(noNlRepo, '.github'), { recursive: true });
+    fs.cpSync(path.join(repoRoot, 'scripts'), path.join(noNlRepo, 'scripts'), { recursive: true });
+    const tsvPath = path.join(noNlRepo, '.github', 'scripts', LABELS_TSV);
+    const withNl = fs.readFileSync(tsvPath, 'utf8');
+    assert.match(withNl, /\n$/, 'fixture assumption: the real labels.tsv ends with a newline');
+    fs.writeFileSync(tsvPath, withNl.replace(/\n$/, '')); // strip the final newline only
+
+    execFileSync('bash', [path.join(noNlRepo, 'scripts', 'install.sh'), '--with-labels', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, GH_CALL_LOG: logFile },
+    });
+
+    const attempted = fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean);
+    assert.equal(attempted.length, 15, `expected all 15 labels attempted (including the last, unterminated line), got: ${JSON.stringify(attempted)}`);
+  } finally {
+    rm(dir);
+    rm(binDir);
+    rm(noNlRepo);
+  }
+});
+
+test('scripts/install.sh --with-labels strips a stray leading space from a label name (matches labels.js\'s whole-line .trim())', () => {
+  // Regression guard, found by code review: IFS=$'\t' read only splits on
+  // tabs, so a stray leading space at the very start of a labels.tsv line
+  // is captured as part of $name, while labels.js's `.trim()` on the whole
+  // line strips it before splitting — a real JS-vs-bash divergence in the
+  // exact file meant to eliminate that class of bug.
+  const binDir = mkFakeGh(`  echo "[$3]" >> "$GH_CALL_LOG"\n  exit 0\n`);
+  const logFile = path.join(binDir, 'calls.log');
+  const repoRoot = path.join(__dirname, '..');
+  const leadingSpaceRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'leading-space-repo-'));
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  try {
+    fs.cpSync(path.join(repoRoot, '.github'), path.join(leadingSpaceRepo, '.github'), { recursive: true });
+    fs.cpSync(path.join(repoRoot, 'scripts'), path.join(leadingSpaceRepo, 'scripts'), { recursive: true });
+    const tsvPath = path.join(leadingSpaceRepo, '.github', 'scripts', LABELS_TSV);
+    fs.writeFileSync(tsvPath, ' sprint-child\t1D76DB\tsome desc\n');
+
+    execFileSync('bash', [path.join(leadingSpaceRepo, 'scripts', 'install.sh'), '--with-labels', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, GH_CALL_LOG: logFile },
+    });
+
+    const calls = fs.readFileSync(logFile, 'utf8');
+    assert.match(calls, /^\[sprint-child\]$/m, `expected the leading space stripped from the label name, got: ${JSON.stringify(calls)}`);
+  } finally {
+    rm(dir);
+    rm(binDir);
+    rm(leadingSpaceRepo);
   }
 });
 

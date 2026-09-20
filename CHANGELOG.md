@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-20
+
+### Changed
+
+- **Single source of truth for label definitions**: `setup-labels.yml`, `scripts/install.sh`, and `src/install.js` each kept an independently hand-maintained copy of the label list (name/color/description) — the direct cause of the `src/install.js` gap fixed in 1.5.0, since there was no single place to update, just three copies to remember to keep in sync. All three now read from `.github/scripts/labels.tsv` — plain tab-separated text, not JS/JSON, specifically so `scripts/install.sh` can read it directly with a `read` loop rather than needing an interpreter as a new dependency (`.github/scripts/labels.js` is a thin JS-side parser over that file, used by `setup-labels.yml` and `src/install.js`). `setup-labels.yml` gained an `actions/checkout` step so it can `require()` the parser once installed into a consumer repo (same pattern already used by `auto-close-sprint.yml`/`sprint-child-creator.yml`). No label names, colors, descriptions, or CLI-visible behavior changed. Tracked as [#20](https://github.com/Phaneroo/github-delivery-operating-system/issues/20), closed by this release.
+
+### Fixed
+
+- **`status` false-positive "broken install"**: an earlier commit on this branch added a `'setup-labels': 'labels'` entry to `REQUIRED_SCRIPT_BY_WORKFLOW` without accounting for the fact that, unlike every other entry there, `setup-labels.yml` did *not* require any script before this release — every repo that installed it pre-1.5.1 would have been flagged "⚠️ Broken install detected" the moment this shipped, even though their actually-installed workflow requires nothing and works fine as-is. The static map entry was removed; `status` now checks the *installed* `setup-labels.yml`'s own content for whether it actually references `labels.js` before deciding whether `labels.js`/`labels.tsv` are required — more reliable than an earlier attempt that gated on the manifest's recorded version, which can be stale relative to what's actually on disk (an `--update` run that didn't also pass `--with-templates`/`--with-skill` deliberately leaves the recorded version behind).
+- **Unguarded label-definition loading**: both `src/install.js` and `setup-labels.yml`'s inline script now wrap reading `labels.tsv` in a try/catch. The workflow-side failure now also calls `core.setFailed(...)` (not just a log line) so a missing/corrupt `labels.tsv` shows up as a failed Actions run instead of a misleading green checkmark with zero labels created.
+- **`scripts/install.sh`**: the label loop had three bugs, one critical. (1) A bare `err=$(gh label create ...)` assignment under `set -e` aborted the *entire installer* on the very first "already exists" — the normal case on any re-run — after creating only 1 of 15 labels, with no error message; pre-existing, not introduced this release, but newly caught once `--with-labels` got its first end-to-end test. (2) The loop read `labels.tsv` on stdin, so `gh label create` inside it would have inherited that file descriptor — now reads from a dedicated fd. (3) `IFS=$'\t' read` doesn't strip whitespace or a CRLF line ending's trailing `\r` the way `labels.js`'s `.trim()` does, and silently dropped the final line if the file lacked a trailing newline — all three fixed with a shared `trim()` helper and a `read ... || [ -n "$name" ]` loop guard.
+- **`runUninstall` completeness check**: `anyScriptsRemain` was updated to account for `SCRIPTS_PACKAGE_JSON` but not `LABELS_TSV`, even though `labels.tsv` is unconditionally removed a few lines above it in the same function — the exact asymmetric-completeness bug shape its own comment warns about.
+- **`docs/consumer-setup.md`** carried its own hardcoded label table — a fourth independently-maintained copy of exactly what issue #20 was filed to eliminate. Replaced with a link to `.github/scripts/labels.tsv`.
+
 ## [1.5.0] - 2026-09-20
 
 ### Changed

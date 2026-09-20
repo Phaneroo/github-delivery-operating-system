@@ -157,23 +157,7 @@ Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges 
 
 Run **Actions → Setup Labels → Run workflow** once, or use `--with-labels` when installing (requires `gh` CLI).
 
-| Label | Color |
-|-------|-------|
-| intake | 0E8A16 |
-| bug | D93F0B |
-| sprint | 1D76DB |
-| sprint-child | 1D76DB |
-| planning | 5319E7 |
-| sprint-planning | 5319E7 |
-| task | 7057FF |
-| qa | FBCA04 |
-| qa-request | FBCA04 |
-| production | D93F0B |
-| release | B60205 |
-| approval | 0E8A16 |
-| ready-for-deploy | 0E8A16 |
-| declined | B60205 |
-| risk | B60205 |
+The current list of labels (names, colors, descriptions) lives in [`.github/scripts/labels.tsv`](https://github.com/Phaneroo/github-delivery-operating-system/blob/main/.github/scripts/labels.tsv) — the single source of truth `setup-labels.yml`, `scripts/install.sh`, and `src/install.js` all read, so it's never out of sync with what actually gets created. (Absolute URL, not a relative link: this page is also published to GitHub Pages from just the `docs/` directory, where `.github/` doesn't exist — a relative `../.github/...` link would 404 there even though it resolves fine when browsing the repo directly on GitHub.com.) This doc used to carry its own copy of that table; dropped it rather than risk it silently going stale the next time a label changes ([#20](https://github.com/Phaneroo/github-delivery-operating-system/issues/20) was filed for exactly that class of drift).
 
 **Upgrading from before 1.5.0:** sprint child issues were previously labeled `sprint-active`. New child issues use `sprint-child` instead; existing issues keep whatever label they already have (nothing renames it for you). To unify an existing repo onto the new name — this retroactively relabels every issue that already has it, no per-issue edits needed:
 

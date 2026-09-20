@@ -34,6 +34,21 @@ copy_managed_files() {
   done
 }
 
+# Trims leading/trailing whitespace — including a lone trailing \r from a
+# CRLF line ending (POSIX [:space:] includes CR) — from a single value.
+# Bash-only, no subshell/external command. Mirrors what labels.js's
+# `.trim()` does to a whole labels.tsv line before it splits on tabs, so a
+# field read here from the same file never diverges from what the JS parser
+# would produce for it (a stray leading/trailing space, or a CRLF checkout
+# with no .gitattributes pinning this repo to LF, would otherwise land only
+# in whichever field bash's `read` captures it into).
+trim() {
+  local var="$1"
+  var="${var#"${var%%[![:space:]]*}"}"
+  var="${var%"${var##*[![:space:]]}"}"
+  printf '%s' "$var"
+}
+
 usage() {
   echo "Usage: $0 [options] [target_dir]"
   echo ""
@@ -106,16 +121,22 @@ WORKFLOWS_COPIED=$COPIED
 
 # 2b. Copy the scripts some workflows require() at runtime — required, not
 # optional, so (like workflows) this always runs.
-SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator"
+SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator labels"
 copy_managed_files "$SCRIPTS" ".js" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
 SCRIPTS_COPIED=$COPIED
 
-# 2c. Copy the CommonJS-pinning package.json alongside them — without it, a
+# 2c. Copy single extra files that travel alongside the scripts above but
+# aren't themselves ".js": the CommonJS-pinning package.json (without it, a
 # target repo whose own package.json has "type": "module" makes Node treat
 # these .js files as ES modules too, breaking require() with "module is not
-# defined in ES module scope". Counted together with the scripts above.
-copy_managed_files "package" ".json" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
-SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
+# defined in ES module scope") and labels.tsv (the data file labels.js, just
+# copied above, parses). Counted together with the scripts above.
+for extra in "package:.json" "labels:.tsv"; do
+  extra_name="${extra%%:*}"
+  extra_ext="${extra#*:}"
+  copy_managed_files "$extra_name" "$extra_ext" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
+  SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
+done
 
 # 3. Optionally copy issue templates
 TEMPLATES_COPIED=0
@@ -139,15 +160,23 @@ if [ "$WITH_TEMPLATES" = true ]; then
   fi
 fi
 
-# 4. Optionally create labels via gh CLI (must match setup-labels.yml)
+# 4. Optionally create labels via gh CLI. Definitions live in
+# .github/scripts/labels.tsv — the single source of truth also read by
+# setup-labels.yml and src/install.js — plain tab-separated text (not
+# JS/JSON) specifically so this can read it directly with `read`, without
+# needing node or any other interpreter as a dependency.
 LABELS_CREATED=0
 LABELS_SKIP_REASON=""
 if [ "$WITH_LABELS" = true ]; then
+  LABELS_TSV_FILE="${SCRIPTS_SRC}/labels.tsv"
   if [ "$DRY_RUN" = "true" ]; then
     LABELS_SKIP_REASON="Skipped in dry-run."
     echo "  [dry-run] Labels would be created (skipped)"
   elif ! command -v gh &>/dev/null; then
     LABELS_SKIP_REASON="gh CLI not installed. Install from https://cli.github.com/"
+    echo "  Skipped labels: $LABELS_SKIP_REASON"
+  elif [ ! -f "$LABELS_TSV_FILE" ]; then
+    LABELS_SKIP_REASON="Missing ${LABELS_TSV_FILE}."
     echo "  Skipped labels: $LABELS_SKIP_REASON"
   elif [ ! -d "${TARGET_ABS}/.git" ]; then
     LABELS_SKIP_REASON="Target is not a git repository."
@@ -160,41 +189,40 @@ if [ "$WITH_LABELS" = true ]; then
       LABELS_SKIP_REASON="Target repo not on GitHub or no push access."
       echo "  Skipped labels: $LABELS_SKIP_REASON"
     else
-      # Third field (description) is optional, pipe-delimited so it can hold
-      # punctuation freely without colliding with the name:color separator.
-      LABELS=(
-        "intake:0E8A16"
-        "bug:D93F0B"
-        "sprint:1D76DB"
-        "sprint-child:1D76DB|Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes"
-        "planning:5319E7"
-        "sprint-planning:5319E7"
-        "task:7057FF"
-        "qa:FBCA04"
-        "qa-request:FBCA04"
-        "production:D93F0B"
-        "release:B60205"
-        "approval:0E8A16"
-        "ready-for-deploy:0E8A16"
-        "declined:B60205"
-        "risk:B60205"
-      )
-      # No associative arrays here (avoid bash 4+ `declare -A`; stock macOS
-      # ships bash 3.2, and this installer runs via `env bash`).
-      for entry in "${LABELS[@]}"; do
-        name_color="${entry%%|*}"
-        desc=""
-        if [ "$entry" != "$name_color" ]; then
-          desc="${entry#*|}"
-        fi
-        name="${name_color%%:*}"
-        color="${name_color##*:}"
+      # Read from fd 3, not stdin (fd 0): `gh label create` runs inside this
+      # loop body and would otherwise inherit the still-open labels.tsv file
+      # as its own stdin — harmless today, but if gh ever reads from stdin
+      # (an unexpected prompt, a future version change), it would consume
+      # bytes meant for this loop's remaining lines, silently truncating the
+      # label list with no error.
+      #
+      # `|| [ -n "$name" ]` on the loop condition: bash's `read` returns
+      # non-zero on the final line of a file with no trailing newline, even
+      # though it still populated the variables with that line's content —
+      # without this, a labels.tsv missing its final newline (an editor that
+      # strips it on save, a scripted rewrite) would silently drop the last
+      # label with no error, while labels.js (which splits on '\n', not a
+      # line-reader) is unaffected either way.
+      while IFS=$'\t' read -r name color desc <&3 || [ -n "$name" ]; do
+        name="$(trim "$name")"
+        color="$(trim "$color")"
+        desc="$(trim "$desc")"
+        # Skip a stray blank-ish line the same way labels.js's
+        # `.trim().filter(Boolean)` does.
+        [ -z "$name" ] && continue
         cmd=(gh label create "$name" --color "$color")
         if [ -n "$desc" ]; then
           cmd+=(--description "$desc")
         fi
-        err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
-        if [ $? -eq 0 ]; then
+        # `if err=$(...); then` (not a bare `err=$(...)` statement followed
+        # by a separate `if [ $? -eq 0 ]`) deliberately: under `set -e`, a
+        # failing command substitution used as a plain assignment statement
+        # aborts the whole script immediately — which for `gh label create`
+        # means the very first "already exists" (the normal case on any
+        # re-run) would kill the installer before any later label is even
+        # attempted, with no message. Guarding the assignment as an `if`
+        # condition is bash's documented exemption from that.
+        if err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1); then
           echo "  Created label: $name"
           LABELS_CREATED=$((LABELS_CREATED + 1))
         elif echo "$err" | grep -qi "already exists"; then
@@ -202,7 +230,7 @@ if [ "$WITH_LABELS" = true ]; then
         else
           echo "  Failed to create label '$name': $err"
         fi
-      done
+      done 3< "$LABELS_TSV_FILE"
     fi
   fi
 fi

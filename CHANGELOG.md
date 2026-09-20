@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-20
+
+### Changed
+
+- **Sprint child label renamed `sprint-active` → `sprint-child`**: the old name never changed when its sprint closed, so a Task issue could carry `sprint-active` long after the sprint it belonged to finished — easy to misread in an issue list as "this sprint is currently active" rather than "this task originated from a sprint's breakdown." Fresh installs and any repo that re-runs `Setup Labels`/`install --with-labels` now get `sprint-child` (with an on-hover description) instead; the label-creation logic previously lived independently in three places (`setup-labels.yml`, `scripts/install.sh`, and `src/install.js` — the last of these had silently drifted out of sync with the other two, missing the description entirely) and all three were updated together. `auto-close-sprint`'s burn-down was already label-independent (scans issue bodies for `Parent Sprint: #N`) so it's unaffected either way. `telegram-issues.yml`'s sprint-task notifications now check both label names, so issues created before a repo upgrades keep notifying correctly. Existing repos are not touched automatically — nothing in this package reaches into an already-installed repo — but `docs/consumer-setup.md` documents a one-line, fully optional `gh label edit sprint-active --name sprint-child` to retroactively rename it across every issue that already has it, in place.
+- **`install --overwrite` renamed to `--update`**: matches how it was already described everywhere ("Update Delivery OS", "use --overwrite to replace/update") better than the old name, which read as more destructive than what it actually does. `-o, --overwrite`/`--no-overwrite` keep working as hidden, undocumented aliases in both `npx github-delivery-os install` (`src/cli.js`) and `scripts/install.sh`, so existing scripts/CI calling the old flag don't break. All suggested-command output (`status`'s update hints, broken-install `Fix:` hints) now shows `--update`.
+
 ## [1.4.1] - 2026-09-18
 
 ### Fixed

@@ -45,6 +45,6 @@ jobs:
                 repo: context.repo.repo,
                 title,
                 body: bodyContent,
-                labels: ['sprint-active']
+                labels: ['sprint-child']
               });
             }

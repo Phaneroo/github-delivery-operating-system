@@ -21,7 +21,7 @@ Creating issues and comments in a repo is a visible, outward action — other co
 Before creating anything that depends on configuration, check the target repo actually has Delivery OS installed and configured — a silent no-op (nothing happens because a variable is unset) is more confusing than an upfront "this won't do much yet":
 
 - **Installed?** `gh api repos/<owner>/<repo>/contents/.github/workflows/authorize-deployment.yml --silent` (404 = not installed — suggest `npx github-delivery-os status .` or `install --with-templates` in that repo).
-- **Labels set up?** `gh label list --repo <owner>/<repo>` — look for `production`, `qa`, `qa-request`, `sprint`, `sprint-active`, `planning`, `declined`, `ready-for-deploy`. Missing labels mean `Setup Labels` hasn't been run there yet — offer to fix it directly rather than just reporting the gap: `gh workflow run setup-labels.yml --repo <owner>/<repo>` (it's a `workflow_dispatch` trigger, so this actually creates them on the spot). Confirm with the user first since it's a real change to their repo.
+- **Labels set up?** `gh label list --repo <owner>/<repo>` — look for `production`, `qa`, `qa-request`, `sprint`, `sprint-child`, `planning`, `declined`, `ready-for-deploy`. Missing labels mean `Setup Labels` hasn't been run there yet — offer to fix it directly rather than just reporting the gap: `gh workflow run setup-labels.yml --repo <owner>/<repo>` (it's a `workflow_dispatch` trigger, so this actually creates them on the spot). Confirm with the user first since it's a real change to their repo. (`sprint-active` instead of `sprint-child` means the repo is on a pre-1.5.0 install — still valid, just the older label name.)
 - **Repo variables set?** `gh variable list --repo <owner>/<repo>` — look for `RELEASE_APPROVER`, `QA_APPROVER`, `QA_ASSIGNEES`. If unset, say so plainly: the issue will still get created, but `notify-release-approver` will ping the literal placeholder `release-approver`/`qa-approver`, not a real person. Setting these requires repo admin access (`gh variable set NAME --repo <owner>/<repo> --body <value>`) — don't set them without being asked to, since they name a real person as approver.
 
 ## Creating issues
@@ -32,7 +32,7 @@ Before creating anything that depends on configuration, check the target repo ac
 
 This confirm-first default is for issues created **on explicit request** ("file a bug for this", "create a sprint"). The "Autonomous tracking" section below describes a *different* mode — noticing and filing work on its own during a session — and overrides this default there: act first, confirm after, per its own "Confirm only when unsure" rule. Don't apply both rules to the same action.
 
-**Sprint Planning** — triggers `sprint-child-creator` (one child issue per feature line, each labeled `sprint-active`, on open):
+**Sprint Planning** — triggers `sprint-child-creator` (one child issue per feature line, each labeled `sprint-child` — `sprint-active` on repos installed before 1.5.0 — on open):
 - Title **must contain** the literal string `SPRINT -`, e.g. `SPRINT - Sprint 14`
 - Labels: `sprint`, `planning`
 - Body:
@@ -163,7 +163,7 @@ Closing a sprint task (child) issue is what actually moves the burn-down — cre
 gh issue close <number> --repo <owner>/<repo>
 ```
 
-`auto-close-sprint` fires on close, re-reads every `sprint-active` issue whose body contains `Parent Sprint: #<N>`, recomputes progress, and rewrites the sprint issue's `## 🚦 Sprint Status` section. At 100% it also closes the sprint issue itself and posts a completion comment. Re-check the sprint issue's body afterward to see the update — it happens as a side effect of closing the child, not as a response visible on the child issue itself.
+`auto-close-sprint` fires on close, re-reads every issue whose body contains `Parent Sprint: #<N>` (label-independent — see below), recomputes progress, and rewrites the sprint issue's `## 🚦 Sprint Status` section. At 100% it also closes the sprint issue itself and posts a completion comment. Re-check the sprint issue's body afterward to see the update — it happens as a side effect of closing the child, not as a response visible on the child issue itself.
 
 ## Autonomous tracking (identify → file → update → close)
 
@@ -201,7 +201,7 @@ Don't rely on recalling an issue number from earlier in the conversation, and ne
 gh issue list --repo <owner>/<repo> --state open --search "<keywords from the work>"
 ```
 
-Narrow with `--label task` (or `bug`, `sprint-active`, `qa-request`) only once the category is known and the target repo actually has that label — don't assume `--label task` alone finds everything relevant.
+Narrow with `--label task` (or `bug`, `sprint-child`, `qa-request`) only once the category is known and the target repo actually has that label — don't assume `--label task` alone finds everything relevant. (Older repos may still use `sprint-active` instead of `sprint-child`; check `gh label list` first.)
 
 This is also what makes picking work back up in a *new* session possible without any local memory — the issue list itself is the state.
 
@@ -232,7 +232,7 @@ Given an SRS/PRD, or just a plain-language feature description, break it into a 
 
 3. **Per phase, once confirmed:**
    - Create the Sprint Planning issue with the usual recipe (`SPRINT - <phase name>`, dates, goal). "Sprint Features (One Per Line)" is template-required, so it can't be left empty — put one line noting the real breakdown is in linked Task issues (e.g. `See linked Task issues for this phase's breakdown`). This means exactly one bare placeholder child gets auto-created.
-   - File one full Task issue per requirement (the usual Task recipe — Owner, Priority, Acceptance Criteria drawn from the spec text; ask only when the spec genuinely doesn't specify something, like priority). Include `Parent Sprint: #<sprint-number>` in the body (e.g. under Artifacts / Links) — that exact phrase is what `auto-close-sprint` actually scans for (`.github/workflows/auto-close-sprint.yml` filters on body content only, **not** the `sprint-active` label, deliberately — see its own comment on why label-scoping was tried and reverted). Add the `sprint-active` label anyway, for consistency with how the sprint's own children are found (see "Finding things" below), but know it plays no role in the burn-down count.
+   - File one full Task issue per requirement (the usual Task recipe — Owner, Priority, Acceptance Criteria drawn from the spec text; ask only when the spec genuinely doesn't specify something, like priority). Include `Parent Sprint: #<sprint-number>` in the body (e.g. under Artifacts / Links) — that exact phrase is what `auto-close-sprint` actually scans for (`.github/workflows/auto-close-sprint.yml` filters on body content only, **not** the `sprint-child` label, deliberately — see its own comment on why label-scoping was tried and reverted). Add the `sprint-child` label anyway, for consistency with how the sprint's own children are found (see "Finding things" below), but know it plays no role in the burn-down count.
    - Now that the real Task issues exist, close the one placeholder child: `gh issue close <N> --repo <owner>/<repo> --comment "Superseded by full Task issues for this phase — see #.., #.., #.."`, filling in the actual issue numbers just created. Otherwise the placeholder sits in the sprint's burn-down denominator as an item that can never represent real completed work, and the sprint can never legitimately reach 100%.
 
 4. **Report back everything created**, grouped by phase — sprint issue number, task issue numbers, and the placeholder-close.
@@ -245,4 +245,4 @@ When there's no issue number in hand yet:
 - **Production releases awaiting a decision:** `gh issue list --repo <owner>/<repo> --label production --state open`
 - **Active sprints:** `gh issue list --repo <owner>/<repo> --label sprint --state open` (title contains `SPRINT -`)
 - **Open QA requests:** `gh issue list --repo <owner>/<repo> --label qa-request --state open`
-- **A sprint's own children:** `gh issue list --repo <owner>/<repo> --label sprint-active --search "\"Parent Sprint: #<N>\" in:body"` — the exact-phrase quotes matter, otherwise the search matches "Parent", "Sprint", and the number as separate free-text terms instead of the literal phrase
+- **A sprint's own children:** `gh issue list --repo <owner>/<repo> --label sprint-child --search "\"Parent Sprint: #<N>\" in:body"` — the exact-phrase quotes matter, otherwise the search matches "Parent", "Sprint", and the number as separate free-text terms instead of the literal phrase. On a repo installed before 1.5.0 (or one that hasn't run the `gh label edit` migration — see `docs/consumer-setup.md`), use `--label sprint-active` instead, or drop `--label` entirely and rely on the body search alone if you're not sure which name applies.

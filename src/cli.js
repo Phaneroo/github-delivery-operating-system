@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { program } = require('commander');
+const { program, Option } = require('commander');
 const path = require('path');
 const fs = require('fs');
 const { runInstall, runStatus, runUninstall } = require('./install');
@@ -21,8 +21,12 @@ program
   .option('-t, --with-templates', 'Copy issue templates (sprint, task, bug, QA, production release)')
   .option('-l, --with-labels', 'Create labels via gh CLI (requires gh auth)')
   .option('-s, --with-skill', 'Add the delivery-ops Claude Code skill (.claude/skills/delivery-ops/SKILL.md)')
-  .option('-o, --overwrite', 'Replace existing workflow/template files')
-  .option('--no-overwrite', 'Skip existing files (default)')
+  .option('-u, --update', 'Replace existing workflow/template files with the latest version')
+  .option('--no-update', 'Skip existing files (default)')
+  // Pre-1.5.0 names, kept working silently so existing scripts/CI calling
+  // `install --overwrite` don't break — --update is the documented name now.
+  .addOption(new Option('-o, --overwrite').hideHelp())
+  .addOption(new Option('--no-overwrite').hideHelp())
   .option('-d, --dry-run', 'Show what would happen without changing files')
   .action((target, options) => {
     const targetDir = target || '.';
@@ -31,7 +35,7 @@ program
       withTemplates: options.withTemplates ?? false,
       withLabels: options.withLabels ?? false,
       withSkill: options.withSkill ?? false,
-      overwrite: options.overwrite ?? false,
+      overwrite: options.update ?? options.overwrite ?? false,
       dryRun: options.dryRun ?? false,
     });
   });

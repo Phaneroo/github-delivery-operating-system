@@ -51,7 +51,7 @@ const LABELS = [
   ['intake', '0E8A16'],
   ['bug', 'D93F0B'],
   ['sprint', '1D76DB'],
-  ['sprint-active', '1D76DB'],
+  ['sprint-child', '1D76DB', "Applied to a sprint's task-breakdown children on open; doesn't change when the sprint closes"],
   ['planning', '5319E7'],
   ['sprint-planning', '5319E7'],
   ['task', '7057FF'],
@@ -351,9 +351,11 @@ function runInstall(options) {
       }
 
       if (!labelsSkipReason) {
-        for (const [name, color] of LABELS) {
+        for (const [name, color, description] of LABELS) {
           try {
-            execFileSync('gh', ['label', 'create', name, '--color', color], {
+            const args = ['label', 'create', name, '--color', color];
+            if (description) args.push('--description', description);
+            execFileSync('gh', args, {
               cwd: targetAbs,
               stdio: 'pipe',
             });
@@ -406,11 +408,11 @@ function runInstall(options) {
     if (templatesPresentButNotTouched || skillPresentButNotTouched) {
       console.log('  Note: previously-installed templates and/or the Claude Code skill exist');
       console.log('  on disk but were not requested this run, so the recorded Delivery OS');
-      console.log('  version was not updated. Re-run with --overwrite plus --with-templates');
+      console.log('  version was not updated. Re-run with --update plus --with-templates');
       console.log('  and/or --with-skill to bring everything (and the recorded version) in sync.');
     } else {
       console.log('  Note: some files already existed and were skipped, so the recorded');
-      console.log('  Delivery OS version was not updated. Re-run with --overwrite to sync');
+      console.log('  Delivery OS version was not updated. Re-run with --update to sync');
       console.log('  all files (and the recorded version) to the latest release.');
     }
     console.log('');
@@ -453,7 +455,7 @@ function runInstall(options) {
       console.log('Dry run complete. No files were changed.');
     } else {
       console.log('No new files created (existing files were skipped).');
-      console.log('To update: use --overwrite (run with --dry-run first to preview).');
+      console.log('To update: use --update (run with --dry-run first to preview).');
     }
   }
   console.log('');
@@ -464,11 +466,11 @@ function runInstall(options) {
 // installed actually gets touched this run (see the cleanInstall check
 // there) — so a repo with templates and/or the skill already on disk needs
 // --with-templates/--with-skill passed again on an update, not just
-// --overwrite, or the recorded version never advances and `status` keeps
+// --update, or the recorded version never advances and `status` keeps
 // suggesting the same command forever. Build the hint from what's actually
 // on disk so it's never wrong.
-function buildOverwriteCommand({ hasTemplates, hasSkill }) {
-  const flags = [hasTemplates ? '--with-templates' : null, hasSkill ? '--with-skill' : null, '--overwrite']
+function buildUpdateCommand({ hasTemplates, hasSkill }) {
+  const flags = [hasTemplates ? '--with-templates' : null, hasSkill ? '--with-skill' : null, '--update']
     .filter(Boolean)
     .join(' ');
   return `npx github-delivery-os@latest install ${flags} .`;
@@ -533,7 +535,7 @@ async function runStatus(options) {
     } else {
       console.log('Installed version: unknown (installed before version tracking was added)');
       console.log(
-        `  Run: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+        `  Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
       );
     }
 
@@ -546,7 +548,7 @@ async function runStatus(options) {
       } else if (manifest && manifest.version) {
         console.log(`⬆️  Update available: ${manifest.version} → ${latest}`);
         console.log(
-          `    Run: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+          `    Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
         );
       } else {
         console.log(`Latest published version: ${latest}`);
@@ -568,7 +570,7 @@ async function runStatus(options) {
     });
     console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
     console.log(
-      `  Fix: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
     );
     console.log('');
   }
@@ -579,7 +581,7 @@ async function runStatus(options) {
     console.log('  require()s a script under .github/scripts will fail with "module is not');
     console.log('  defined in ES module scope" the next time it runs.');
     console.log(
-      `  Fix: ${buildOverwriteCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
     );
     console.log('');
   }
@@ -768,7 +770,7 @@ module.exports = {
     readManifest,
     writeManifest,
     fetchLatestVersion,
-    buildOverwriteCommand,
+    buildUpdateCommand,
     skillPath,
     SKILL_REL_PATH,
     WORKFLOWS,
@@ -776,5 +778,6 @@ module.exports = {
     SCRIPTS,
     SCRIPTS_PACKAGE_JSON,
     REQUIRED_SCRIPT_BY_WORKFLOW,
+    LABELS,
   },
 };

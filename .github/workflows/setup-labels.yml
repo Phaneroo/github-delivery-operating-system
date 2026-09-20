@@ -1,7 +1,8 @@
 # Run once: Actions → Setup Labels → Run workflow
 # Uses built-in GITHUB_TOKEN — no personal token or gh CLI needed.
-# Label definitions live in .github/scripts/labels.js — the single source of
-# truth also read by scripts/install.sh and src/install.js.
+# Label definitions live in .github/scripts/labels.tsv — the single source of
+# truth also read by scripts/install.sh and src/install.js. labels.js is the
+# JS-side parser over that file.
 
 name: Setup Labels
 
@@ -26,9 +27,17 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const { LABELS } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/labels.js`);
+            const scriptsDir = `${process.env.GITHUB_WORKSPACE}/.github/scripts`;
+            let labels;
+            try {
+              labels = require(`${scriptsDir}/labels.js`).readLabels(scriptsDir);
+            } catch (e) {
+              console.log(`Could not read label definitions from ${scriptsDir}/labels.tsv: ${e.message}`);
+              console.log('No labels were created. Re-run "npx github-delivery-os@latest install --with-templates --update ." to repair this install, then run this workflow again.');
+              return;
+            }
             let created = 0;
-            for (const [name, color, description] of LABELS) {
+            for (const [name, color, description] of labels) {
               try {
                 await github.rest.issues.createLabel({
                   owner: context.repo.owner,

@@ -49,6 +49,7 @@
     ".github/scripts/auto-close-sprint.js",
     ".github/scripts/sprint-child-creator.js",
     ".github/scripts/labels.js",
+    ".github/scripts/labels.tsv",
     ".github/scripts/package.json",
     ".github/ISSUE_TEMPLATE",
     ".claude/skills/delivery-ops"

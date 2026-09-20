@@ -26,8 +26,10 @@ const WORKFLOWS = [
 // so they're always copied alongside them, the same as WORKFLOWS. Also list
 // them explicitly in package.json's "files". `labels` isn't require()'d by
 // logic exactly like the others, but setup-labels.yml requires it the same
-// way once installed — see LABELS below.
+// way once installed — see loadLabels() below. Its sibling data file,
+// labels.tsv, is copied separately (different extension) — see LABELS_TSV.
 const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'labels'];
+const LABELS_TSV = 'labels.tsv';
 
 // These scripts are CommonJS (`require`/`module.exports`). Node picks CJS vs.
 // ESM per-file by walking up to the nearest package.json — so a consumer repo
@@ -43,23 +45,37 @@ const SCRIPTS_PACKAGE_JSON = 'package.json';
 // Which workflow requires which script, so `status` can flag a workflow
 // that's present but whose required script is missing (an install that will
 // fail with MODULE_NOT_FOUND the next time that workflow actually runs).
+// Deliberately does NOT include 'setup-labels': 'labels' — unlike the three
+// entries below, which have require()'d their script since the workflow was
+// first introduced, setup-labels.yml was self-contained (no require() at
+// all) before this file existed. A static name -> required-script mapping
+// can't distinguish that from a genuinely broken install: every repo that
+// installed setup-labels.yml before this check existed would otherwise be
+// false-positive flagged as broken the moment this map gained that entry,
+// even though their actually-installed workflow requires nothing and works
+// fine. Caught by code review on the PR that introduced labels.js.
 const REQUIRED_SCRIPT_BY_WORKFLOW = {
   'authorize-deployment': 'authorize-deployment-verdict',
   'auto-close-sprint': 'auto-close-sprint',
   'sprint-child-creator': 'sprint-child-creator',
-  'setup-labels': 'labels',
 };
 
-// Label definitions (name/color/description) live in .github/scripts/labels.js
+// Label definitions (name/color/description) live in .github/scripts/labels.tsv
 // — the single source of truth also read by setup-labels.yml (once installed
 // into a consumer repo) and scripts/install.sh, so there's exactly one place
 // to update instead of three independently hand-maintained copies (see
 // https://github.com/Phaneroo/github-delivery-operating-system/issues/20).
-// Loaded from this package's own tree (not a consumer repo's), so it's
-// resolved via getPackageRoot() at the point of use inside runInstall, same
-// as every other source path.
+// labels.js is a thin parser over that data file, kept as real JS so
+// setup-labels.yml's require() and this function share the same parsing
+// logic instead of each re-implementing it. Loaded from this package's own
+// tree (not a consumer repo's), so it's resolved via getPackageRoot() at the
+// point of use inside runInstall, same as every other source path. Throws if
+// labels.tsv is missing/unreadable — callers must handle that explicitly
+// (see the try/catch around this call in runInstall) rather than letting it
+// propagate as an uncaught crash mid-install.
 function loadLabels(pkgRoot) {
-  return require(path.join(pkgRoot, '.github', 'scripts', 'labels.js')).LABELS;
+  const scriptsDir = path.join(pkgRoot, '.github', 'scripts');
+  return require(path.join(scriptsDir, 'labels.js')).readLabels(scriptsDir);
 }
 
 function manifestPath(targetAbs) {
@@ -263,6 +279,20 @@ function runInstall(options) {
   scriptsCopied += scriptsPkgResult.copied;
   scriptsSkipped += scriptsPkgResult.skipped;
 
+  // labels.tsv travels with labels.js the same way — data file for the
+  // parser SCRIPTS just installed, same helper/extension-splitting pattern
+  // as SCRIPTS_PACKAGE_JSON above.
+  const { name: labelsTsvName, ext: labelsTsvExt } = path.parse(LABELS_TSV);
+  const labelsTsvResult = copyManagedFiles(
+    [labelsTsvName],
+    labelsTsvExt,
+    scriptsSrc,
+    scriptsDest,
+    { overwrite, dryRun, relDir: '.github/scripts' }
+  );
+  scriptsCopied += labelsTsvResult.copied;
+  scriptsSkipped += labelsTsvResult.skipped;
+
   let templatesSkipped = 0;
   let skillSkipped = 0;
 
@@ -347,8 +377,18 @@ function runInstall(options) {
         }
       }
 
+      let labelDefs = [];
       if (!labelsSkipReason) {
-        for (const [name, color, description] of loadLabels(pkgRoot)) {
+        try {
+          labelDefs = loadLabels(pkgRoot);
+        } catch (err) {
+          labelsSkipReason = `Could not read label definitions: ${err.message}`;
+          console.log(`  Skipped labels: ${labelsSkipReason}`);
+        }
+      }
+
+      if (!labelsSkipReason) {
+        for (const [name, color, description] of labelDefs) {
           try {
             const args = ['label', 'create', name, '--color', color];
             if (description) args.push('--description', description);
@@ -674,6 +714,18 @@ function runUninstall(options) {
     scriptsRemoved++;
   }
 
+  // labels.tsv travels with labels.js — same unconditional removal.
+  const labelsTsvDest = path.join(scriptsDest, LABELS_TSV);
+  if (fs.existsSync(labelsTsvDest)) {
+    if (dryRun) {
+      console.log(`  [dry-run] Would remove: .github/scripts/${LABELS_TSV}`);
+    } else {
+      fs.unlinkSync(labelsTsvDest);
+      console.log(`  Removed: .github/scripts/${LABELS_TSV}`);
+    }
+    scriptsRemoved++;
+  }
+
   if (withTemplates) {
     for (const t of TEMPLATES) {
       const dest = path.join(templatesDest, t);
@@ -774,6 +826,7 @@ module.exports = {
     TEMPLATES,
     SCRIPTS,
     SCRIPTS_PACKAGE_JSON,
+    LABELS_TSV,
     REQUIRED_SCRIPT_BY_WORKFLOW,
     loadLabels,
   },

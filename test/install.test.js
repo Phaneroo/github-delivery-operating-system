@@ -18,6 +18,7 @@ const {
   TEMPLATES,
   SCRIPTS,
   SCRIPTS_PACKAGE_JSON,
+  LABELS_TSV,
   loadLabels,
 } = __test__;
 
@@ -118,6 +119,10 @@ test('fresh install writes a manifest matching the current package version', () 
     const scriptsPkgPath = path.join(scriptsDest, SCRIPTS_PACKAGE_JSON);
     assert.ok(fs.existsSync(scriptsPkgPath), `missing .github/scripts/${SCRIPTS_PACKAGE_JSON}`);
     assert.equal(JSON.parse(fs.readFileSync(scriptsPkgPath, 'utf8')).type, 'commonjs');
+    // Regression guard: labels.js (in SCRIPTS above) is only a parser —
+    // without its sibling data file labels.tsv also landing on disk,
+    // setup-labels.yml's require() would MODULE_NOT_FOUND at runtime.
+    assert.ok(fs.existsSync(path.join(scriptsDest, LABELS_TSV)), `missing .github/scripts/${LABELS_TSV}`);
   } finally {
     rm(dir);
   }
@@ -304,15 +309,17 @@ test('status (checkUpdates: false) reports installed workflows without network a
   }
 });
 
-test('loadLabels reads the single-source-of-truth .github/scripts/labels.js, not a separate hardcoded copy', () => {
+test('loadLabels reads the single-source-of-truth .github/scripts/labels.tsv, not a separate hardcoded copy', () => {
   // Regression guard for the exact bug this replaced: src/install.js used to
   // keep its own independent LABELS array that silently drifted out of sync
   // with setup-labels.yml and scripts/install.sh (see issue #20). Asserting
-  // against the shared file directly proves install.js is actually reading
-  // it, not just returning a coincidentally-similar array of its own.
+  // against the shared parser+data directly proves install.js is actually
+  // reading them, not just returning a coincidentally-similar array of its
+  // own.
   const labels = loadLabels(packageRoot);
-  const fromFileDirectly = require(path.join(packageRoot, '.github', 'scripts', 'labels.js')).LABELS;
-  assert.equal(labels, fromFileDirectly, 'loadLabels must return the exact same array the shared file exports');
+  const scriptsDir = path.join(packageRoot, '.github', 'scripts');
+  const fromFileDirectly = require(path.join(scriptsDir, 'labels.js')).readLabels(scriptsDir);
+  assert.deepEqual(labels, fromFileDirectly, 'loadLabels must return what the shared parser produces from labels.tsv');
 
   assert.ok(Array.isArray(labels) && labels.length > 0);
   for (const entry of labels) {
@@ -329,6 +336,21 @@ test('loadLabels reads the single-source-of-truth .github/scripts/labels.js, not
   const sprintChild = labels.find(([name]) => name === 'sprint-child');
   assert.ok(sprintChild, 'sprint-child label must be defined');
   assert.ok(sprintChild[2], 'sprint-child must carry a description explaining it predates sprint closure');
+});
+
+test('readLabels throws (rather than returning something silently wrong) when labels.tsv is missing', () => {
+  // The try/catch around loadLabels() in runInstall (and the equivalent
+  // try/catch in setup-labels.yml's inline script) relies on this throwing
+  // — proves the contract that fix depends on, without needing to exercise
+  // the full gh-authenticated --with-labels path to reach it.
+  const dir = mkTmpRepo();
+  try {
+    const scriptsDir = path.join(packageRoot, '.github', 'scripts');
+    const { readLabels } = require(path.join(scriptsDir, 'labels.js'));
+    assert.throws(() => readLabels(dir), /ENOENT/);
+  } finally {
+    rm(dir);
+  }
 });
 
 test('buildUpdateCommand includes --with-templates/--with-skill only when those are actually installed', () => {
@@ -603,6 +625,41 @@ test('status reports no broken-install warning when all required scripts are pre
   }
 });
 
+test('status does not false-positive flag a pre-1.5.1 install (setup-labels.yml with no labels.js/labels.tsv) as broken', async () => {
+  // Regression guard: an earlier commit on this branch added
+  // REQUIRED_SCRIPT_BY_WORKFLOW['setup-labels'] = 'labels' without accounting
+  // for setup-labels.yml having required no script at all before this
+  // release — every repo that installed it pre-1.5.1 would have been
+  // false-positive flagged "Broken install detected" the moment that map
+  // entry shipped, even though their actually-installed workflow requires
+  // nothing and works fine. Caught by code review before merge. Simulates a
+  // pre-1.5.1 install by copying only the workflow file, the way an old
+  // install genuinely would have it on disk.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.github', 'workflows', 'setup-labels.yml'),
+      '# pre-1.5.1 self-contained setup-labels.yml (no require(), no checkout step)'
+    );
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.doesNotMatch(output, /Broken install detected/);
+    assert.doesNotMatch(output, /labels\.js|labels\.tsv/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
 test('status reports installed when only the Claude Code skill is present', async () => {
   // Regression guard: the "is anything installed" checks used to ignore
   // skillInstalled entirely, so a repo with only the skill present (no
@@ -675,6 +732,13 @@ test('scripts/install.sh copies every entry in SCRIPTS, including labels.js, not
         `scripts/install.sh did not copy .github/scripts/${name}.js`
       );
     }
+    // labels.js is only a parser — labels.tsv (the actual data) must also
+    // be copied, or setup-labels.yml's require() MODULE_NOT_FOUNDs on the
+    // data file even with the parser present.
+    assert.ok(
+      fs.existsSync(path.join(dir, '.github', 'scripts', LABELS_TSV)),
+      `scripts/install.sh did not copy .github/scripts/${LABELS_TSV}`
+    );
   } finally {
     rm(dir);
   }

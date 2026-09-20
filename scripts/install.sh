@@ -117,6 +117,11 @@ SCRIPTS_COPIED=$COPIED
 copy_managed_files "package" ".json" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
 SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
 
+# 2d. Copy labels.tsv — the data file labels.js (just copied above) parses.
+# Counted together with the scripts above, same as package.json.
+copy_managed_files "labels" ".tsv" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
+SCRIPTS_COPIED=$((SCRIPTS_COPIED + COPIED))
+
 # 3. Optionally copy issue templates
 TEMPLATES_COPIED=0
 if [ "$WITH_TEMPLATES" = true ]; then
@@ -140,20 +145,22 @@ if [ "$WITH_TEMPLATES" = true ]; then
 fi
 
 # 4. Optionally create labels via gh CLI. Definitions live in
-# .github/scripts/labels.js — the single source of truth also read by
-# setup-labels.yml and src/install.js — so this reads that file via node
-# rather than keeping its own hardcoded copy in sync by hand.
+# .github/scripts/labels.tsv — the single source of truth also read by
+# setup-labels.yml and src/install.js — plain tab-separated text (not
+# JS/JSON) specifically so this can read it directly with `read`, without
+# needing node or any other interpreter as a dependency.
 LABELS_CREATED=0
 LABELS_SKIP_REASON=""
 if [ "$WITH_LABELS" = true ]; then
+  LABELS_TSV_FILE="${SCRIPTS_SRC}/labels.tsv"
   if [ "$DRY_RUN" = "true" ]; then
     LABELS_SKIP_REASON="Skipped in dry-run."
     echo "  [dry-run] Labels would be created (skipped)"
   elif ! command -v gh &>/dev/null; then
     LABELS_SKIP_REASON="gh CLI not installed. Install from https://cli.github.com/"
     echo "  Skipped labels: $LABELS_SKIP_REASON"
-  elif ! command -v node &>/dev/null; then
-    LABELS_SKIP_REASON="node not installed (required to read .github/scripts/labels.js)."
+  elif [ ! -f "$LABELS_TSV_FILE" ]; then
+    LABELS_SKIP_REASON="Missing ${LABELS_TSV_FILE}."
     echo "  Skipped labels: $LABELS_SKIP_REASON"
   elif [ ! -d "${TARGET_ABS}/.git" ]; then
     LABELS_SKIP_REASON="Target is not a git repository."
@@ -166,36 +173,22 @@ if [ "$WITH_LABELS" = true ]; then
       LABELS_SKIP_REASON="Target repo not on GitHub or no push access."
       echo "  Skipped labels: $LABELS_SKIP_REASON"
     else
-      # Tab-separated so a description can hold arbitrary punctuation. Read
-      # into a variable first (not piped straight into the while loop) so a
-      # node failure is caught explicitly instead of silently iterating zero
-      # labels.
-      if ! LABELS_TSV=$(LABELS_FILE="${SCRIPTS_SRC}/labels.js" node -e "
-        const { LABELS } = require(process.env.LABELS_FILE);
-        for (const [name, color, description] of LABELS) {
-          process.stdout.write([name, color, description || ''].join('\t') + '\n');
-        }
-      "); then
-        LABELS_SKIP_REASON="Failed to read label definitions from ${SCRIPTS_SRC}/labels.js"
-        echo "  Skipped labels: $LABELS_SKIP_REASON"
-      else
-        while IFS=$'\t' read -r name color desc; do
-          [ -z "$name" ] && continue
-          cmd=(gh label create "$name" --color "$color")
-          if [ -n "$desc" ]; then
-            cmd+=(--description "$desc")
-          fi
-          err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
-          if [ $? -eq 0 ]; then
-            echo "  Created label: $name"
-            LABELS_CREATED=$((LABELS_CREATED + 1))
-          elif echo "$err" | grep -qi "already exists"; then
-            echo "  Skipped (exists): $name"
-          else
-            echo "  Failed to create label '$name': $err"
-          fi
-        done <<< "$LABELS_TSV"
-      fi
+      while IFS=$'\t' read -r name color desc; do
+        [ -z "$name" ] && continue
+        cmd=(gh label create "$name" --color "$color")
+        if [ -n "$desc" ]; then
+          cmd+=(--description "$desc")
+        fi
+        err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
+        if [ $? -eq 0 ]; then
+          echo "  Created label: $name"
+          LABELS_CREATED=$((LABELS_CREATED + 1))
+        elif echo "$err" | grep -qi "already exists"; then
+          echo "  Skipped (exists): $name"
+        else
+          echo "  Failed to create label '$name': $err"
+        fi
+      done < "$LABELS_TSV_FILE"
     fi
   fi
 fi

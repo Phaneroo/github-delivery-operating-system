@@ -155,7 +155,7 @@ Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges 
 
 ## Required Labels
 
-Run **Actions → Setup Labels → Run workflow** once, or use `--with-labels` when installing (requires `gh` CLI; `scripts/install.sh --with-labels` additionally requires `node`, since label definitions are read from `.github/scripts/labels.js`).
+Run **Actions → Setup Labels → Run workflow** once, or use `--with-labels` when installing (requires `gh` CLI).
 
 | Label | Color |
 |-------|-------|

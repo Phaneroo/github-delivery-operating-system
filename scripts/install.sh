@@ -188,12 +188,29 @@ if [ "$WITH_LABELS" = true ]; then
         # `gh label create "   " --color ""`. Checks non-destructively (does
         # not overwrite $name) so a legitimate name is never mangled.
         [ -z "${name//[[:space:]]/}" ] && continue
+        # Strip a trailing \r (CRLF checkout — no .gitattributes commits this
+        # repo to LF beyond the pin on labels.tsv itself, and a general git
+        # clone on Windows with core.autocrlf=true would otherwise land one
+        # here). IFS=$'\t' only splits on tabs, so a \r from the line ending
+        # lands on whichever field `read` captures last (color on a
+        # 2-field line, desc on a 3-field one) — labels.js's `.trim()` is
+        # immune to this the same way it is to the whitespace-only case
+        # above, so this keeps both parsers of the shared file in sync.
+        color="${color%$'\r'}"
+        desc="${desc%$'\r'}"
         cmd=(gh label create "$name" --color "$color")
         if [ -n "$desc" ]; then
           cmd+=(--description "$desc")
         fi
-        err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1)
-        if [ $? -eq 0 ]; then
+        # `if err=$(...); then` (not a bare `err=$(...)` statement followed
+        # by a separate `if [ $? -eq 0 ]`) deliberately: under `set -e`, a
+        # failing command substitution used as a plain assignment statement
+        # aborts the whole script immediately — which for `gh label create`
+        # means the very first "already exists" (the normal case on any
+        # re-run) would kill the installer before any later label is even
+        # attempted, with no message. Guarding the assignment as an `if`
+        # condition is bash's documented exemption from that.
+        if err=$(cd "$TARGET_ABS" && "${cmd[@]}" 2>&1); then
           echo "  Created label: $name"
           LABELS_CREATED=$((LABELS_CREATED + 1))
         elif echo "$err" | grep -qi "already exists"; then

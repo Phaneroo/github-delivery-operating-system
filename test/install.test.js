@@ -19,6 +19,9 @@ const {
   SCRIPTS,
   SCRIPTS_PACKAGE_JSON,
   LABELS_TSV,
+  SETUP_LABELS_REQUIRES_LABELS_SINCE,
+  isVersionAtLeast,
+  requiredScriptByWorkflow,
   loadLabels,
 } = __test__;
 
@@ -660,6 +663,55 @@ test('status does not false-positive flag a pre-1.5.1 install (setup-labels.yml 
   }
 });
 
+test('status DOES flag a genuinely broken post-1.5.1 install (manifest confirms the current setup-labels.yml, labels.js missing)', async () => {
+  // The other half of the false-positive fix above: omitting
+  // 'setup-labels': 'labels' entirely would also silently blind status to a
+  // real break on any repo actually on 1.5.1+. requiredScriptByWorkflow()
+  // adds the entry back once the manifest confirms that.
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.github', 'workflows', 'setup-labels.yml'), '# 1.5.1+ setup-labels.yml');
+    writeManifest(dir, SETUP_LABELS_REQUIRES_LABELS_SINCE);
+    // Deliberately no .github/scripts/labels.js on disk.
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+
+    const output = lines.join('\n');
+    assert.match(output, /Broken install detected/);
+    assert.match(output, /setup-labels\.yml requires \.github\/scripts\/labels\.js, which is missing/);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('isVersionAtLeast compares major.minor.patch correctly', () => {
+  assert.equal(isVersionAtLeast('1.5.1', '1.5.1'), true, 'equal versions');
+  assert.equal(isVersionAtLeast('1.5.2', '1.5.1'), true, 'higher patch');
+  assert.equal(isVersionAtLeast('1.6.0', '1.5.1'), true, 'higher minor');
+  assert.equal(isVersionAtLeast('2.0.0', '1.5.1'), true, 'higher major');
+  assert.equal(isVersionAtLeast('1.5.0', '1.5.1'), false, 'lower patch');
+  assert.equal(isVersionAtLeast('1.4.9', '1.5.1'), false, 'lower minor despite higher patch');
+  assert.equal(isVersionAtLeast('0.9.9', '1.5.1'), false, 'lower major despite higher minor/patch');
+});
+
+test('requiredScriptByWorkflow only adds the setup-labels entry when the manifest confirms 1.5.1+', () => {
+  assert.equal(requiredScriptByWorkflow(null)['setup-labels'], undefined, 'no manifest at all');
+  assert.equal(requiredScriptByWorkflow({})['setup-labels'], undefined, 'manifest with no version field');
+  assert.equal(requiredScriptByWorkflow({ version: '1.5.0' })['setup-labels'], undefined, 'below the threshold');
+  assert.equal(requiredScriptByWorkflow({ version: '1.5.1' })['setup-labels'], 'labels', 'exactly at the threshold');
+  assert.equal(requiredScriptByWorkflow({ version: '2.0.0' })['setup-labels'], 'labels', 'above the threshold');
+  // The pre-existing three entries must never be affected by this.
+  assert.equal(requiredScriptByWorkflow(null)['auto-close-sprint'], 'auto-close-sprint');
+});
+
 test('status reports installed when only the Claude Code skill is present', async () => {
   // Regression guard: the "is anything installed" checks used to ignore
   // skillInstalled entirely, so a repo with only the skill present (no
@@ -741,6 +793,97 @@ test('scripts/install.sh copies every entry in SCRIPTS, including labels.js, not
     );
   } finally {
     rm(dir);
+  }
+});
+
+// A minimal `gh` stub on its own PATH dir, so scripts/install.sh --with-labels
+// can be exercised as a real subprocess without hitting the network or a real
+// GitHub repo. `behavior` is the body of the `gh label create` branch only —
+// auth status/repo view always succeed, everything else exits 0.
+function mkFakeGh(behavior) {
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-gh-'));
+  fs.writeFileSync(
+    path.join(binDir, 'gh'),
+    `#!/usr/bin/env bash\n` +
+      `if [ "$1" = "auth" ] && [ "$2" = "status" ]; then exit 0; fi\n` +
+      `if [ "$1" = "repo" ] && [ "$2" = "view" ]; then exit 0; fi\n` +
+      `if [ "$1" = "label" ] && [ "$2" = "create" ]; then\n${behavior}\nfi\n` +
+      `exit 0\n`,
+    { mode: 0o755 }
+  );
+  return binDir;
+}
+
+test('scripts/install.sh --with-labels does not abort the whole install when a label already exists', () => {
+  // Regression guard, found by code review: the label-creation loop used a
+  // bare `err=$(...)` assignment followed by a separate `if [ $? -eq 0 ]`.
+  // Under `set -e` (active at the top of this script), a failing command
+  // substitution used as a plain assignment statement aborts the entire
+  // script immediately — so the very first "already exists" (the normal
+  // case on any re-run, since labels created on a prior run still exist)
+  // would have killed the installer after creating only 1 of 15 labels,
+  // with no "Installation complete" footer and no error message explaining
+  // why. Empirically confirmed this exact bash behavior in isolation
+  // (`bash -c 'set -e; x=$(false); echo unreached'` never prints) before
+  // fixing it by guarding the assignment as an `if` condition instead.
+  const binDir = mkFakeGh(
+    `  echo "$3" >> "$GH_CALL_LOG"\n` +
+      `  if [ "$3" = "intake" ]; then echo "already exists" >&2; exit 1; fi\n` +
+      `  exit 0\n`
+  );
+  const logFile = path.join(binDir, 'calls.log');
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  const installShPath = path.join(__dirname, '..', 'scripts', 'install.sh');
+  try {
+    const output = execFileSync('bash', [installShPath, '--with-labels', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, GH_CALL_LOG: logFile },
+    });
+    assert.match(output, /Skipped \(exists\): intake/);
+    assert.match(output, /=== Installation complete ===/, 'script must reach its normal end, not abort early');
+    const attempted = fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean);
+    assert.equal(attempted.length, 15, `expected all 15 labels attempted, got: ${JSON.stringify(attempted)}`);
+  } finally {
+    rm(dir);
+    rm(binDir);
+  }
+});
+
+test('scripts/install.sh --with-labels is immune to CRLF line endings in labels.tsv', () => {
+  // Regression guard, found by code review: IFS=$'\t' only splits on tabs,
+  // so a CRLF-checked-out labels.tsv (e.g. a Windows clone with
+  // core.autocrlf=true and no .gitattributes pinning this repo to LF) would
+  // leave a trailing \r on whichever field `read` captures last — corrupting
+  // --color/--description — while labels.js's `.trim()` is immune, silently
+  // reintroducing a JS-vs-bash divergence in the exact file meant to
+  // eliminate that class of bug. Builds a throwaway copy of the real
+  // .github tree with labels.tsv's line endings swapped to CRLF, so this
+  // exercises the actual shipped script/data, not a hand-rolled fixture.
+  const binDir = mkFakeGh(`  echo "$*" >> "$GH_CALL_LOG"\n  exit 0\n`);
+  const logFile = path.join(binDir, 'calls.log');
+  const repoRoot = path.join(__dirname, '..');
+  const crlfRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'crlf-repo-'));
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  try {
+    fs.cpSync(path.join(repoRoot, '.github'), path.join(crlfRepo, '.github'), { recursive: true });
+    fs.cpSync(path.join(repoRoot, 'scripts'), path.join(crlfRepo, 'scripts'), { recursive: true });
+    const lf = fs.readFileSync(path.join(crlfRepo, '.github', 'scripts', LABELS_TSV), 'utf8');
+    fs.writeFileSync(path.join(crlfRepo, '.github', 'scripts', LABELS_TSV), lf.replace(/\n/g, '\r\n'));
+
+    execFileSync('bash', [path.join(crlfRepo, 'scripts', 'install.sh'), '--with-labels', dir], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, GH_CALL_LOG: logFile },
+    });
+
+    const calls = fs.readFileSync(logFile, 'utf8');
+    assert.doesNotMatch(calls, /\r/, `a gh invocation carried a raw \\r: ${JSON.stringify(calls)}`);
+    assert.match(calls, /--description Applied to a sprint's task-breakdown children/);
+  } finally {
+    rm(dir);
+    rm(binDir);
+    rm(crlfRepo);
   }
 });
 

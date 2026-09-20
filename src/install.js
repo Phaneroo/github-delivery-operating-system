@@ -45,20 +45,55 @@ const SCRIPTS_PACKAGE_JSON = 'package.json';
 // Which workflow requires which script, so `status` can flag a workflow
 // that's present but whose required script is missing (an install that will
 // fail with MODULE_NOT_FOUND the next time that workflow actually runs).
-// Deliberately does NOT include 'setup-labels': 'labels' — unlike the three
-// entries below, which have require()'d their script since the workflow was
-// first introduced, setup-labels.yml was self-contained (no require() at
-// all) before this file existed. A static name -> required-script mapping
-// can't distinguish that from a genuinely broken install: every repo that
-// installed setup-labels.yml before this check existed would otherwise be
-// false-positive flagged as broken the moment this map gained that entry,
-// even though their actually-installed workflow requires nothing and works
-// fine. Caught by code review on the PR that introduced labels.js.
+// Deliberately does NOT include 'setup-labels': 'labels' here — unlike the
+// three entries below, which have require()'d their script since the
+// workflow was first introduced, setup-labels.yml was self-contained (no
+// require() at all) before 1.5.1. A flat name -> required-script mapping
+// can't express "this workflow started requiring a script partway through
+// its own history": every repo that installed setup-labels.yml before 1.5.1
+// would be false-positive flagged as broken the moment this map
+// unconditionally gained that entry. See requiredScriptByWorkflow() below,
+// which adds it back in only for repos the manifest confirms are actually
+// on 1.5.1+ (so a genuinely broken post-1.5.1 install is still caught).
 const REQUIRED_SCRIPT_BY_WORKFLOW = {
   'authorize-deployment': 'authorize-deployment-verdict',
   'auto-close-sprint': 'auto-close-sprint',
   'sprint-child-creator': 'sprint-child-creator',
 };
+
+// The first published version whose setup-labels.yml require()s labels.js
+// (see the comment on REQUIRED_SCRIPT_BY_WORKFLOW above).
+const SETUP_LABELS_REQUIRES_LABELS_SINCE = '1.5.1';
+
+// Bare major.minor.patch comparison — good enough for comparing against the
+// manifest's recorded version, which this package always writes in that
+// exact shape (see writeManifest/runInstall). Not a general semver parser
+// (no pre-release/build-metadata handling) since nothing here needs one.
+function isVersionAtLeast(version, minVersion) {
+  const toParts = (v) => (v || '').split('.').map((n) => parseInt(n, 10) || 0);
+  const [vMajor, vMinor, vPatch] = toParts(version);
+  const [mMajor, mMinor, mPatch] = toParts(minVersion);
+  if (vMajor !== mMajor) return vMajor > mMajor;
+  if (vMinor !== mMinor) return vMinor > mMinor;
+  return vPatch >= mPatch;
+}
+
+// REQUIRED_SCRIPT_BY_WORKFLOW plus 'setup-labels': 'labels', but only when
+// the manifest confirms this specific repo's files are actually on 1.5.1+
+// — otherwise a pre-1.5.1 install (whose setup-labels.yml genuinely
+// requires nothing) would be false-positive flagged. An unreadable/missing
+// manifest (pre-manifest install, or version tracking never advanced — see
+// the cleanInstall check in runInstall) can't prove either way, so it's
+// treated as "not confirmed 1.5.1+" — the same conservative default as
+// omitting the entry entirely.
+function requiredScriptByWorkflow(manifest) {
+  const setupLabelsOnCurrentFormat =
+    manifest && manifest.version && isVersionAtLeast(manifest.version, SETUP_LABELS_REQUIRES_LABELS_SINCE);
+  return {
+    ...REQUIRED_SCRIPT_BY_WORKFLOW,
+    ...(setupLabelsOnCurrentFormat ? { 'setup-labels': 'labels' } : {}),
+  };
+}
 
 // Label definitions (name/color/description) live in .github/scripts/labels.tsv
 // — the single source of truth also read by setup-labels.yml (once installed
@@ -536,15 +571,26 @@ async function runStatus(options) {
   );
   const skillInstalled = fs.existsSync(skillPath(targetAbs));
 
+  // Read once, up front, so both this and the broken-install checks below
+  // can use it — requiredScriptByWorkflow() needs it to know whether this
+  // repo's setup-labels.yml is confirmed to be the 1.5.1+ require()-based
+  // version (see its own comment above).
+  const manifest = readManifest(targetAbs);
+  const requiredScriptFor = requiredScriptByWorkflow(manifest);
+
   // A workflow can be present while the script it require()s at runtime is
   // not — e.g. an install from before this check existed, or a manual
   // partial copy. That workflow will fail (MODULE_NOT_FOUND) the next time
   // it actually runs, silently, since nothing here executes the workflow
   // itself to notice.
   const brokenWorkflows = installedWorkflows.filter((wf) => {
-    const requiredScript = REQUIRED_SCRIPT_BY_WORKFLOW[wf];
+    const requiredScript = requiredScriptFor[wf];
     if (!requiredScript) return false;
-    return !fs.existsSync(path.join(targetAbs, '.github', 'scripts', `${requiredScript}.js`));
+    const scriptMissing = !fs.existsSync(path.join(targetAbs, '.github', 'scripts', `${requiredScript}.js`));
+    // labels.js also needs its sibling data file — see LABELS_TSV.
+    const dataFileMissing =
+      requiredScript === 'labels' && !fs.existsSync(path.join(targetAbs, '.github', 'scripts', LABELS_TSV));
+    return scriptMissing || dataFileMissing;
   });
 
   // A script can be present while the CommonJS-pinning package.json (see
@@ -555,13 +601,12 @@ async function runStatus(options) {
   // the consumer repo's package.json has "type": "module". Flagged
   // separately from brokenWorkflows since it's silent until that condition
   // is hit, not an immediate break.
-  const scriptsRequiringPkgJson = installedWorkflows.some((wf) => REQUIRED_SCRIPT_BY_WORKFLOW[wf]);
+  const scriptsRequiringPkgJson = installedWorkflows.some((wf) => requiredScriptFor[wf]);
   const scriptsPkgJsonMissing =
     scriptsRequiringPkgJson &&
     !fs.existsSync(path.join(targetAbs, '.github', 'scripts', SCRIPTS_PACKAGE_JSON));
 
   if (installedWorkflows.length > 0 || installedTemplates.length > 0 || skillInstalled) {
-    const manifest = readManifest(targetAbs);
     if (manifest && manifest.version) {
       const installedOn = manifest.installedAt ? ` (installed ${manifest.installedAt.slice(0, 10)})` : '';
       console.log(`Installed version: ${manifest.version}${installedOn}`);
@@ -599,7 +644,7 @@ async function runStatus(options) {
   if (brokenWorkflows.length > 0) {
     console.log('⚠️  Broken install detected:');
     brokenWorkflows.forEach((wf) => {
-      console.log(`  ${wf}.yml requires .github/scripts/${REQUIRED_SCRIPT_BY_WORKFLOW[wf]}.js, which is missing.`);
+      console.log(`  ${wf}.yml requires .github/scripts/${requiredScriptFor[wf]}.js, which is missing.`);
     });
     console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
     console.log(
@@ -825,6 +870,9 @@ module.exports = {
     SCRIPTS_PACKAGE_JSON,
     LABELS_TSV,
     REQUIRED_SCRIPT_BY_WORKFLOW,
+    SETUP_LABELS_REQUIRES_LABELS_SINCE,
+    isVersionAtLeast,
+    requiredScriptByWorkflow,
     loadLabels,
   },
 };

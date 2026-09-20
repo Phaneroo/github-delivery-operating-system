@@ -655,6 +655,31 @@ test('the CLI\'s --overwrite still works as a hidden alias for --update (pre-1.5
   }
 });
 
+test('scripts/install.sh copies every entry in SCRIPTS, including labels.js, not just the JS installer\'s copy', () => {
+  // Regression guard: src/install.js's SCRIPTS array and scripts/install.sh's
+  // bash SCRIPTS variable are two independent lists with no compiler tie
+  // between them (see #20's own lesson). An earlier draft of this PR updated
+  // src/install.js to add 'labels' but not the bash script, which would have
+  // shipped a setup-labels.yml that MODULE_NOT_FOUNDs on every consumer who
+  // installs via scripts/install.sh instead of npx — caught by code review,
+  // not by any existing test, since no test exercised scripts/install.sh at
+  // all before this one. Asserts against SCRIPTS itself (not a second
+  // hardcoded list in this test) so it can't silently drift the same way.
+  const dir = mkTmpRepo();
+  const installShPath = path.join(__dirname, '..', 'scripts', 'install.sh');
+  try {
+    execFileSync('bash', [installShPath, '--with-templates', dir], { encoding: 'utf8' });
+    for (const name of SCRIPTS) {
+      assert.ok(
+        fs.existsSync(path.join(dir, '.github', 'scripts', `${name}.js`)),
+        `scripts/install.sh did not copy .github/scripts/${name}.js`
+      );
+    }
+  } finally {
+    rm(dir);
+  }
+});
+
 test('status on an empty repo reports not installed, without throwing', async () => {
   const dir = mkTmpRepo();
   const lines = [];

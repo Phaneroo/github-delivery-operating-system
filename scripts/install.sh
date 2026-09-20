@@ -106,7 +106,7 @@ WORKFLOWS_COPIED=$COPIED
 
 # 2b. Copy the scripts some workflows require() at runtime — required, not
 # optional, so (like workflows) this always runs.
-SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator"
+SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator labels"
 copy_managed_files "$SCRIPTS" ".js" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
 SCRIPTS_COPIED=$COPIED
 

@@ -173,10 +173,20 @@ if [ "$WITH_LABELS" = true ]; then
         "declined:B60205"
         "risk:B60205"
       )
+      # No associative arrays here (avoid bash 4+ `declare -A`; stock macOS
+      # ships bash 3.2, and this installer runs via `env bash`).
       for entry in "${LABELS[@]}"; do
         name="${entry%%:*}"
         color="${entry##*:}"
-        err=$(cd "$TARGET_ABS" && gh label create "$name" --color "$color" 2>&1)
+        desc=""
+        if [ "$name" = "sprint-active" ]; then
+          desc="Part of a sprint's task breakdown — label doesn't change when the sprint closes"
+        fi
+        if [ -n "$desc" ]; then
+          err=$(cd "$TARGET_ABS" && gh label create "$name" --color "$color" --description "$desc" 2>&1)
+        else
+          err=$(cd "$TARGET_ABS" && gh label create "$name" --color "$color" 2>&1)
+        fi
         if [ $? -eq 0 ]; then
           echo "  Created label: $name"
           LABELS_CREATED=$((LABELS_CREATED + 1))

@@ -26,7 +26,7 @@ jobs:
               { name: 'intake', color: '0E8A16' },
               { name: 'bug', color: 'D93F0B' },
               { name: 'sprint', color: '1D76DB' },
-              { name: 'sprint-active', color: '1D76DB' },
+              { name: 'sprint-active', color: '1D76DB', description: "Part of a sprint's task breakdown — label doesn't change when the sprint closes" },
               { name: 'planning', color: '5319E7' },
               { name: 'sprint-planning', color: '5319E7' },
               { name: 'task', color: '7057FF' },
@@ -40,13 +40,14 @@ jobs:
               { name: 'risk', color: 'B60205' },
             ];
             let created = 0;
-            for (const { name, color } of labels) {
+            for (const { name, color, description } of labels) {
               try {
                 await github.rest.issues.createLabel({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   name,
                   color,
+                  ...(description ? { description } : {}),
                 });
                 console.log(`Created: ${name}`);
                 created++;

@@ -712,7 +712,7 @@ async function runStatus(options) {
 
   if (installedWorkflows.length === 0 && installedTemplates.length === 0 && !skillInstalled) {
     console.log('Delivery OS is not installed in this repository.');
-    console.log('Run: npx github-delivery-os install --with-templates .');
+    console.log('Run: npx github-delivery-os install --with-templates --with-labels --with-skill .');
   } else {
     console.log(
       `Summary: ${installedWorkflows.length}/${WORKFLOWS.length} workflows, ${installedTemplates.length}/${TEMPLATES.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`

@@ -65,7 +65,7 @@
         <p>Add Delivery OS to any repository. No clone, no config — just run:</p>
         <div class="install-block">
           <div class="install-label">From your repo root</div>
-          <code>npx github-delivery-os install --with-templates .</code>
+          <code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code>
         </div>
         <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status, autonomous task tracking (identify, file, update, and close issues as work progresses), and turning a spec or feature description into a full phase-and-task breakdown — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
 
@@ -83,11 +83,23 @@
               <tr><td><code>install --with-templates --with-skill .</code></td><td>You'll operate this repo's Delivery OS from Claude Code</td></tr>
               <tr><td><code>install --with-templates --with-labels --with-skill .</code></td><td>Everything at once, in one command</td></tr>
               <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>
-              <tr><td><code>install --overwrite …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
+              <tr><td><code>install --update …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
               <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>
               <tr><td><code>uninstall --with-templates --with-skill .</code></td><td>Remove everything, including templates and the skill</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <h3 id="update">Updating an existing install</h3>
+        <p>Check what's installed and whether a newer version is available:</p>
+        <div class="install-block">
+          <div class="install-label">Check status</div>
+          <code>npx github-delivery-os@latest status .</code>
+        </div>
+        <p>Then pull the latest workflows, templates, labels, and skill. <code>--update</code> replaces files that are already installed; without it, existing files are skipped:</p>
+        <div class="install-block">
+          <div class="install-label">Update to latest</div>
+          <code>npx github-delivery-os@latest install --with-templates --with-labels --with-skill --update .</code>
         </div>
       </section>
 

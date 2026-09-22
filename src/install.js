@@ -537,7 +537,21 @@ function runInstall(options) {
 // suggesting the same command forever. Build the hint from what's actually
 // on disk so it's never wrong.
 function buildUpdateCommand({ hasTemplates, hasSkill }) {
-  const flags = [hasTemplates ? '--with-templates' : null, hasSkill ? '--with-skill' : null, '--update']
+  // --with-labels is unconditional, unlike --with-templates/--with-skill —
+  // those add a whole category of files a repo may have deliberately never
+  // wanted, but label sync is idempotent (skips anything that already
+  // exists, only creates what's missing) and this is the one command
+  // status/broken-install hints point people at to "catch up" fully. Leaving
+  // it out meant the suggested command could complete without error while
+  // silently missing a label a newer release added (delivery-ops-filed, in
+  // 1.7.0) — the repo would show as "up to date" with no indication
+  // anything was still missing.
+  const flags = [
+    hasTemplates ? '--with-templates' : null,
+    hasSkill ? '--with-skill' : null,
+    '--with-labels',
+    '--update',
+  ]
     .filter(Boolean)
     .join(' ');
   return `npx github-delivery-os@latest install ${flags} .`;

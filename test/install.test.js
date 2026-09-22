@@ -354,22 +354,22 @@ test('readLabels throws (rather than returning something silently wrong) when la
   }
 });
 
-test('buildUpdateCommand includes --with-templates/--with-skill only when those are actually installed', () => {
+test('buildUpdateCommand includes --with-templates/--with-skill only when those are actually installed, but always includes --with-labels', () => {
   assert.equal(
     buildUpdateCommand({ hasTemplates: false, hasSkill: false }),
-    'npx github-delivery-os@latest install --update .'
+    'npx github-delivery-os@latest install --with-labels --update .'
   );
   assert.equal(
     buildUpdateCommand({ hasTemplates: true, hasSkill: false }),
-    'npx github-delivery-os@latest install --with-templates --update .'
+    'npx github-delivery-os@latest install --with-templates --with-labels --update .'
   );
   assert.equal(
     buildUpdateCommand({ hasTemplates: false, hasSkill: true }),
-    'npx github-delivery-os@latest install --with-skill --update .'
+    'npx github-delivery-os@latest install --with-skill --with-labels --update .'
   );
   assert.equal(
     buildUpdateCommand({ hasTemplates: true, hasSkill: true }),
-    'npx github-delivery-os@latest install --with-templates --with-skill --update .'
+    'npx github-delivery-os@latest install --with-templates --with-skill --with-labels --update .'
   );
 });
 
@@ -396,7 +396,10 @@ test('status\'s "unknown version" hint includes --with-templates/--with-skill wh
     // present-but-untouched — runInstall's cleanInstall check then refuses
     // to record a version at all, so status loops on the same broken
     // suggestion forever. The hint must name both flags here.
-    assert.match(output, /Run: npx github-delivery-os@latest install --with-templates --with-skill --update \./);
+    assert.match(
+      output,
+      /Run: npx github-delivery-os@latest install --with-templates --with-skill --with-labels --update \./
+    );
 
     // Prove the suggested command is actually a clean install, not just
     // right-looking text.
@@ -578,7 +581,7 @@ test('status detects a workflow whose required script is missing', async () => {
     // templates are installed, same bug as the version hints (see
     // buildUpdateCommand test) — a bare --update here would leave
     // templates present-but-untouched and never advance the recorded version.
-    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --update \./);
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --with-labels --update \./);
   } finally {
     console.log = origLog;
     rm(dir);
@@ -601,7 +604,7 @@ test('status flags a missing scripts/package.json as a broken install', async ()
 
     const output = lines.join('\n');
     assert.match(output, new RegExp(`\\.github/scripts/${SCRIPTS_PACKAGE_JSON} is missing`));
-    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --update \./);
+    assert.match(output, /Fix: npx github-delivery-os@latest install --with-templates --with-labels --update \./);
   } finally {
     console.log = origLog;
     rm(dir);

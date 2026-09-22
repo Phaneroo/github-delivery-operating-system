@@ -10,7 +10,7 @@ This guide explains how to install the Delivery Operating System into your repos
 |-----------|---------|--------------|
 | **New repo** (no Delivery OS yet) | `./scripts/install.sh --with-templates /path/to/repo` | Installs all workflows and templates |
 | **Repo with existing workflows/templates** (yours + others) | `./scripts/install.sh --with-templates /path/to/repo` | Adds only *missing* Delivery OS files. **Your existing files are NOT touched.** |
-| **Update Delivery OS** (get latest fixes) | `./scripts/install.sh --with-templates --update /path/to/repo` | **Replaces** Delivery OS workflows/templates. Your *other* workflows (different names) stay intact. |
+| **Update Delivery OS** (get latest fixes) | `./scripts/install.sh --with-templates --with-labels --update /path/to/repo` | **Replaces** Delivery OS workflows/templates and syncs labels (creates any new ones a release added — safe to re-run, existing labels are left alone). Your *other* workflows (different names) stay intact. |
 | **Preview before installing** | `./scripts/install.sh --with-templates --dry-run /path/to/repo` | Shows what would be copied. No files changed. |
 
 **Warning:** `--update` replaces only Delivery OS files (same names). It does **not** delete your other workflows or templates. Use `--dry-run` first if unsure.
@@ -39,8 +39,8 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 # Copy workflows + templates + create labels via gh CLI
 ./scripts/install.sh --with-templates --with-labels /path/to/your-repo
 
-# Update existing install (replace workflows and templates)
-./scripts/install.sh --with-templates --update /path/to/your-repo
+# Update existing install (replace workflows and templates, sync labels)
+./scripts/install.sh --with-templates --with-labels --update /path/to/your-repo
 
 # Preview what would happen (no files changed)
 ./scripts/install.sh --with-templates --dry-run /path/to/your-repo

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-09-22
+
+### Fixed
+
+- **`status`'s not-installed hint was missing `--with-labels`/`--with-skill`**: when a repo had no Delivery OS install at all, the suggested command was `install --with-templates .`, which — unlike the already-fixed `buildUpdateCommand()` hint for partial installs (1.7.1) — completed without error but left labels and the `delivery-ops` skill uninstalled. Now suggests the full recommended install: `install --with-templates --with-labels --with-skill .`.
+
 ## [1.7.1] - 2026-09-22
 
 ### Fixed

@@ -115,13 +115,13 @@ mkdir -p "${TARGET_ABS}/.github/ISSUE_TEMPLATE"
 mkdir -p "${TARGET_ABS}/.github/scripts"
 
 # 2. Copy workflows
-WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels"
+WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels auto-qa-request"
 copy_managed_files "$WORKFLOWS" ".yml" "$WORKFLOWS_SRC" "${TARGET_ABS}/.github/workflows" ".github/workflows"
 WORKFLOWS_COPIED=$COPIED
 
 # 2b. Copy the scripts some workflows require() at runtime — required, not
 # optional, so (like workflows) this always runs.
-SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator labels"
+SCRIPTS="authorize-deployment-verdict auto-close-sprint sprint-child-creator auto-qa-request labels"
 copy_managed_files "$SCRIPTS" ".js" "$SCRIPTS_SRC" "${TARGET_ABS}/.github/scripts" ".github/scripts"
 SCRIPTS_COPIED=$COPIED
 

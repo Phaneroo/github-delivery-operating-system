@@ -302,7 +302,7 @@ test('status (checkUpdates: false) reports installed workflows without network a
 
     const output = lines.join('\n');
     assert.match(output, /Installed version:/);
-    assert.match(output, new RegExp(`7\\/${WORKFLOWS.length} workflows`));
+    assert.match(output, new RegExp(`${WORKFLOWS.length}\\/${WORKFLOWS.length} workflows`));
     assert.doesNotMatch(output, /Update available|Up to date|Could not check npm/);
   } finally {
     console.log = origLog;

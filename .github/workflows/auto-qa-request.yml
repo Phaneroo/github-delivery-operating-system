@@ -1,0 +1,140 @@
+name: Auto QA Request
+
+# Safety-net tracking, not a gate: files a QA Request whenever work reaches
+# `main`, whether or not it went through a PR, and whether or not it was
+# linked to an existing issue. Nothing is blocked — see docs/architecture.md.
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  file-qa-request:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.draft == false) || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+      contents: read # needed for actions/checkout, so this workflow's script can be required from the repo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: File QA request (and a backing Task, if nothing already tracks this work)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Pure parsing/body-building logic lives in a real, unit-tested
+            // module (see .github/scripts/auto-qa-request.js and
+            // test/auto-qa-request.test.js) rather than inline here, so it
+            // isn't only verified by hand whenever it changes.
+            const {
+              extractLinkedIssueNumbers,
+              extractAcceptanceCriteria,
+              parseMergedPrNumber,
+              buildAutoTaskBody,
+              buildQaRequestBody,
+              qaRequestAlreadyExists,
+            } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-qa-request.js`);
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            let prNumber, prTitle, prUrl, prBody, branch, author, filesChanged, viaDirectPush, originMarker;
+
+            if (context.eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              prNumber = pr.number;
+              prTitle = pr.title;
+              prUrl = pr.html_url;
+              prBody = pr.body || '';
+              branch = pr.head.ref;
+              author = pr.user.login;
+              viaDirectPush = false;
+              originMarker = `PR #${prNumber}`;
+
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner, repo, pull_number: prNumber, per_page: 100
+              });
+              filesChanged = files.map((f) => f.filename);
+            } else {
+              const headCommit = context.payload.head_commit;
+              const message = headCommit ? headCommit.message : '';
+
+              // A push to main from merging (or squash-merging) a PR is
+              // already covered by the pull_request event above — skip it,
+              // otherwise every ordinary merge would also look like an
+              // untracked direct push and file a duplicate Task + QA Request.
+              // (Rebase-merge commits carry no reliable marker and can't be
+              // detected this way; see parseMergedPrNumber's doc comment.)
+              if (parseMergedPrNumber(message) !== null) {
+                console.log('Push is a PR merge already handled by the pull_request event — skipping.');
+                return;
+              }
+
+              prNumber = null;
+              prTitle = (message.split('\n')[0] || '').trim() || `Direct push to main (${context.sha.slice(0, 7)})`;
+              prUrl = '';
+              prBody = '';
+              branch = 'main';
+              author = headCommit && headCommit.author ? (headCommit.author.username || headCommit.author.name) : null;
+              filesChanged = [];
+              viaDirectPush = true;
+              originMarker = `Direct push #${context.sha}`;
+            }
+
+            // Idempotency: don't file a second QA Request for the same PR/push.
+            const openQaRequests = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'qa-request', per_page: 100
+            });
+            if (qaRequestAlreadyExists(openQaRequests, originMarker)) {
+              console.log(`QA Request already filed for ${originMarker} — skipping.`);
+              return;
+            }
+
+            // Find (or file) a Task issue this work is actually tracked under.
+            const linkedIssues = extractLinkedIssueNumbers(prBody);
+            let relatedIssueNumber = linkedIssues[0] || null;
+            let acceptanceCriteria = null;
+
+            if (relatedIssueNumber) {
+              try {
+                const linked = await github.rest.issues.get({ owner, repo, issue_number: relatedIssueNumber });
+                acceptanceCriteria = extractAcceptanceCriteria(linked.data.body || '');
+              } catch (err) {
+                console.log(`Linked issue #${relatedIssueNumber} not found (${err.message}) — treating as untracked.`);
+                relatedIssueNumber = null;
+              }
+            }
+
+            if (!relatedIssueNumber) {
+              const taskBody = buildAutoTaskBody({ number: prNumber, title: prTitle, url: prUrl, author, viaDirectPush });
+              const created = await github.rest.issues.create({
+                owner, repo,
+                title: `TASK - ${prTitle}`.slice(0, 250),
+                body: taskBody,
+                labels: ['task']
+              });
+              relatedIssueNumber = created.data.number;
+              console.log(`No linked issue found — filed Task #${relatedIssueNumber}.`);
+            }
+
+            const qaBody = buildQaRequestBody({
+              relatedIssueNumber, prNumber, prTitle, prUrl, branch, filesChanged, acceptanceCriteria, originMarker
+            });
+
+            const qaIssue = await github.rest.issues.create({
+              owner, repo,
+              title: `QA REQUEST - ${prTitle}`.slice(0, 250),
+              body: qaBody,
+              labels: ['qa-request']
+            });
+
+            console.log(`Filed QA Request #${qaIssue.data.number} for ${originMarker} (related: #${relatedIssueNumber}).`);

@@ -21,7 +21,15 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI, `--with-
 | **Sprint child creation** | One issue per feature line, automatic burn-down, auto-close at 100% |
 | **Dual approval gates** | Release approver + QA sign-off required before deploy |
 | **Auto-assign QA & Telegram alerts** | QA-labeled issues get assigned automatically; optional alerts for bugs, QA, sprints, releases |
-| **Claude Code skill** (`--with-skill`) | Operate it all in plain language — create/comment/check status, autonomous task tracking, and turning a spec into a full phase-and-task breakdown |
+| **Claude Code skill** (`--with-skill`) | Operate it all in plain language — see below |
+
+The Claude Code skill (`.claude/skills/delivery-ops/SKILL.md`) can:
+- **Create issues that trigger real automation** — sprint planning, production release, QA request, and bug issues shaped exactly as the installed workflows expect, not just plain issues
+- **Comment as an approver** — release/QA sign-off in the phrasing `authorize-deployment` actually recognizes
+- **Check status** — labels, latest comments, sprint burn-down
+- **Run autonomous task tracking** — notice tasks/bugs while working in a session, file them, group them into phases via sprints, maintain a roadmap issue, and update/close them as work progresses
+- **Turn a spec into a full breakdown** — an SRS/PRD or a plain-language feature description becomes real phase (sprint) and task issues, not just a document
+- **Run a cleanup sweep** — finds stale/orphaned/inconsistent issues and roadmap drift, always confirmed before anything is touched
 
 Full workflow table, quick start, and Claude Code walkthroughs are on the [landing page](https://phaneroo.github.io/github-delivery-operating-system/).
 

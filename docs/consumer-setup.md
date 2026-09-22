@@ -102,10 +102,11 @@ The manifest is only written/updated when the files it describes are actually cu
 | `notify-release-approver.yml` | Pings release approver when a production release issue is opened |
 | `authorize-deployment.yml` | Dual approval (release approver + QA) before deployment |
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
+| `auto-qa-request.yml` | Files a QA Request (and a backing Task, if none is linked) whenever a PR opens or a commit lands directly on `main` — a safety net, not a gate |
 | `telegram-issues.yml` | Sends Telegram alerts for bugs, QA, sprints, releases, PR merges |
 | `setup-labels.yml` | One-time workflow to create all required labels |
 
-With `--with-skill`, also: `.claude/skills/delivery-ops/SKILL.md` — a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code (creating sprint/release/QA/bug/task issues in the shape these workflows parse, commenting as an approver with the right keyword conventions, checking status, running autonomous task tracking — identifying and filing tasks/bugs, grouping them into phases via sprints, maintaining a roadmap issue, and updating/closing issues as work progresses — and turning a spec/SRS/feature description into a full phase-and-task breakdown filed as real issues). Optional — most repos aren't using Claude Code, so this isn't written unless asked for.
+With `--with-skill`, also: `.claude/skills/delivery-ops/SKILL.md` — a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code (creating sprint/release/QA/bug/task issues in the shape these workflows parse, commenting as an approver with the right keyword conventions, checking status, running autonomous task tracking — identifying and filing tasks/bugs, grouping them into phases via sprints, maintaining a roadmap issue, and updating/closing issues as work progresses — turning a spec/SRS/feature description into a full phase-and-task breakdown filed as real issues, and running a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything). Optional — most repos aren't using Claude Code, so this isn't written unless asked for.
 
 ---
 
@@ -202,7 +203,7 @@ npx github-delivery-os uninstall --with-skill .       # Also remove the delivery
 npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
 ```
 
-This removes the seven workflow files, optionally the issue templates and the Claude Code skill, and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
+This removes the eight workflow files, optionally the issue templates and the Claude Code skill, and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
 
 **Manual alternative** — delete these files from `.github/workflows/`:
 - `sprint-child-creator.yml`
@@ -210,6 +211,7 @@ This removes the seven workflow files, optionally the issue templates and the Cl
 - `notify-release-approver.yml`
 - `authorize-deployment.yml`
 - `auto-assign-qa.yml`
+- `auto-qa-request.yml`
 - `telegram-issues.yml`
 - `setup-labels.yml`
 

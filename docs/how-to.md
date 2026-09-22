@@ -146,6 +146,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
    - `notify-release-approver.yml`
    - `authorize-deployment.yml`
    - `auto-assign-qa.yml`
+   - `auto-qa-request.yml`
    - `telegram-issues.yml`
    - `setup-labels.yml`
 2. Optionally remove templates from `.github/ISSUE_TEMPLATE/`

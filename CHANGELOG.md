@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.2] - 2026-09-20
+## [1.6.0] - 2026-09-22
+
+### Added
+
+- **`auto-qa-request` workflow**: files a `QA REQUEST -` issue whenever a PR opens (or leaves draft) or a commit lands directly on `main` — a safety net so a feature can't reach `main` without a QA Request existing for it, whether or not a dev remembered to open one, and whether or not the work went through a PR at all. It's a safety net, not a gate: nothing is blocked. If the PR body references a tracked issue via GitHub's closing keywords (`Closes #N`, `Fixes #N`, etc.), the QA Request links to it and pulls its `### Acceptance Criteria` section through; otherwise a `TASK -` issue is auto-filed first (marked as untracked) and the QA Request links to that instead. Skips push events that are just a PR merge (default merge-commit or squash-commit message shape) landing on `main`, so a normal merge doesn't file a duplicate — this can't detect a rebase-merge the same way, since those carry no reliable marker in the resulting commits. Idempotent per PR/push via a marker line in the QA Request body. New pure logic lives in `.github/scripts/auto-qa-request.js`, unit tested in `test/auto-qa-request.test.js`, and — like every other workflow here — has to be explicitly registered in `src/install.js`'s `WORKFLOWS`/`SCRIPTS` arrays, `scripts/install.sh`'s mirrored lists, and this package's own `files` array to actually reach a consumer repo; all three were updated.
+- **Cleanup sweep: "Untouched QA Requests" check**: the `delivery-ops` skill's cleanup sweep now also flags `qa-request` issues still `QA Outcome: Pending` with no recent activity — closes the gap the workflow above can't close on its own (it guarantees a QA Request gets filed, not that anyone acted on it). Flag-only, same reasoning as the existing "Stale Tasks" check.
 
 ### Changed
 

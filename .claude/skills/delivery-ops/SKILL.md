@@ -1,6 +1,6 @@
 ---
 name: delivery-ops
-description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses), and turn a spec (SRS/PRD) or a plain-language feature description into a full phase-and-task breakdown filed as real issues. Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, break a spec/SRS/feature into phases and tasks, or demo/test Delivery OS against a given repo.
+description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses), turn a spec (SRS/PRD) or a plain-language feature description into a full phase-and-task breakdown filed as real issues, and run a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything. Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, break a spec/SRS/feature into phases and tasks, clean up or audit stale/old issues, or demo/test Delivery OS against a given repo.
 ---
 
 # Operate Delivery OS
@@ -246,3 +246,19 @@ When there's no issue number in hand yet:
 - **Active sprints:** `gh issue list --repo <owner>/<repo> --label sprint --state open` (title contains `SPRINT -`)
 - **Open QA requests:** `gh issue list --repo <owner>/<repo> --label qa-request --state open`
 - **A sprint's own children:** `gh issue list --repo <owner>/<repo> --label sprint-child --search "\"Parent Sprint: #<N>\" in:body"` — the exact-phrase quotes matter, otherwise the search matches "Parent", "Sprint", and the number as separate free-text terms instead of the literal phrase. On a repo installed before 1.5.0 (or one that hasn't run the `gh label edit` migration — see `docs/consumer-setup.md`), use `--label sprint-active` instead, or drop `--label` entirely and rely on the body search alone if you're not sure which name applies.
+
+## Cleanup sweep
+
+Finds issues that are stale, orphaned, or inconsistent with the state Delivery OS automation implies — mitigates the "Known limitation" above (drift from things closed/merged outside a session) rather than solving it. Uses nothing but `gh issue list`/`gh issue edit`/`gh issue close` — no new tooling.
+
+**Always confirm the full proposed list before touching anything.** This flips the "confirm only when unsure" default that governs the rest of autonomous tracking — everywhere else, a false negative (missing something) is the main risk; here, a false positive (closing or relabeling something a human is still deliberately tracking) is quietly destructive and hard to notice after the fact. Present findings grouped by check, with the issue number/title/why-it-was-flagged for each, and let the user pick which buckets to act on — don't offer a single "close everything" action.
+
+What to check:
+- **Orphaned placeholder sprint children** — bare children (title/body match `sprint-child-creator`'s one-line output, or the literal `See linked Task issues for this phase's breakdown` placeholder from the spec-breakdown recipe) still open after real Task issues clearly exist under the same `Parent Sprint: #N`.
+- **Stale Tasks** — `Backlog`/`In Progress` with no comment or edit in a long time (`gh issue list --repo <owner>/<repo> --label task --state open --json number,title,updatedAt,body`, filter on `updatedAt`). Flag only — never auto-close these, since "no activity" usually means deprioritized, not dead.
+- **Inconsistent sprint state** — a sprint issue whose `## 🚦 Sprint Status` shows 100% but is still open (auto-close should have fired and didn't), or a sprint that's closed while one of its children (searched via `Parent Sprint: #N`) is still open.
+- **Demo/test debris** — open issues whose title matches obvious throwaway patterns (`demo`, `test`, `something to show`) left over from a walkthrough session, past the session that created them.
+- **Silent approvals** — Production Release issues with `Deployment Authorized: No` and no approver comment in a long time — nobody ever acted on the notification.
+- **Roadmap drift** — the `ROADMAP -` issue's phase list vs. the live `gh issue list --label sprint` state (a phase marked in-progress that's actually closed, or a sprint that exists but isn't listed at all). This one gets *reconciled* (roadmap body rewritten to match reality) rather than closed.
+
+Run this on request ("clean this up", "audit open issues") or when picking up a repo cold after a gap — not on every session automatically.

@@ -24,6 +24,7 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | `notify-release-approver` | `issues.opened` (label `production`) | Ping release approver |
 | `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy` |
 | `auto-assign-qa` | `issues.opened/labeled` (label `qa` or `qa-request`) | Assign QA team |
+| `auto-qa-request` | `pull_request.opened/ready_for_review`, `push` to `main` | File a QA Request (and a backing Task, if none is linked) for every PR or direct push — safety net, not a gate |
 | `telegram-issues` | `issues`, `issue_comment`, `pull_request` | Send Telegram alerts |
 | `setup-labels` | `workflow_dispatch` | Create required labels |
 

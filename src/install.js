@@ -18,6 +18,7 @@ const WORKFLOWS = [
   'auto-assign-qa',
   'telegram-issues',
   'setup-labels',
+  'auto-qa-request',
 ];
 
 // Pure logic some of the workflows above require() at runtime from
@@ -28,7 +29,7 @@ const WORKFLOWS = [
 // logic exactly like the others, but setup-labels.yml requires it the same
 // way once installed — see loadLabels() below. Its sibling data file,
 // labels.tsv, is copied separately (different extension) — see LABELS_TSV.
-const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'labels'];
+const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'auto-qa-request', 'labels'];
 const LABELS_TSV = 'labels.tsv';
 
 // These scripts are CommonJS (`require`/`module.exports`). Node picks CJS vs.
@@ -56,6 +57,7 @@ const REQUIRED_SCRIPT_BY_WORKFLOW = {
   'authorize-deployment': 'authorize-deployment-verdict',
   'auto-close-sprint': 'auto-close-sprint',
   'sprint-child-creator': 'sprint-child-creator',
+  'auto-qa-request': 'auto-qa-request',
 };
 
 // setup-labels.yml-specific broken-install check. Returns the filenames

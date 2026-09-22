@@ -180,6 +180,10 @@ Ask first only when something is genuinely ambiguous:
 
 A clear-cut case — an obvious bug just reproduced, a PR that visibly closes an issue's acceptance criteria — doesn't need a question, just the confirmation line afterward.
 
+### Tag what you file
+
+Add the `delivery-ops-filed` label alongside the type label (`task`, `bug`, etc.) on anything created in this autonomous mode — same thing `auto-qa-request.yml` does on its own auto-filed issues. It's the only signal, otherwise, that an issue's content was generated rather than typed by a person; the alternative is a footer line buried in the body that nothing can search or filter on. **Don't** add it to an issue created on explicit request ("file a bug for this") — a human asked for that one and, usually, supplied its actual content, even if Claude did the typing.
+
 ### Classifying a candidate
 
 - Bug reproduced or reported while working → **Bug Report**
@@ -246,6 +250,7 @@ When there's no issue number in hand yet:
 - **Active sprints:** `gh issue list --repo <owner>/<repo> --label sprint --state open` (title contains `SPRINT -`)
 - **Open QA requests:** `gh issue list --repo <owner>/<repo> --label qa-request --state open`
 - **A sprint's own children:** `gh issue list --repo <owner>/<repo> --label sprint-child --search "\"Parent Sprint: #<N>\" in:body"` — the exact-phrase quotes matter, otherwise the search matches "Parent", "Sprint", and the number as separate free-text terms instead of the literal phrase. On a repo installed before 1.5.0 (or one that hasn't run the `gh label edit` migration — see `docs/consumer-setup.md`), use `--label sprint-active` instead, or drop `--label` entirely and rely on the body search alone if you're not sure which name applies.
+- **Everything auto-filed, by anything** — `gh issue list --repo <owner>/<repo> --label delivery-ops-filed` — both this skill's autonomous tracking and the `auto-qa-request` workflow tag what they create with this, so it's the one query that finds all of it regardless of type label.
 
 ## Cleanup sweep
 

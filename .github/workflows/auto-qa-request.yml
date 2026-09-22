@@ -120,7 +120,7 @@ jobs:
                 owner, repo,
                 title: `TASK - ${prTitle}`.slice(0, 250),
                 body: taskBody,
-                labels: ['task']
+                labels: ['task', 'delivery-ops-filed']
               });
               relatedIssueNumber = created.data.number;
               console.log(`No linked issue found — filed Task #${relatedIssueNumber}.`);
@@ -134,7 +134,7 @@ jobs:
               owner, repo,
               title: `QA REQUEST - ${prTitle}`.slice(0, 250),
               body: qaBody,
-              labels: ['qa-request']
+              labels: ['qa-request', 'delivery-ops-filed']
             });
 
             console.log(`Filed QA Request #${qaIssue.data.number} for ${originMarker} (related: #${relatedIssueNumber}).`);

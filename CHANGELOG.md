@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-22
+
+### Added
+
+- **`delivery-ops-filed` label**: the only prior signal that an issue's content was auto-generated rather than typed by a person was a footer line buried in the body — not something GitHub can search or filter on. `auto-qa-request.yml` now applies this label (magenta, `D6336C`) alongside `task`/`qa-request` on everything it auto-files, and the `delivery-ops` skill applies it the same way when its autonomous tracking mode files something on its own (never on an issue created at explicit human request). `gh issue list --label delivery-ops-filed` now finds everything self-generated regardless of type. Single-sourced in `.github/scripts/labels.tsv` like every other label. A new label doesn't retroactively apply to issues created before it existed — `docs/consumer-setup.md` documents a one-line backfill command, same pattern as the existing `sprint-active` → `sprint-child` migration note.
+- **Pre-flight check: stale-install prompt**: the `delivery-ops` skill's pre-flight check (installed?, labels set up?, repo variables set?) gained a fourth question — up to date? It now compares a target repo's installed version (`.github/delivery-os.json`) against the latest published npm version before doing anything else, and offers to update if it's behind, with the same confirm-first pattern as the existing label-setup fix.
+- **README**: the "What you get" table's Claude Code skill row crammed six distinct capabilities into one dense sentence — pulled into their own bullet list, one per capability, matching `SKILL.md`'s own description (create/comment/status/autonomous tracking/spec breakdown/cleanup sweep).
+
+### Fixed
+
+- **Test brittleness**: two tests in `test/install.test.js` hardcoded a "15 labels" count that broke the moment `labels.tsv` gained a 16th entry (`delivery-ops-filed`) — the same class of fragility the `WORKFLOWS.length` fix caught for the workflow count in 1.6.0. Both now derive the expected count from `loadLabels()` instead of a literal.
+
 ## [1.6.0] - 2026-09-22
 
 ### Added

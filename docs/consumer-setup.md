@@ -166,6 +166,13 @@ The current list of labels (names, colors, descriptions) lives in [`.github/scri
 gh label edit sprint-active --repo <owner>/<repo> --name sprint-child
 ```
 
+**Upgrading from before the `delivery-ops-filed` label:** issues `auto-qa-request` (or the `delivery-ops` Claude Code skill's autonomous tracking) filed before this label existed don't get it retroactively just because the repo updates — the update only changes what *future* runs do. To backfill it onto everything already auto-filed, found by the "Auto-filed by Delivery OS" footer line every such issue carries:
+
+```
+gh issue list --repo <owner>/<repo> --search "\"Auto-filed by Delivery OS\" in:body" --json number --jq '.[].number' \
+  | xargs -I{} gh issue edit {} --repo <owner>/<repo> --add-label delivery-ops-filed
+```
+
 ---
 
 ## Issue Templates (with `--with-templates`)

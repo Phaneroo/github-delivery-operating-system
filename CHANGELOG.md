@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-09-22
+
+### Fixed
+
+- **`status`'s suggested update command was missing `--with-labels`**: found while manually updating a consumer repo — the suggested `install --with-templates --with-skill --update .` completed without error but silently left the repo missing the new `delivery-ops-filed` label (1.7.0), since `--update` only replaces workflow/template files and never touches labels. `buildUpdateCommand()` now always appends `--with-labels`, unlike `--with-templates`/`--with-skill` which stay conditional on what's actually installed — safe to make unconditional since `--with-labels` is idempotent, only ever creating labels that don't already exist. This one function backs every "Run:"/"Fix:" hint `status` prints, so the fix applies everywhere at once. `docs/consumer-setup.md`'s `scripts/install.sh` update examples updated to match.
+
 ## [1.7.0] - 2026-09-22
 
 ### Added

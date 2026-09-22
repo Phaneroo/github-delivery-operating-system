@@ -861,7 +861,12 @@ test('scripts/install.sh --with-labels does not abort the whole install when a l
     assert.match(output, /Skipped \(exists\): intake/);
     assert.match(output, /=== Installation complete ===/, 'script must reach its normal end, not abort early');
     const attempted = fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean);
-    assert.equal(attempted.length, 15, `expected all 15 labels attempted, got: ${JSON.stringify(attempted)}`);
+    const labelCount = loadLabels(packageRoot).length;
+    assert.equal(
+      attempted.length,
+      labelCount,
+      `expected all ${labelCount} labels attempted, got: ${JSON.stringify(attempted)}`
+    );
   } finally {
     rm(dir);
     rm(binDir);
@@ -933,7 +938,12 @@ test('scripts/install.sh --with-labels does not drop the last label when labels.
     });
 
     const attempted = fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean);
-    assert.equal(attempted.length, 15, `expected all 15 labels attempted (including the last, unterminated line), got: ${JSON.stringify(attempted)}`);
+    const labelCount = loadLabels(repoRoot).length;
+    assert.equal(
+      attempted.length,
+      labelCount,
+      `expected all ${labelCount} labels attempted (including the last, unterminated line), got: ${JSON.stringify(attempted)}`
+    );
   } finally {
     rm(dir);
     rm(binDir);

@@ -157,10 +157,11 @@
             <tbody>
               <tr><td>sprint-child-creator</td><td>Issue opened, title contains <code>SPRINT -</code></td><td>Parses "Sprint Features (One Per Line)" and creates one child issue per line, each linked back with <code>Parent Sprint: #N</code></td></tr>
               <tr><td>auto-close-sprint</td><td>Issue closed, body contains <code>Parent Sprint</code></td><td>Recomputes the parent sprint's burn-down/health and rewrites its status section; auto-closes the sprint at 100%</td></tr>
-              <tr><td>notify-release-approver</td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code></td></tr>
-              <tr><td>authorize-deployment</td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code>; once both approve, adds <code>ready-for-deploy</code></td></tr>
+              <tr><td>notify-release-approver</td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code>, and posts a <em>What's in this release</em> roll-up of the plain-English changelogs from QA Requests since the last authorized release (informational; refresh via <code>workflow_dispatch</code>)</td></tr>
+              <tr><td>authorize-deployment</td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code>; once both approve, adds <code>ready-for-deploy</code> and closes the Tasks/QA Requests <code>auto-qa-request</code> filed for work in the release (opt out: <code>DELIVERY_OS_AUTO_CLOSE=false</code>)</td></tr>
               <tr><td>auto-assign-qa</td><td>Issue opened/labeled <code>qa</code> or <code>qa-request</code></td><td>Assigns the repo's configured <code>QA_ASSIGNEES</code></td></tr>
               <tr><td>telegram-issues</td><td>Issue/comment/PR events</td><td>Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
+              <tr><td>auto-qa-request</td><td>PR opened/ready/closed; push to <code>main</code></td><td>Files a QA Request (plus a backing Task if no issue is linked, e.g. via <code>Refs #N</code> in a commit) with a plain-English changelog draft for the dev to review. Skips docs/settings-only changes and <code>[skip qa-request]</code> commits; closes its filings if the PR closes unmerged. Tunable with <code>DELIVERY_OS_AUTO_QA</code> (<code>all</code>/<code>pr-only</code>/<code>off</code>), <code>DELIVERY_OS_AUTO_TASK</code>, <code>DELIVERY_OS_AUTO_QA_QUIET_PATHS</code></td></tr>
               <tr><td>setup-labels</td><td>Manual (<code>workflow_dispatch</code>)</td><td>One-time run that creates all labels Delivery OS needs</td></tr>
             </tbody>
           </table>
@@ -173,6 +174,7 @@
           <li style="margin-bottom: 0.5rem;">Create labels: Actions → Setup Labels → Run workflow</li>
           <li style="margin-bottom: 0.5rem;">Configure variables: Settings → Secrets and variables → Actions → Variables<br>
             <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, <code>QA_ASSIGNEES</code></li>
+          <li style="margin-bottom: 0.5rem;">Optional: tune automatic QA filing for repos that push straight to <code>main</code> with <code>DELIVERY_OS_AUTO_QA</code>, <code>DELIVERY_OS_AUTO_TASK</code>, <code>DELIVERY_OS_AUTO_QA_QUIET_PATHS</code> and <code>DELIVERY_OS_AUTO_CLOSE</code> (see <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos">consumer setup</a>)</li>
           <li style="margin-bottom: 0.5rem;">Optional: Add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> for alerts</li>
         </ol>
       </section>

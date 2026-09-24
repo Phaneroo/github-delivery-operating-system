@@ -58,6 +58,32 @@ function hasSkipMarker(message) {
   return (message || '').toLowerCase().includes(SKIP_MARKER);
 }
 
+/**
+ * A push can carry several commits, and the marker opts out one commit, not
+ * the whole push: skip only when every commit in it is marked, so a trivial
+ * marked commit on top can't hide real changes underneath.
+ *
+ * @param {string[]} messages - every commit message in the push
+ * @returns {boolean}
+ */
+function allCommitsSkipped(messages) {
+  return (messages || []).length > 0 && messages.every(hasSkipMarker);
+}
+
+/**
+ * The text a direct push's issue links are read from: the head commit first
+ * (its links win ties), then every other commit in the push, so a
+ * `Refs #12` on an earlier commit still counts.
+ *
+ * @param {string} headMessage
+ * @param {string[]} messages - every commit message in the push
+ * @returns {string}
+ */
+function pushLinkText(headMessage, messages) {
+  const rest = (messages || []).filter((m) => m !== headMessage);
+  return [headMessage || '', ...rest].join('\n\n');
+}
+
 const AUTO_QA_MODES = ['all', 'pr-only', 'off'];
 
 /**
@@ -417,6 +443,8 @@ module.exports = {
   extractLinkedIssueNumbers,
   extractCommitIssueReferences,
   hasSkipMarker,
+  allCommitsSkipped,
+  pushLinkText,
   resolveAutoQaMode,
   shouldFileForEvent,
   autoTaskEnabledForDirectPush,

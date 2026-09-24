@@ -78,9 +78,10 @@ test('findPreviousAuthorizedRelease returns null for the first release', () => {
 
 // selectQaRequestsInWindow
 
-test('selectQaRequestsInWindow keeps open and closed requests inside the window, oldest first', () => {
+test('selectQaRequestsInWindow keeps requests inside the window plus older ones still open, oldest first', () => {
   const issues = [
     { number: 5, created_at: '2026-09-05T00:00:00Z', state: 'open' },
+    { number: 6, created_at: '2026-09-06T00:00:00Z', state: 'closed', state_reason: 'completed' },
     { number: 3, created_at: '2026-09-11T00:00:00Z', state: 'closed', state_reason: 'completed' },
     { number: 7, created_at: '2026-09-15T00:00:00Z', state: 'open' },
     { number: 8, created_at: '2026-09-25T00:00:00Z', state: 'open' },
@@ -88,7 +89,17 @@ test('selectQaRequestsInWindow keeps open and closed requests inside the window,
     { number: 4, created_at: '2026-09-13T00:00:00Z', pull_request: {} },
   ];
   const picked = selectQaRequestsInWindow(issues, '2026-09-10T00:00:00Z', '2026-09-20T00:00:00Z');
-  assert.deepEqual(picked.map((i) => i.number), [3, 7]);
+  // #5 predates the window but is still open, so it hasn't shipped yet;
+  // #6 predates it and is closed, so an earlier release covered it.
+  assert.deepEqual(picked.map((i) => i.number), [3, 5, 7]);
+});
+
+test('selectQaRequestsInWindow: a QA Request filed before release N whose PR merged after it lands in release N+1', () => {
+  // Regression (code review): keyed only on created_at, #30 fell into no roll-up at all.
+  const qa30 = { number: 30, created_at: '2026-09-01T00:00:00Z', state: 'open' };
+  const release31 = '2026-09-02T00:00:00Z';
+  const release35 = '2026-09-10T00:00:00Z';
+  assert.deepEqual(selectQaRequestsInWindow([qa30], release31, release35).map((i) => i.number), [30]);
 });
 
 test('selectQaRequestsInWindow with no previous release takes everything up to the release', () => {
@@ -156,7 +167,7 @@ test('buildRollupComment lists each QA Request with its status and merges Could 
   });
 
   assert.ok(comment.startsWith(ROLLUP_MARKER));
-  assert.match(comment, /since the last authorized release \(#20, opened 2026-09-10\)/);
+  assert.match(comment, /since the last authorized release \(#20, opened 2026-09-10\), plus older ones still open/);
   assert.match(comment, /doesn't block approval/);
   assert.match(comment, /### ✅ #41 Login tweaks\n_QA: Pass · closed_\n\n- The login page remembers your email/);
   assert.match(comment, /### ⚠️ #45 Speed up search: not reviewed by dev \(still the auto-generated draft\)/);

@@ -38,11 +38,16 @@ function findPreviousAuthorizedRelease(productionIssues, release) {
 }
 
 /**
- * @param {Array<{ number: number, created_at: string, state_reason?: string | null }>} qaIssues
- *   - qa-request issues, open and closed
+ * A release covers QA Requests filed since the previous one, plus any older
+ * request that's still open: authorizing a release closes the filings it
+ * covered, so one still open (e.g. its PR merged only after that release)
+ * hasn't shipped yet and belongs to this one.
+ *
+ * @param {Array<{ number: number, created_at: string, state: string,
+ *   state_reason?: string | null }>} qaIssues - qa-request issues, open and closed
  * @param {string | null} since - exclusive lower bound (previous release's created_at)
  * @param {string} until - inclusive upper bound (this release's created_at)
- * @returns {Array} in-window QA Requests, oldest first, skipping ones closed
+ * @returns {Array} matching QA Requests, oldest first, skipping ones closed
  *   as not planned (e.g. filed for a PR that was closed unmerged)
  */
 function selectQaRequestsInWindow(qaIssues, since, until) {
@@ -53,7 +58,7 @@ function selectQaRequestsInWindow(qaIssues, since, until) {
     .filter((i) => i.state_reason !== 'not_planned')
     .filter((i) => {
       const t = Date.parse(i.created_at);
-      return t > lo && t <= hi;
+      return t <= hi && (t > lo || i.state === 'open');
     })
     .sort((a, b) => a.number - b.number);
 }
@@ -136,7 +141,7 @@ function extractQaOutcome(body) {
  */
 function buildRollupComment({ qaRequests, unmerged, previousRelease }) {
   const scope = previousRelease
-    ? `QA Requests filed since the last authorized release (#${previousRelease.number}, opened ${previousRelease.created_at.slice(0, 10)})`
+    ? `QA Requests filed since the last authorized release (#${previousRelease.number}, opened ${previousRelease.created_at.slice(0, 10)}), plus older ones still open`
     : 'all QA Requests filed before this release (no earlier authorized release found)';
 
   const out = [

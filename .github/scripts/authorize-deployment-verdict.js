@@ -82,4 +82,16 @@ function selectFilingsToCloseOnRelease(openIssues, releaseRequestedAt) {
     .map((issue) => issue.number);
 }
 
-module.exports = { computeVerdict, selectFilingsToCloseOnRelease, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };
+/**
+ * A filing made for a PR only belongs to a release once that PR has merged;
+ * the workflow checks each PR this returns before closing its filings.
+ *
+ * @param {string} body - an auto-filed Task or QA Request body
+ * @returns {number | null} the PR it was filed for, or null for a direct push
+ */
+function parseFilingPrNumber(body) {
+  const match = (body || '').match(/origin: PR #(\d+)(?!\d)|Opened as PR #(\d+) \(/);
+  return match ? parseInt(match[1] || match[2], 10) : null;
+}
+
+module.exports = { computeVerdict, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };

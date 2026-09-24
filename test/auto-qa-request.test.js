@@ -8,6 +8,8 @@ const {
   extractLinkedIssueNumbers,
   extractCommitIssueReferences,
   hasSkipMarker,
+  allCommitsSkipped,
+  pushLinkText,
   resolveAutoQaMode,
   shouldFileForEvent,
   autoTaskEnabledForDirectPush,
@@ -95,6 +97,24 @@ test('hasSkipMarker ignores other skip phrases', () => {
   assert.equal(hasSkipMarker('Fix typo [skip qa]'), false);
   assert.equal(hasSkipMarker(''), false);
   assert.equal(hasSkipMarker(undefined), false);
+});
+
+// allCommitsSkipped / pushLinkText
+
+test('allCommitsSkipped only skips a push when every commit is marked', () => {
+  // Regression (code review): a marked head commit used to hide real changes underneath.
+  assert.equal(allCommitsSkipped(['Add payment retry logic', 'Fix typo [skip qa-request]']), false);
+  assert.equal(allCommitsSkipped(['Fix typo [skip qa-request]', 'Tweak wording [skip qa-request]']), true);
+  assert.equal(allCommitsSkipped([]), false);
+  assert.equal(allCommitsSkipped(undefined), false);
+});
+
+test('pushLinkText reads links from every commit, head first', () => {
+  // Regression (code review): a Refs #12 on an earlier commit was ignored.
+  const text = pushLinkText('Tidy imports', ['Implement login (Refs #12)', 'Tidy imports']);
+  assert.deepEqual(extractCommitIssueReferences(text), [12]);
+  assert.deepEqual(extractCommitIssueReferences(pushLinkText('Fixes #3', ['See #9', 'Fixes #3'])), [3, 9]);
+  assert.equal(pushLinkText('Only commit', undefined), 'Only commit');
 });
 
 // resolveAutoQaMode / shouldFileForEvent

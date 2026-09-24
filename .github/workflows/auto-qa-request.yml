@@ -15,7 +15,10 @@ name: Auto QA Request
 # closes whatever was auto-filed for it.
 on:
   pull_request:
-    types: [opened, ready_for_review, closed]
+    # synchronize: a PR that started docs-only can gain code later, so it's
+    # re-checked on every push (the idempotency check stops duplicates).
+    # reopened: restores what was closed when the PR was closed unmerged.
+    types: [opened, ready_for_review, reopened, synchronize, closed]
   push:
     branches: [main]
 
@@ -57,7 +60,9 @@ jobs:
             const {
               extractLinkedIssueNumbers,
               extractCommitIssueReferences,
-              hasSkipMarker,
+              allCommitsSkipped,
+              pushLinkText,
+              findFilingsForPr,
               resolveAutoQaMode,
               shouldFileForEvent,
               autoTaskEnabledForDirectPush,
@@ -94,6 +99,24 @@ jobs:
               viaDirectPush = false;
               originMarker = `PR #${prNumber}`;
 
+              // Reopening a PR that was closed unmerged: bring back the Task /
+              // QA Request closed then, instead of filing duplicates.
+              if (context.payload.action === 'reopened') {
+                const closedFilings = (await github.paginate(github.rest.issues.listForRepo, {
+                  owner, repo, state: 'closed', labels: 'delivery-ops-filed', per_page: 100
+                })).filter((i) => i.state_reason === 'not_planned');
+                const toReopen = findFilingsForPr(closedFilings, prNumber);
+                for (const n of toReopen) {
+                  await github.rest.issues.update({ owner, repo, issue_number: n, state: 'open' });
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: n,
+                    body: `PR #${prNumber} was reopened — reopening this automatically.`
+                  });
+                  console.log(`Reopened #${n} for reopened PR #${prNumber}.`);
+                }
+                if (toReopen.length) return;
+              }
+
               const files = await github.paginate(github.rest.pulls.listFiles, {
                 owner, repo, pull_number: prNumber, per_page: 100
               });
@@ -119,32 +142,41 @@ jobs:
                 return;
               }
 
-              if (hasSkipMarker(message)) {
-                console.log('Commit message has [skip qa-request] — skipping.');
+              // The push payload carries no file lists (and at most 20
+              // commits), so ask the API: the whole push range, or just the
+              // commit for a branch's first push.
+              let apiFiles = null;
+              let apiMessages = null;
+              try {
+                const before = context.payload.before;
+                if (before && !/^0+$/.test(before)) {
+                  const { data } = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${before}...${context.sha}` });
+                  apiFiles = data.files || [];
+                  apiMessages = (data.commits || []).map((c) => c.commit.message);
+                } else {
+                  const { data } = await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
+                  apiFiles = data.files || [];
+                  apiMessages = [data.commit.message];
+                }
+              } catch (err) {
+                console.log(`Couldn't list the push's files/commits (${err.message}) — using the event payload.`);
+              }
+              commitMessages = apiMessages || (context.payload.commits || []).map((c) => c.message);
+
+              // Per-commit opt-out: skip only when every commit is marked.
+              if (allCommitsSkipped(commitMessages)) {
+                console.log('Every commit in this push has [skip qa-request] — skipping.');
                 return;
               }
 
               prNumber = null;
               prTitle = (message.split('\n')[0] || '').trim() || `Direct push to main (${context.sha.slice(0, 7)})`;
               prUrl = '';
-              prBody = message; // a direct push's issue links live in its commit message
+              prBody = pushLinkText(message, commitMessages); // a direct push's issue links live in its commit messages
               branch = 'main';
               author = headCommit && headCommit.author ? (headCommit.author.username || headCommit.author.name) : null;
-              // The push payload carries no file lists, so ask the API: the
-              // whole push range, or just the commit for a branch's first push.
-              let apiFiles = null;
-              try {
-                const before = context.payload.before;
-                const { data } = before && !/^0+$/.test(before)
-                  ? await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${before}...${context.sha}` })
-                  : await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
-                apiFiles = data.files || [];
-              } catch (err) {
-                console.log(`Couldn't list changed files (${err.message}) — filing without them.`);
-              }
               touchedPaths = touchedPathsFromApiFiles(apiFiles);
               filesChanged = apiFiles ? apiFiles.map((f) => f.filename) : [];
-              commitMessages = (context.payload.commits || []).map((c) => c.message);
               viaDirectPush = true;
               originMarker = `Direct push #${context.sha}`;
             }

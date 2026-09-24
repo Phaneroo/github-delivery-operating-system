@@ -22,9 +22,9 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | `sprint-child-creator` | `issues.opened` (title contains `SPRINT -`) | Parse Sprint Features, create child issues |
 | `auto-close-sprint` | `issues.closed` (body contains `Parent Sprint`) | Update burn-down, auto-close at 100% |
 | `notify-release-approver` | `issues.opened` (label `production`), `workflow_dispatch` | Ping release approver; post the release roll-up (plain-English What Changed notes from the QA Requests the release likely covers) |
-| `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested |
+| `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested (skipping ones whose PR hasn't merged) |
 | `auto-assign-qa` | `issues.opened/labeled` (label `qa` or `qa-request`) | Assign QA team |
-| `auto-qa-request` | `pull_request.opened/ready_for_review/closed`, `push` to `main` | File a QA Request (and a backing Task, if none is linked) for every PR or direct push that isn't docs/settings-only — safety net, not a gate. Closes those filings if the PR is closed unmerged |
+| `auto-qa-request` | `pull_request.opened/ready_for_review/reopened/synchronize/closed`, `push` to `main` | File a QA Request (and a backing Task, if none is linked) for every PR or direct push that isn't docs/settings-only — safety net, not a gate. Closes those filings if the PR is closed unmerged |
 | `telegram-issues` | `issues`, `issue_comment`, `pull_request` | Send Telegram alerts |
 | `setup-labels` | `workflow_dispatch` | Create required labels |
 

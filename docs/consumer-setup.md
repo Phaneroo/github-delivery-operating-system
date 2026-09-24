@@ -102,7 +102,7 @@ The manifest is only written/updated when the files it describes are actually cu
 | `notify-release-approver.yml` | Pings release approver when a production release issue is opened |
 | `authorize-deployment.yml` | Dual approval (release approver + QA) before deployment |
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
-| `auto-qa-request.yml` | Files a QA Request (and a backing Task, if none is linked) whenever a PR opens or a commit lands directly on `main` — a safety net, not a gate |
+| `auto-qa-request.yml` | Files a QA Request (and a backing Task, if none is linked) whenever a PR opens or a commit lands directly on `main`, unless only docs/settings changed — a safety net, not a gate. Closes those filings if the PR is closed without merging |
 | `telegram-issues.yml` | Sends Telegram alerts for bugs, QA, sprints, releases, PR merges |
 | `setup-labels.yml` | One-time workflow to create all required labels |
 
@@ -135,6 +135,30 @@ Each line under "Sprint Features" becomes a child issue with `Parent Sprint: #N`
 | `QA_APPROVER` | GitHub username of QA approver (for dual approval) |
 | `QA_ASSIGNEES` | Comma-separated usernames for QA auto-assignment (e.g. `user1,user2`) |
 | `PROJECT_NAME` | Optional; shown in release approval notifications |
+| `DELIVERY_OS_AUTO_QA` | Optional; when `auto-qa-request` files: `all` (default: every PR and direct push to `main`), `pr-only` (PRs only — direct pushes file nothing), or `off` |
+| `DELIVERY_OS_AUTO_TASK` | Optional; set to `false` so a direct push with no linked issue files only a QA Request, without a synthetic backing Task. PRs are unaffected |
+| `DELIVERY_OS_AUTO_QA_QUIET_PATHS` | Optional; comma-separated globs whose changes alone file nothing. Unset = docs and settings (`**/*.md`, `docs/**`, `LICENSE*`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.vscode/**`, `.idea/**`, `.github/ISSUE_TEMPLATE/**`, `.github/CODEOWNERS`, `.github/dependabot.yml`); a list replaces those defaults; `none` files for every change |
+| `DELIVERY_OS_AUTO_CLOSE` | Optional; set to `false` to stop `authorize-deployment` closing auto-filed issues when a release is authorized |
+
+#### Tuning `auto-qa-request` for direct-push repos
+
+Repos that push straight to `main` (common for solo-maintained prototypes) get a QA Request — and, if nothing is linked, a backing Task — on every push. To keep that accurate and quiet:
+
+- **Link the push to an issue in its commit message.** `Closes #27`, `Refs #27`, or a bare `#27` all link the QA Request to #27, and no new Task is filed. (References to pull requests, other repos, or issues that don't exist are ignored.)
+- **Skip a trivial push** by putting `[skip qa-request]` anywhere in its commit message. Only this workflow honors it — `[skip ci]` would skip every workflow.
+- **Docs- and settings-only changes file nothing.** A push or PR that only touches paths matching `DELIVERY_OS_AUTO_QA_QUIET_PATHS` (README edits, `docs/`, editor config…) is skipped. Anything else — code, workflows, `package.json` — still files.
+- **Turn it down repo-wide** with `DELIVERY_OS_AUTO_QA` / `DELIVERY_OS_AUTO_TASK` above. These are repo variables, not workflow edits, so `install --update` keeps them.
+
+#### When auto-filed issues get closed
+
+`auto-qa-request` only ever closes what it filed itself (identified by its footer and the `delivery-ops-filed` label) — never an issue a person filed:
+
+- **PR closed without merging** → its auto-filed Task and QA Request are closed as *not planned*, with a comment.
+- **Release authorized** (`authorize-deployment` adds `ready-for-deploy`) → every open auto-filed Task and QA Request created *before that release issue was opened* is closed as *completed*, with a comment pointing at the release, and the release issue gets a summary comment. Opt out with `DELIVERY_OS_AUTO_CLOSE=false`.
+
+Repos that never cut a Production Release (e.g. push-to-`main` prototypes) have no release event to close on — the `delivery-ops` skill's cleanup sweep flags those leftovers for you to confirm instead.
+
+Note: a direct-push commit whose first line ends in `(#N)` looks like a squash-merged PR and is skipped, since that PR's own `pull_request` event already filed for it.
 
 ### Secrets (optional)
 

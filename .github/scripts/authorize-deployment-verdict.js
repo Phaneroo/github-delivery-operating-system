@@ -52,4 +52,34 @@ function computeVerdict(comments, releaseApprover, qaApprover) {
   return { releaseVerdict, qaApproved };
 }
 
-module.exports = { computeVerdict, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };
+// Footers auto-qa-request.js writes on what it files (buildAutoTaskBody /
+// buildQaRequestBody). Matched here instead of imported so this workflow
+// only ever needs its own script installed; test/authorize-deployment-
+// verdict.test.js builds real bodies with auto-qa-request.js to catch drift.
+const AUTO_QA_FOOTERS = [
+  '*Auto-filed by Delivery OS (no issue was linked when this work reached main)*',
+  '*Auto-filed by Delivery OS — origin: ',
+];
+
+/**
+ * Once a release is authorized, the Tasks / QA Requests auto-qa-request
+ * filed for work already on `main` are covered by that sign-off. Selects
+ * those — and only those: never an issue a person (or the delivery-ops
+ * skill's own tracking) filed, and never one filed after the release was
+ * requested, since that work may not be in it.
+ *
+ * @param {Array<{ number: number, body: string, created_at: string,
+ *   pull_request?: object }>} openIssues - open issues labeled delivery-ops-filed
+ * @param {string} releaseRequestedAt - the production issue's created_at
+ * @returns {number[]}
+ */
+function selectFilingsToCloseOnRelease(openIssues, releaseRequestedAt) {
+  const cutoff = Date.parse(releaseRequestedAt);
+  return (openIssues || [])
+    .filter((issue) => !issue.pull_request)
+    .filter((issue) => AUTO_QA_FOOTERS.some((f) => (issue.body || '').includes(f)))
+    .filter((issue) => Date.parse(issue.created_at) <= cutoff)
+    .map((issue) => issue.number);
+}
+
+module.exports = { computeVerdict, selectFilingsToCloseOnRelease, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };

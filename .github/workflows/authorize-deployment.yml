@@ -31,17 +31,18 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Check Dual Approval (Flexible + Decline)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
           QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
+          DELIVERY_OS_AUTO_CLOSE: ${{ vars.DELIVERY_OS_AUTO_CLOSE }}
         with:
           script: |
             // Pure verdict logic lives in a real, unit-tested module (see
             // .github/scripts/authorize-deployment-verdict.js and
             // test/authorize-deployment-verdict.test.js) rather than inline here,
             // so it isn't only verified by hand whenever it changes.
-            const { computeVerdict } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const { computeVerdict, selectFilingsToCloseOnRelease } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
@@ -141,4 +142,31 @@ jobs:
                 issue_number: issueNumber,
                 body: "🟢🚀 **Deployment Authorized**\n\nDual approval received. This release is cleared for production deployment."
               });
+
+              // Close what auto-qa-request filed for work that's in this
+              // release, so it doesn't sit "In Progress" forever. Opt out
+              // with the DELIVERY_OS_AUTO_CLOSE=false repo variable.
+              if ((process.env.DELIVERY_OS_AUTO_CLOSE || '').trim().toLowerCase() !== 'false') {
+                const openFilings = await github.paginate(github.rest.issues.listForRepo, {
+                  owner, repo, state: "open", labels: "delivery-ops-filed", per_page: 100
+                });
+                const toClose = selectFilingsToCloseOnRelease(openFilings, liveIssue.created_at);
+                for (const n of toClose) {
+                  try {
+                    await github.rest.issues.createComment({
+                      owner, repo, issue_number: n,
+                      body: `Covered by release #${issueNumber}, which was just authorized for production — closing automatically. Reopen if this work wasn't actually part of it.`
+                    });
+                    await github.rest.issues.update({ owner, repo, issue_number: n, state: "closed", state_reason: "completed" });
+                  } catch (e) {
+                    console.log(`Failed to close #${n}: ${e.message || e}`);
+                  }
+                }
+                if (toClose.length) {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: issueNumber,
+                    body: `🧹 Closed ${toClose.length} auto-filed Task/QA Request issue(s) covered by this release: ${toClose.map((n) => `#${n}`).join(", ")}`
+                  });
+                }
+              }
             }

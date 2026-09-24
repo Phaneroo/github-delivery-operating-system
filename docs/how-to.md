@@ -38,6 +38,10 @@ Settings → Secrets and variables → Actions → Variables:
 | `RELEASE_APPROVER` | GitHub username of release approver |
 | `QA_APPROVER` | GitHub username of QA approver |
 | `QA_ASSIGNEES` | Comma-separated usernames (e.g. `user1,user2`) |
+| `DELIVERY_OS_AUTO_QA` | Optional: `all` (default), `pr-only`, or `off` — when `auto-qa-request` files (see [consumer-setup.md](consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos)) |
+| `DELIVERY_OS_AUTO_TASK` | Optional: `false` to stop direct pushes filing a synthetic Task |
+| `DELIVERY_OS_AUTO_QA_QUIET_PATHS` | Optional: globs whose changes alone file nothing (default: docs/settings; `none` disables) |
+| `DELIVERY_OS_AUTO_CLOSE` | Optional: `false` to stop auto-closing filed issues when a release is authorized |
 
 ### Step 5: Commit & Push
 

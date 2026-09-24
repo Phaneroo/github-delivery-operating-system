@@ -22,9 +22,9 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | `sprint-child-creator` | `issues.opened` (title contains `SPRINT -`) | Parse Sprint Features, create child issues |
 | `auto-close-sprint` | `issues.closed` (body contains `Parent Sprint`) | Update burn-down, auto-close at 100% |
 | `notify-release-approver` | `issues.opened` (label `production`) | Ping release approver |
-| `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy` |
+| `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested |
 | `auto-assign-qa` | `issues.opened/labeled` (label `qa` or `qa-request`) | Assign QA team |
-| `auto-qa-request` | `pull_request.opened/ready_for_review`, `push` to `main` | File a QA Request (and a backing Task, if none is linked) for every PR or direct push — safety net, not a gate |
+| `auto-qa-request` | `pull_request.opened/ready_for_review/closed`, `push` to `main` | File a QA Request (and a backing Task, if none is linked) for every PR or direct push that isn't docs/settings-only — safety net, not a gate. Closes those filings if the PR is closed unmerged |
 | `telegram-issues` | `issues`, `issue_comment`, `pull_request` | Send Telegram alerts |
 | `setup-labels` | `workflow_dispatch` | Create required labels |
 
@@ -57,6 +57,10 @@ Approvers and assignees are configured via **repo variables** (Settings → Secr
 | `QA_APPROVER` | Username for dual approval |
 | `QA_ASSIGNEES` | Comma-separated usernames for auto-assign-qa |
 | `PROJECT_NAME` | Optional; shown in release notifications |
+| `DELIVERY_OS_AUTO_QA` | Optional; `auto-qa-request` mode: `all` (default), `pr-only`, or `off` |
+| `DELIVERY_OS_AUTO_TASK` | Optional; `false` → direct pushes with no linked issue file only a QA Request, no Task |
+| `DELIVERY_OS_AUTO_QA_QUIET_PATHS` | Optional; globs whose changes alone file nothing (default: docs/settings; `none` disables) |
+| `DELIVERY_OS_AUTO_CLOSE` | Optional; `false` stops `authorize-deployment` closing auto-filed issues on release |
 
 ## Data Flow
 

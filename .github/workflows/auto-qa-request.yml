@@ -3,9 +3,19 @@ name: Auto QA Request
 # Safety-net tracking, not a gate: files a QA Request whenever work reaches
 # `main`, whether or not it went through a PR, and whether or not it was
 # linked to an existing issue. Nothing is blocked — see docs/architecture.md.
+#
+# Tunable per repo without editing this file (so `install --update` keeps it):
+#   DELIVERY_OS_AUTO_QA   all (default) | pr-only | off
+#   DELIVERY_OS_AUTO_TASK false → direct pushes file only a QA Request, no Task
+#   DELIVERY_OS_AUTO_QA_QUIET_PATHS globs whose changes alone file nothing
+#                         (defaults to docs/settings — see auto-qa-request.js)
+# and per commit with `[skip qa-request]` in a direct push's message.
+#
+# A PR closed without merging never reaches `main`, so the second job below
+# closes whatever was auto-filed for it.
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, closed]
   push:
     branches: [main]
 
@@ -16,7 +26,12 @@ permissions:
 
 jobs:
   file-qa-request:
-    if: (github.event_name == 'pull_request' && github.event.pull_request.draft == false) || github.event_name == 'push'
+    # Fast path for the DELIVERY_OS_AUTO_QA modes so no runner starts when
+    # nothing will be filed; the script re-checks with normalized values.
+    if: >-
+      vars.DELIVERY_OS_AUTO_QA != 'off' &&
+      ((github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false) ||
+       (github.event_name == 'push' && vars.DELIVERY_OS_AUTO_QA != 'pr-only'))
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -28,7 +43,11 @@ jobs:
         uses: actions/checkout@v6
 
       - name: File QA request (and a backing Task, if nothing already tracks this work)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          DELIVERY_OS_AUTO_QA: ${{ vars.DELIVERY_OS_AUTO_QA }}
+          DELIVERY_OS_AUTO_TASK: ${{ vars.DELIVERY_OS_AUTO_TASK }}
+          DELIVERY_OS_AUTO_QA_QUIET_PATHS: ${{ vars.DELIVERY_OS_AUTO_QA_QUIET_PATHS }}
         with:
           script: |
             // Pure parsing/body-building logic lives in a real, unit-tested
@@ -37,6 +56,14 @@ jobs:
             // isn't only verified by hand whenever it changes.
             const {
               extractLinkedIssueNumbers,
+              extractCommitIssueReferences,
+              hasSkipMarker,
+              resolveAutoQaMode,
+              shouldFileForEvent,
+              autoTaskEnabledForDirectPush,
+              resolveQuietPaths,
+              isQuietChange,
+              touchedPathsFromApiFiles,
               extractAcceptanceCriteria,
               parseMergedPrNumber,
               buildAutoTaskBody,
@@ -47,7 +74,13 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            let prNumber, prTitle, prUrl, prBody, branch, author, filesChanged, viaDirectPush, originMarker;
+            const mode = resolveAutoQaMode(process.env.DELIVERY_OS_AUTO_QA);
+            if (!shouldFileForEvent(mode, context.eventName)) {
+              console.log(`DELIVERY_OS_AUTO_QA=${mode} — nothing to file for a ${context.eventName} event.`);
+              return;
+            }
+
+            let prNumber, prTitle, prUrl, prBody, branch, author, filesChanged, touchedPaths, viaDirectPush, originMarker;
 
             if (context.eventName === 'pull_request') {
               const pr = context.payload.pull_request;
@@ -64,6 +97,7 @@ jobs:
                 owner, repo, pull_number: prNumber, per_page: 100
               });
               filesChanged = files.map((f) => f.filename);
+              touchedPaths = touchedPathsFromApiFiles(files);
             } else {
               const headCommit = context.payload.head_commit;
               const message = headCommit ? headCommit.message : '';
@@ -79,15 +113,39 @@ jobs:
                 return;
               }
 
+              if (hasSkipMarker(message)) {
+                console.log('Commit message has [skip qa-request] — skipping.');
+                return;
+              }
+
               prNumber = null;
               prTitle = (message.split('\n')[0] || '').trim() || `Direct push to main (${context.sha.slice(0, 7)})`;
               prUrl = '';
-              prBody = '';
+              prBody = message; // a direct push's issue links live in its commit message
               branch = 'main';
               author = headCommit && headCommit.author ? (headCommit.author.username || headCommit.author.name) : null;
-              filesChanged = [];
+              // The push payload carries no file lists, so ask the API: the
+              // whole push range, or just the commit for a branch's first push.
+              let apiFiles = null;
+              try {
+                const before = context.payload.before;
+                const { data } = before && !/^0+$/.test(before)
+                  ? await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${before}...${context.sha}` })
+                  : await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
+                apiFiles = data.files || [];
+              } catch (err) {
+                console.log(`Couldn't list changed files (${err.message}) — filing without them.`);
+              }
+              touchedPaths = touchedPathsFromApiFiles(apiFiles);
+              filesChanged = apiFiles ? apiFiles.map((f) => f.filename) : [];
               viaDirectPush = true;
               originMarker = `Direct push #${context.sha}`;
+            }
+
+            const quietPaths = resolveQuietPaths(process.env.DELIVERY_OS_AUTO_QA_QUIET_PATHS);
+            if (isQuietChange(touchedPaths, quietPaths)) {
+              console.log(`Only docs/settings changed (${touchedPaths.join(', ')}) — nothing to QA, skipping.`);
+              return;
             }
 
             // Idempotency: don't file a second QA Request for the same PR/push.
@@ -100,21 +158,33 @@ jobs:
             }
 
             // Find (or file) a Task issue this work is actually tracked under.
-            const linkedIssues = extractLinkedIssueNumbers(prBody);
-            let relatedIssueNumber = linkedIssues[0] || null;
+            // PR bodies link via closing keywords; commit messages also count
+            // `Refs #N` / bare `#N`, which can point at a PR rather than an
+            // issue — so take the first candidate that's a real issue.
+            const candidates = viaDirectPush
+              ? extractCommitIssueReferences(prBody)
+              : extractLinkedIssueNumbers(prBody);
+            let relatedIssueNumber = null;
             let acceptanceCriteria = null;
 
-            if (relatedIssueNumber) {
+            for (const n of candidates.slice(0, 5)) {
               try {
-                const linked = await github.rest.issues.get({ owner, repo, issue_number: relatedIssueNumber });
+                const linked = await github.rest.issues.get({ owner, repo, issue_number: n });
+                if (linked.data.pull_request) {
+                  console.log(`#${n} is a pull request, not an issue — ignoring.`);
+                  continue;
+                }
+                relatedIssueNumber = n;
                 acceptanceCriteria = extractAcceptanceCriteria(linked.data.body || '');
+                break;
               } catch (err) {
-                console.log(`Linked issue #${relatedIssueNumber} not found (${err.message}) — treating as untracked.`);
-                relatedIssueNumber = null;
+                console.log(`Linked issue #${n} not found (${err.message}) — ignoring.`);
               }
             }
 
-            if (!relatedIssueNumber) {
+            if (!relatedIssueNumber && viaDirectPush && !autoTaskEnabledForDirectPush(process.env.DELIVERY_OS_AUTO_TASK)) {
+              console.log('No linked issue, and DELIVERY_OS_AUTO_TASK=false — filing the QA Request without a Task.');
+            } else if (!relatedIssueNumber) {
               const taskBody = buildAutoTaskBody({ number: prNumber, title: prTitle, url: prUrl, author, viaDirectPush });
               const created = await github.rest.issues.create({
                 owner, repo,
@@ -137,4 +207,39 @@ jobs:
               labels: ['qa-request', 'delivery-ops-filed']
             });
 
-            console.log(`Filed QA Request #${qaIssue.data.number} for ${originMarker} (related: #${relatedIssueNumber}).`);
+            console.log(`Filed QA Request #${qaIssue.data.number} for ${originMarker} (related: ${relatedIssueNumber ? `#${relatedIssueNumber}` : 'none'}).`);
+
+  close-abandoned-pr-filings:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == false
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read # needed for actions/checkout, so this workflow's script can be required from the repo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Close the Task / QA Request auto-filed for this unmerged PR
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { findFilingsForPr } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-qa-request.js`);
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            // Only issues this workflow filed — never anything a person filed.
+            const openFilings = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'delivery-ops-filed', per_page: 100
+            });
+
+            for (const issueNumber of findFilingsForPr(openFilings, prNumber)) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issueNumber,
+                body: `PR #${prNumber} was closed without merging, so this work never reached \`main\` — closing automatically. Reopen if it continues elsewhere.`
+              });
+              await github.rest.issues.update({ owner, repo, issue_number: issueNumber, state: 'closed', state_reason: 'not_planned' });
+              console.log(`Closed #${issueNumber} (auto-filed for unmerged PR #${prNumber}).`);
+            }

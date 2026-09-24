@@ -4,6 +4,17 @@ const assert = require('assert/strict');
 const { test } = require('./harness');
 const {
   extractLinkedIssueNumbers,
+  extractCommitIssueReferences,
+  hasSkipMarker,
+  resolveAutoQaMode,
+  shouldFileForEvent,
+  autoTaskEnabledForDirectPush,
+  DEFAULT_QUIET_PATHS,
+  resolveQuietPaths,
+  globToRegExp,
+  isQuietChange,
+  collectPushedFiles,
+  findFilingsForPr,
   extractAcceptanceCriteria,
   parseMergedPrNumber,
   buildAutoTaskBody,
@@ -36,6 +47,153 @@ test('extractLinkedIssueNumbers returns [] when nothing matches', () => {
 
 test('extractLinkedIssueNumbers ignores a bare "#12" with no closing keyword', () => {
   assert.deepEqual(extractLinkedIssueNumbers('See #12 for context'), []);
+});
+
+// extractCommitIssueReferences
+
+test('extractCommitIssueReferences finds closing keywords, Refs and bare #N', () => {
+  assert.deepEqual(extractCommitIssueReferences('Tighten copy\n\nCloses #27'), [27]);
+  assert.deepEqual(extractCommitIssueReferences('Tighten copy\n\nRefs #27'), [27]);
+  assert.deepEqual(extractCommitIssueReferences('Tighten copy for #27'), [27]);
+});
+
+test('extractCommitIssueReferences puts closing-keyword references first', () => {
+  assert.deepEqual(extractCommitIssueReferences('Follow-up to #3\n\nFixes #9, see also #4'), [9, 3, 4]);
+});
+
+test('extractCommitIssueReferences dedupes repeated references', () => {
+  assert.deepEqual(extractCommitIssueReferences('Closes #12 (refs #12)'), [12]);
+});
+
+test('extractCommitIssueReferences ignores cross-repo refs, URL fragments and ##N', () => {
+  assert.deepEqual(extractCommitIssueReferences('Port owner/repo#12 fix'), []);
+  assert.deepEqual(extractCommitIssueReferences('See https://example.com/page#12'), []);
+  assert.deepEqual(extractCommitIssueReferences('Rename ##12 heading'), []);
+  assert.deepEqual(extractCommitIssueReferences('Bump color #fff'), []);
+});
+
+test('extractCommitIssueReferences returns [] when nothing matches', () => {
+  assert.deepEqual(extractCommitIssueReferences('Quick fix for typo in README'), []);
+  assert.deepEqual(extractCommitIssueReferences(''), []);
+  assert.deepEqual(extractCommitIssueReferences(undefined), []);
+});
+
+// hasSkipMarker
+
+test('hasSkipMarker detects [skip qa-request] anywhere, case-insensitively', () => {
+  assert.equal(hasSkipMarker('Fix typo [skip qa-request]'), true);
+  assert.equal(hasSkipMarker('Fix typo\n\n[Skip QA-Request]'), true);
+});
+
+test('hasSkipMarker ignores other skip phrases', () => {
+  assert.equal(hasSkipMarker('Fix typo [skip ci]'), false);
+  assert.equal(hasSkipMarker('Fix typo [skip qa]'), false);
+  assert.equal(hasSkipMarker(''), false);
+  assert.equal(hasSkipMarker(undefined), false);
+});
+
+// resolveAutoQaMode / shouldFileForEvent
+
+test('resolveAutoQaMode defaults to all when unset', () => {
+  assert.equal(resolveAutoQaMode(undefined), 'all');
+  assert.equal(resolveAutoQaMode(''), 'all');
+});
+
+test('resolveAutoQaMode normalizes case and whitespace', () => {
+  assert.equal(resolveAutoQaMode(' PR-Only '), 'pr-only');
+  assert.equal(resolveAutoQaMode('OFF'), 'off');
+  assert.equal(resolveAutoQaMode('all'), 'all');
+});
+
+test('resolveAutoQaMode falls back to all for unrecognized values', () => {
+  assert.equal(resolveAutoQaMode('none'), 'all');
+  assert.equal(resolveAutoQaMode('pronly'), 'all');
+});
+
+test('shouldFileForEvent: all files for PRs and pushes', () => {
+  assert.equal(shouldFileForEvent('all', 'pull_request'), true);
+  assert.equal(shouldFileForEvent('all', 'push'), true);
+});
+
+test('shouldFileForEvent: pr-only files for PRs but not direct pushes', () => {
+  assert.equal(shouldFileForEvent('pr-only', 'pull_request'), true);
+  assert.equal(shouldFileForEvent('pr-only', 'push'), false);
+});
+
+test('shouldFileForEvent: off files nothing', () => {
+  assert.equal(shouldFileForEvent('off', 'pull_request'), false);
+  assert.equal(shouldFileForEvent('off', 'push'), false);
+});
+
+// autoTaskEnabledForDirectPush
+
+test('autoTaskEnabledForDirectPush is on unless explicitly false', () => {
+  assert.equal(autoTaskEnabledForDirectPush(undefined), true);
+  assert.equal(autoTaskEnabledForDirectPush(''), true);
+  assert.equal(autoTaskEnabledForDirectPush('true'), true);
+  assert.equal(autoTaskEnabledForDirectPush('false'), false);
+  assert.equal(autoTaskEnabledForDirectPush(' FALSE '), false);
+});
+
+// resolveQuietPaths / globToRegExp / isQuietChange
+
+test('resolveQuietPaths uses the defaults when unset, none disables, a list replaces', () => {
+  assert.deepEqual(resolveQuietPaths(undefined), DEFAULT_QUIET_PATHS);
+  assert.deepEqual(resolveQuietPaths(' NONE '), []);
+  assert.deepEqual(resolveQuietPaths('docs/**, *.txt\nconfig/*.json'), ['docs/**', '*.txt', 'config/*.json']);
+});
+
+test('globToRegExp: ** crosses directories (and matches the root), * does not', () => {
+  assert.equal(globToRegExp('**/*.md').test('README.md'), true);
+  assert.equal(globToRegExp('**/*.md').test('a/b/NOTES.md'), true);
+  assert.equal(globToRegExp('docs/**').test('docs/a/b.html'), true);
+  assert.equal(globToRegExp('*.md').test('a/README.md'), false);
+  assert.equal(globToRegExp('LICENSE*').test('LICENSE.txt'), true);
+  assert.equal(globToRegExp('.github/ISSUE_TEMPLATE/**').test('.github/workflows/x.yml'), false);
+});
+
+test('isQuietChange: README / docs / settings-only changes are quiet by default', () => {
+  assert.equal(isQuietChange(['README.md'], DEFAULT_QUIET_PATHS), true);
+  assert.equal(isQuietChange(['docs/setup.md', 'docs/index.html', '.editorconfig'], DEFAULT_QUIET_PATHS), true);
+  assert.equal(isQuietChange(['.vscode/settings.json', '.gitignore'], DEFAULT_QUIET_PATHS), true);
+});
+
+test('isQuietChange: any code, workflow or script change is not quiet', () => {
+  assert.equal(isQuietChange(['README.md', 'src/app.js'], DEFAULT_QUIET_PATHS), false);
+  assert.equal(isQuietChange(['.github/workflows/ci.yml'], DEFAULT_QUIET_PATHS), false);
+  assert.equal(isQuietChange(['package.json'], DEFAULT_QUIET_PATHS), false);
+});
+
+test('isQuietChange: an unknown or empty file list, or no globs, is never quiet', () => {
+  assert.equal(isQuietChange(null, DEFAULT_QUIET_PATHS), false);
+  assert.equal(isQuietChange([], DEFAULT_QUIET_PATHS), false);
+  assert.equal(isQuietChange(['README.md'], []), false);
+});
+
+// collectPushedFiles
+
+test('collectPushedFiles unions added/modified/removed across commits', () => {
+  const commits = [
+    { added: ['a.md'], modified: ['README.md'], removed: [] },
+    { added: [], modified: ['README.md'], removed: ['src/old.js'] },
+  ];
+  assert.deepEqual(collectPushedFiles(commits).sort(), ['README.md', 'a.md', 'src/old.js']);
+});
+
+test('collectPushedFiles returns null when file lists are missing or there are no commits', () => {
+  assert.equal(collectPushedFiles([{ added: ['a.md'] }]), null);
+  assert.equal(collectPushedFiles([]), null);
+  assert.equal(collectPushedFiles(undefined), null);
+});
+
+// findFilingsForPr
+
+test('findFilingsForPr finds the Task and QA Request auto-filed for a PR, and nothing else', () => {
+  const task = { number: 1, body: buildAutoTaskBody({ number: 2, title: 't', url: 'https://x/pull/2', author: 'a', viaDirectPush: false }) };
+  const qa = { number: 3, body: buildQaRequestBody({ relatedIssueNumber: 1, prNumber: 2, prTitle: 't', prUrl: '', branch: 'b', filesChanged: [], acceptanceCriteria: null, originMarker: 'PR #2' }) };
+  const otherPr = { number: 4, body: buildQaRequestBody({ relatedIssueNumber: 1, prNumber: 21, prTitle: 't', prUrl: '', branch: 'b', filesChanged: [], acceptanceCriteria: null, originMarker: 'PR #21' }) };
+  const human = { number: 5, body: 'Mentions PR #2 in passing' };
+  assert.deepEqual(findFilingsForPr([task, qa, otherPr, human], 2), [1, 3]);
 });
 
 // extractAcceptanceCriteria
@@ -151,6 +309,22 @@ test('buildQaRequestBody falls back to placeholders when nothing is known', () =
   assert.match(body, /origin: Direct push #abc123/);
 });
 
+test('buildQaRequestBody says so when no related issue exists', () => {
+  const body = buildQaRequestBody({
+    relatedIssueNumber: null,
+    prNumber: null,
+    prTitle: 'Quick fix for typo in README',
+    prUrl: '',
+    branch: 'main',
+    filesChanged: [],
+    acceptanceCriteria: null,
+    originMarker: 'Direct push #abc123',
+  });
+
+  assert.match(body, /### Related Sprint Task Issue \(#\)\n\n_None — no issue was linked to this work\._/);
+  assert.doesNotMatch(body, /#null/);
+});
+
 // qaRequestAlreadyExists
 
 test('qaRequestAlreadyExists finds a match by origin marker', () => {
@@ -161,6 +335,19 @@ test('qaRequestAlreadyExists finds a match by origin marker', () => {
 test('qaRequestAlreadyExists returns false when nothing matches', () => {
   const existing = [{ body: 'origin: PR #99' }];
   assert.equal(qaRequestAlreadyExists(existing, 'PR #12'), false);
+});
+
+test('qaRequestAlreadyExists does not confuse PR #2 with PR #21', () => {
+  const existing = [{ body: '*Auto-filed by Delivery OS — origin: PR #21*' }];
+  assert.equal(qaRequestAlreadyExists(existing, 'PR #2'), false);
+});
+
+test('buildQaRequestBody lists files for a direct push when they are known', () => {
+  const body = buildQaRequestBody({
+    relatedIssueNumber: 5, prNumber: null, prTitle: 'Tweak', prUrl: '', branch: 'main',
+    filesChanged: ['src/a.js'], acceptanceCriteria: null, originMarker: 'Direct push #abc',
+  });
+  assert.match(body, /Files changed:\n- `src\/a\.js`/);
 });
 
 test('qaRequestAlreadyExists returns false for an empty list', () => {

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`auto-qa-request` never read issue links on direct pushes** (#76): the push branch hard-coded the "PR body" to `''`, so a commit saying `Closes #27` still got a brand-new auto-filed Task. It now parses the head commit message, accepting closing keywords, `Refs #N` and bare `#N` (closing keywords first). Cross-repo refs, URL fragments, pull requests and missing issues are skipped, and the first real issue wins.
+- **`qaRequestAlreadyExists` substring match**: `PR #2` matched a QA Request filed for `PR #21`, so re-marking PR #2 ready for review could skip filing. The marker is now matched on the footer with a boundary.
+
+### Added
+
+- **Quieter by default: docs/settings-only changes file nothing.** A push or PR touching only `DELIVERY_OS_AUTO_QA_QUIET_PATHS` globs (default: `**/*.md`, `docs/**`, `LICENSE*`, editor/git config, issue templates, `CODEOWNERS`, `dependabot.yml`) no longer files a Task + QA Request. Code, workflows and `package.json` still file. `none` restores the old behavior.
+- **`DELIVERY_OS_AUTO_QA`** repo variable: `all` (default), `pr-only` (direct pushes file nothing), or `off`. **`DELIVERY_OS_AUTO_TASK=false`**: direct pushes with no linked issue file only the QA Request, with no synthetic Task. **`[skip qa-request]`** in a commit message skips that push. These are repo variables, not workflow edits, so they survive `install --update`.
+- **Auto-filed issues now get closed.** When a PR is closed without merging, `auto-qa-request` closes the Task/QA Request it filed for it (*not planned*). When a release is authorized, `authorize-deployment` closes every open auto-filed Task/QA Request created before the release issue (*completed*) and comments on each one. It identifies them by the auto-qa-request footer and never touches human- or skill-filed issues. Opt out with `DELIVERY_OS_AUTO_CLOSE=false`.
+- **Cleanup sweep: "Auto-filed leftovers" check** in the `delivery-ops` skill. It proposes closing auto-filed issues whose work already landed. This covers repos that never cut a Production Release, and filings from before auto-close existed.
+- Direct-push QA Requests now list the pushed files.
+
+### Changed
+
+- **`actions/github-script` v7 → v9** in every workflow, which clears GitHub's outdated-action (Node runtime) warning. None of the scripts use `require('@actions/github')` or redeclare `getOctokit`, which are v9's only breaking changes.
+
 ## [1.7.2] - 2026-09-22
 
 ### Fixed

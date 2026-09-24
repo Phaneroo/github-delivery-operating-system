@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Post Approval Comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME || '' }}

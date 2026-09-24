@@ -2,7 +2,8 @@
 
 const assert = require('assert/strict');
 const { test } = require('./harness');
-const { computeVerdict } = require('../.github/scripts/authorize-deployment-verdict');
+const { computeVerdict, selectFilingsToCloseOnRelease } = require('../.github/scripts/authorize-deployment-verdict');
+const { buildAutoTaskBody, buildQaRequestBody } = require('../.github/scripts/auto-qa-request');
 
 const RELEASE = 'alice';
 const QA = 'bob';
@@ -129,4 +130,38 @@ test('QA approving does not count as a release verdict, and vice versa', () => {
   const result = computeVerdict([comment(QA, 'approved')], RELEASE, QA);
   assert.equal(result.releaseVerdict, null, 'QA is not the release approver');
   assert.equal(result.qaApproved, true, 'but "approved" is a valid QA keyword too');
+});
+
+// selectFilingsToCloseOnRelease
+
+const RELEASE_REQUESTED_AT = '2026-09-20T12:00:00Z';
+const BEFORE = '2026-09-19T12:00:00Z';
+const AFTER = '2026-09-21T12:00:00Z';
+
+const autoTaskBody = buildAutoTaskBody({ number: null, title: 't', url: '', author: null, viaDirectPush: true });
+const autoQaBody = buildQaRequestBody({
+  relatedIssueNumber: 1, prNumber: null, prTitle: 't', prUrl: '', branch: 'main',
+  filesChanged: [], acceptanceCriteria: null, originMarker: 'Direct push #abc',
+});
+
+test('selectFilingsToCloseOnRelease picks auto-qa-request Tasks and QA Requests filed before the release', () => {
+  const issues = [
+    { number: 1, body: autoTaskBody, created_at: BEFORE },
+    { number: 2, body: autoQaBody, created_at: BEFORE },
+  ];
+  assert.deepEqual(selectFilingsToCloseOnRelease(issues, RELEASE_REQUESTED_AT), [1, 2]);
+});
+
+test('selectFilingsToCloseOnRelease skips anything filed after the release was requested', () => {
+  const issues = [{ number: 1, body: autoQaBody, created_at: AFTER }];
+  assert.deepEqual(selectFilingsToCloseOnRelease(issues, RELEASE_REQUESTED_AT), []);
+});
+
+test('selectFilingsToCloseOnRelease never touches issues without an auto-qa-request footer', () => {
+  const issues = [
+    { number: 1, body: '### Task Summary\n\nReal work the skill is tracking', created_at: BEFORE },
+    { number: 2, body: '', created_at: BEFORE },
+    { number: 3, body: autoQaBody, created_at: BEFORE, pull_request: {} },
+  ];
+  assert.deepEqual(selectFilingsToCloseOnRelease(issues, RELEASE_REQUESTED_AT), []);
 });

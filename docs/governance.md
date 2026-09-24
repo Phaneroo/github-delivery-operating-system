@@ -70,9 +70,10 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | Sprint issue opened (title "SPRINT -") | sprint-child-creator | Creates child issues with `sprint-child` |
 | Child issue closed (body has Parent Sprint) | auto-close-sprint | Updates burn-down; auto-closes at 100% |
 | Production release opened | notify-release-approver | Pings RELEASE_APPROVER |
-| Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy |
+| Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers |
 | QA/qa-request issue opened | auto-assign-qa | Assigns QA_ASSIGNEES |
-| PR opened, or commit pushed to `main` | auto-qa-request | Files a QA Request (and a backing Task, if none is linked) — safety net, not a gate |
+| PR opened, or commit pushed to `main` | auto-qa-request | Files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed — safety net, not a gate |
+| PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR |
 | Bugs, QA, sprints, releases, PR merged | telegram-issues | Sends alerts (if secrets set) |
 
 ---
@@ -86,5 +87,5 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | notify-release-approver | `issues.opened` (label `production`) |
 | authorize-deployment | `issue_comment.created` (on production issue) |
 | auto-assign-qa | `issues.opened` or `labeled` (label `qa` or `qa-request`) |
-| auto-qa-request | `pull_request.opened`/`ready_for_review`, `push` to `main` |
+| auto-qa-request | `pull_request.opened`/`ready_for_review`/`closed`, `push` to `main` |
 | telegram-issues | `issues`, `issue_comment`, `pull_request` |

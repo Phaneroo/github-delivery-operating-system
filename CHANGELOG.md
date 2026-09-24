@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Direct pushes no longer create a synthetic Task; the rolling issue is the paper trail.
   - Two runs racing to open the issue are folded into one, and concurrent appends re-check and retry.
 - **Settings.** New repo variable `DELIVERY_OS_AUTO_QA_MODE`: `rolling` (default) | `per-change` (the previous behavior, unchanged) | `off`. The 1.8.0 `DELIVERY_OS_AUTO_QA` still works when the new variable is unset: `all` → per-change (so repos that chose it explicitly keep it), `pr-only` → rolling with direct pushes adding nothing, `off` → off. An unrecognized value falls back to rolling, so a typo never turns the reminder off.
+- **Change drafts leave out `[skip qa-request]` commits.** A commit marked trivial by its author no longer shows up in a change's plain-English draft, in either mode.
 - **Release roll-up** now lists every rolling-issue line (the open issue, plus ones approved since the last release) with its QA status, alongside any per-change QA Requests.
 
 ### Added

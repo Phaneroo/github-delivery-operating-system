@@ -556,7 +556,8 @@ const CHANGELOG_DRAFT_NOTE =
  * Seeds the QA Request's plain-English changelog with the closest thing
  * the workflow has to a human description, the commit subjects, as a
  * clearly marked draft for a dev (or the delivery-ops skill) to rewrite.
- * Drops merge commits, fixup/squash noise, `[skip …]` markers and trailing
+ * Drops merge commits, fixup/squash noise, `[skip qa-request]` commits, other
+ * `[skip …]` markers and trailing
  * `(#N)` / closing-keyword clutter so the draft reads as change notes.
  *
  * @param {{ title: string, commitMessages?: string[] }} params
@@ -574,6 +575,9 @@ function seedChangeSummary({ title, commitMessages }) {
 
   const bullets = [];
   for (const message of commitMessages || []) {
+    // A commit marked [skip qa-request] is trivial by its author's own
+    // account, so it doesn't belong in the change's summary either.
+    if (hasSkipMarker(message)) continue;
     const subject = clean((message || '').split('\n')[0]);
     if (!subject || /^(merge\b|fixup!|squash!)/i.test(subject)) continue;
     if (!bullets.some((b) => b.toLowerCase() === subject.toLowerCase())) bullets.push(subject);

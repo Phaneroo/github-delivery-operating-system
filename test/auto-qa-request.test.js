@@ -240,11 +240,20 @@ test('seedChangeSummary turns commit subjects into clean bullets', () => {
     title: 'ignored',
     commitMessages: [
       'Add dark mode toggle (#12)\n\nLong body',
-      'Fix login redirect, closes #4 [skip qa-request]',
+      'Fix login redirect, closes #4 [skip ci]',
       'Refs #9: tidy settings page',
     ],
   });
   assert.equal(summary, '- Add dark mode toggle\n- Fix login redirect\n- tidy settings page');
+});
+
+test('seedChangeSummary leaves out commits marked [skip qa-request]', () => {
+  // Found on a real repo: a marked "Update Delivery OS" commit showed up in the draft.
+  const summary = seedChangeSummary({
+    title: 'ignored',
+    commitMessages: ['Update Delivery OS [skip qa-request]', 'Add a wave helper', 'Fix README typo [skip qa-request]'],
+  });
+  assert.equal(summary, '- Add a wave helper');
 });
 
 test('seedChangeSummary drops merge/fixup commits and case-insensitive duplicates', () => {

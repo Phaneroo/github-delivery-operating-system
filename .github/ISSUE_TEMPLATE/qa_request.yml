@@ -13,6 +13,25 @@ body:
       required: true
 
   - type: textarea
+    id: what_changed
+    attributes:
+      label: "What Changed (plain English)"
+      description: "What a user will notice, and what could break. No code jargon; QA uses this to decide what to test."
+      placeholder: |
+        - The login page now remembers your email address
+        - Could affect: signing out, switching accounts
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: changelog_review
+    attributes:
+      label: "Changelog Review"
+      description: "Ticked by the developer who made the change, once the section above is accurate."
+      options:
+        - label: "Dev reviewed: this describes the change accurately, in plain English"
+
+  - type: textarea
     id: what_to_test
     attributes:
       label: "What to Test"

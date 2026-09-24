@@ -106,6 +106,14 @@ This confirm-first default is for issues created **on explicit request** ("file 
 
   #<N>
 
+  ### What Changed (plain English)
+
+  <plain-English changelog — see "Writing the What Changed changelog" below>
+
+  ### Changelog Review
+
+  - [ ] Dev reviewed: this describes the change accurately, in plain English
+
   ### What to Test
 
   <what to test>
@@ -244,12 +252,29 @@ Given an SRS/PRD, or just a plain-language feature description, break it into a 
 
 For a single small feature that doesn't warrant phase-level sequencing, skip the Sprint wrapper entirely — just file standalone Task issues (cross-referencing each other via "Related: #N" where relevant) using the normal Task recipe.
 
+### Writing the What Changed changelog
+
+Every QA Request carries a **What Changed (plain English)** section so QA knows what to test without reading code. A developer confirms it by ticking the **Changelog Review** box. `auto-qa-request` can only seed a draft from commit subjects (marked `_Draft built from commit messages…_`); the real version is written here.
+
+Write it from the actual diff (`gh pr diff <N>`, or `git show <sha>` / `git diff <before>..<after>` for a direct push), not from commit messages alone:
+- **One bullet per change a user could notice.** Describe it as they would experience it: "The login page now remembers your email", not "Persist email in localStorage via useAuth hook".
+- **No code jargon.** No file, function, library or variable names unless QA literally sees them on screen. Name screens, buttons, messages and flows instead.
+- **Say what could break.** End with a `Could affect:` line naming nearby features worth a regression check (e.g. "signing out, switching accounts").
+- **Include behind-the-scenes changes only if QA can observe them** (speed, error messages, emails sent). Refactors with no visible effect become one bullet: "Internal clean-up, no visible change expected."
+- **Be honest about uncertainty.** If the diff doesn't make the user-facing effect clear, say so in the bullet and ask the dev to confirm, rather than guessing.
+
+Rules:
+- **Never tick the Changelog Review box yourself**, even if you wrote the changelog and are confident. The tick is the dev's sign-off that it's accurate; ticking it would defeat the review.
+- When you find a QA Request whose section is still the auto-seeded draft, offer to rewrite it: show the proposed text first, then replace just that section with `gh issue edit --body-file`, keeping the draft note until a dev reviews it. It's someone else's issue body, so confirm before editing.
+- When a dev asks you to write the changelog for their change, write it, then remind them to review and tick the box.
+
 ## Finding things
 
 When there's no issue number in hand yet:
 - **Production releases awaiting a decision:** `gh issue list --repo <owner>/<repo> --label production --state open`
 - **Active sprints:** `gh issue list --repo <owner>/<repo> --label sprint --state open` (title contains `SPRINT -`)
 - **Open QA requests:** `gh issue list --repo <owner>/<repo> --label qa-request --state open`
+- **QA requests waiting on dev changelog review:** `gh issue list --repo <owner>/<repo> --label qa-request --state open --search "\"- [ ] Dev reviewed\" in:body"`. If GitHub search ignores the brackets, list with `--json number,title,body` and keep bodies containing `- [ ] Dev reviewed`. Include these in any status check: QA shouldn't rely on a changelog nobody has confirmed.
 - **A sprint's own children:** `gh issue list --repo <owner>/<repo> --label sprint-child --search "\"Parent Sprint: #<N>\" in:body"` — the exact-phrase quotes matter, otherwise the search matches "Parent", "Sprint", and the number as separate free-text terms instead of the literal phrase. On a repo installed before 1.5.0 (or one that hasn't run the `gh label edit` migration — see `docs/consumer-setup.md`), use `--label sprint-active` instead, or drop `--label` entirely and rely on the body search alone if you're not sure which name applies.
 - **Everything auto-filed, by anything** — `gh issue list --repo <owner>/<repo> --label delivery-ops-filed` — both this skill's autonomous tracking and the `auto-qa-request` workflow tag what they create with this, so it's the one query that finds all of it regardless of type label.
 
@@ -266,6 +291,7 @@ What to check:
 - **Demo/test debris** — open issues whose title matches obvious throwaway patterns (`demo`, `test`, `something to show`) left over from a walkthrough session, past the session that created them.
 - **Silent approvals** — Production Release issues with `Deployment Authorized: No` and no approver comment in a long time — nobody ever acted on the notification.
 - **Untouched QA Requests** — `qa-request` issues still `QA Outcome: Pending` with no comment or edit in a long time (`gh issue list --repo <owner>/<repo> --label qa-request --state open --json number,title,updatedAt,body`, filter on `updatedAt`). This is what closes the gap the `auto-qa-request` workflow can't on its own: that workflow guarantees a QA Request gets filed for every PR and every direct push to `main`, not that anyone actually tested it. Flag only, same reasoning as Stale Tasks — "still pending" usually means queued, not abandoned.
+- **Unreviewed changelogs**: open `qa-request` issues whose Changelog Review box is still unticked, especially ones still holding the auto-seeded `_Draft built from commit messages…_`. Flag these for the dev who made the change (the PR author, or the direct-push commit author). Offer to rewrite the draft in plain English per "Writing the What Changed changelog", but never tick the box and never close anything for this reason alone.
 - **Auto-filed leftovers** — open issues `auto-qa-request` filed (`gh issue list --repo <owner>/<repo> --label delivery-ops-filed --state open --json number,title,createdAt,body`, then keep only bodies ending in its `*Auto-filed by Delivery OS (no issue was linked…)*` or `*Auto-filed by Delivery OS — origin: …*` footer — the skill's own tracking uses the same label but not these footers) whose work is already on `main`: a direct-push origin, or a PR origin whose PR is merged (`gh pr view <N> --json state`). These are what a release authorization would close automatically, so they pile up in repos that never cut a Production Release, and in any repo from before auto-close existed. Unlike Stale Tasks, **propose closing** these (`gh issue close <N> --reason completed --comment "…"`), since the work already landed — but still grouped for confirmation, and skip any a person has commented on or edited beyond the auto-filed body, since that means someone's actively using it. Also flag filings whose PR was closed unmerged (propose `--reason "not planned"`) — the workflow closes these itself, so any still open predate that.
 - **Roadmap drift** — the `ROADMAP -` issue's phase list vs. the live `gh issue list --label sprint` state (a phase marked in-progress that's actually closed, or a sprint that exists but isn't listed at all). This one gets *reconciled* (roadmap body rewritten to match reality) rather than closed.
 

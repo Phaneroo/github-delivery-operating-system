@@ -149,6 +149,10 @@ Repos that push straight to `main` (common for solo-maintained prototypes) get a
 - **Docs- and settings-only changes file nothing.** A push or PR that only touches paths matching `DELIVERY_OS_AUTO_QA_QUIET_PATHS` (README edits, `docs/`, editor config…) is skipped. Anything else — code, workflows, `package.json` — still files.
 - **Turn it down repo-wide** with `DELIVERY_OS_AUTO_QA` / `DELIVERY_OS_AUTO_TASK` above. These are repo variables, not workflow edits, so `install --update` keeps them.
 
+#### Plain-English changelog on every QA Request
+
+Every QA Request, whether filed by hand or by `auto-qa-request`, has a **What Changed (plain English)** section and a **Changelog Review** checkbox. The workflow seeds a draft from the PR's or push's commit subjects, marked as a draft. The developer who made the change rewrites it in plain English (what a user will notice, and what could break) and ticks the box, so QA knows what to test and that the description is trustworthy. The `delivery-ops` skill can write the plain-English version from the diff and flags unreviewed changelogs in its status check and cleanup sweep, but it never ticks the box itself.
+
 #### When auto-filed issues get closed
 
 `auto-qa-request` only ever closes what it filed itself (identified by its footer and the `delivery-ops-filed` label) — never an issue a person filed:

@@ -164,20 +164,28 @@ function isQuietChange(files, quietPaths) {
   return files.every((f) => res.some((re) => re.test(f)));
 }
 
+// GitHub's compare and single-commit APIs return at most this many files.
+const API_FILE_LIMIT = 300;
+
 /**
- * @param {Array<{ added?: string[], modified?: string[], removed?: string[] }>} commits
- *   - a push event's `commits` payload
- * @returns {string[] | null} every path touched, deduplicated, or null if
- *   any commit is missing its file lists (so callers treat it as unknown).
+ * A push's changed files have to come from the API: the push payload GitHub
+ * Actions delivers has no `added`/`modified`/`removed` lists on its commits
+ * (unlike the webhook docs suggest), so they can't be read from there.
+ *
+ * @param {Array<{ filename: string, previous_filename?: string }> | null} files
+ *   - `files` from repos.compareCommitsWithBasehead / repos.getCommit
+ * @returns {string[] | null} every path touched, including a rename's old
+ *   path (moving src/ into docs/ isn't docs-only), deduplicated; null when
+ *   unknown or possibly truncated, so callers never treat it as quiet.
  */
-function collectPushedFiles(commits) {
-  if (!commits || !commits.length) return null;
-  const files = new Set();
-  for (const commit of commits) {
-    if (!commit.added || !commit.modified || !commit.removed) return null;
-    for (const f of [...commit.added, ...commit.modified, ...commit.removed]) files.add(f);
+function touchedPathsFromApiFiles(files) {
+  if (!files || !files.length || files.length >= API_FILE_LIMIT) return null;
+  const paths = new Set();
+  for (const f of files) {
+    paths.add(f.filename);
+    if (f.previous_filename) paths.add(f.previous_filename);
   }
-  return [...files];
+  return [...paths];
 }
 
 /**
@@ -356,7 +364,7 @@ module.exports = {
   resolveQuietPaths,
   globToRegExp,
   isQuietChange,
-  collectPushedFiles,
+  touchedPathsFromApiFiles,
   findFilingsForPr,
   extractAcceptanceCriteria,
   parseMergedPrNumber,

@@ -63,7 +63,7 @@ jobs:
               autoTaskEnabledForDirectPush,
               resolveQuietPaths,
               isQuietChange,
-              collectPushedFiles,
+              touchedPathsFromApiFiles,
               extractAcceptanceCriteria,
               parseMergedPrNumber,
               buildAutoTaskBody,
@@ -97,8 +97,7 @@ jobs:
                 owner, repo, pull_number: prNumber, per_page: 100
               });
               filesChanged = files.map((f) => f.filename);
-              // A rename's old path counts too (moving src/ into docs/ isn't docs-only).
-              touchedPaths = [...filesChanged, ...files.map((f) => f.previous_filename).filter(Boolean)];
+              touchedPaths = touchedPathsFromApiFiles(files);
             } else {
               const headCommit = context.payload.head_commit;
               const message = headCommit ? headCommit.message : '';
@@ -125,8 +124,20 @@ jobs:
               prBody = message; // a direct push's issue links live in its commit message
               branch = 'main';
               author = headCommit && headCommit.author ? (headCommit.author.username || headCommit.author.name) : null;
-              touchedPaths = collectPushedFiles(context.payload.commits);
-              filesChanged = touchedPaths || [];
+              // The push payload carries no file lists, so ask the API: the
+              // whole push range, or just the commit for a branch's first push.
+              let apiFiles = null;
+              try {
+                const before = context.payload.before;
+                const { data } = before && !/^0+$/.test(before)
+                  ? await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${before}...${context.sha}` })
+                  : await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
+                apiFiles = data.files || [];
+              } catch (err) {
+                console.log(`Couldn't list changed files (${err.message}) — filing without them.`);
+              }
+              touchedPaths = touchedPathsFromApiFiles(apiFiles);
+              filesChanged = apiFiles ? apiFiles.map((f) => f.filename) : [];
               viaDirectPush = true;
               originMarker = `Direct push #${context.sha}`;
             }

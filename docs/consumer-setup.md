@@ -99,7 +99,7 @@ The manifest is only written/updated when the files it describes are actually cu
 |----------|---------|
 | `sprint-child-creator.yml` | Creates child issues when a sprint planning issue (title contains `SPRINT -`) is opened |
 | `auto-close-sprint.yml` | Updates burn-down, sprint health; auto-closes sprint when 100% complete |
-| `notify-release-approver.yml` | Pings release approver when a production release issue is opened |
+| `notify-release-approver.yml` | Pings release approver when a production release issue is opened, and posts a roll-up of what's in the release |
 | `authorize-deployment.yml` | Dual approval (release approver + QA) before deployment |
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
 | `auto-qa-request.yml` | Files a QA Request (and a backing Task, if none is linked) whenever a PR opens or a commit lands directly on `main`, unless only docs/settings changed — a safety net, not a gate. Closes those filings if the PR is closed without merging |
@@ -152,6 +152,8 @@ Repos that push straight to `main` (common for solo-maintained prototypes) get a
 #### Plain-English changelog on every QA Request
 
 Every QA Request, whether filed by hand or by `auto-qa-request`, has a **What Changed (plain English)** section and a **Changelog Review** checkbox. The workflow seeds a draft from the PR's or push's commit subjects, marked as a draft. The developer who made the change rewrites it in plain English (what a user will notice, and what could break) and ticks the box, so QA knows what to test and that the description is trustworthy. The `delivery-ops` skill can write the plain-English version from the diff and flags unreviewed changelogs in its status check and cleanup sweep, but it never ticks the box itself.
+
+Those notes are collected again when a release is requested: the Production Release issue gets a **What's in this release** roll-up comment listing each QA Request's notes and whether they're dev-reviewed, so approvers see what they're signing off. See [governance.md](governance.md#production-release).
 
 #### When auto-filed issues get closed
 

@@ -46,7 +46,10 @@ flowchart LR
 When a production release issue is opened (template auto-applies `production`):
 
 1. **notify-release-approver** pings `RELEASE_APPROVER` with sprint reference and QA recommendation.
-2. Approver reviews and comments.
+2. It also posts a **release roll-up**: one comment titled *What's in this release* that collects the plain-English **What Changed** notes from every QA Request filed since the last authorized release. Each one is marked ✅ (dev-reviewed) or ⚠️ (not reviewed, still a draft, or missing), and the **Could affect** areas are merged into one list. QA Requests closed as *not planned* and ones whose PR hasn't merged are left out.
+3. Approver reviews and comments.
+
+The roll-up is a **best guess and informational only**: Delivery OS doesn't track exact commit ranges per release, so it goes by when QA Requests were filed, and it never blocks authorization. Refresh it after changes with `gh workflow run notify-release-approver.yml -f release_issue=<N>`; the existing comment is updated in place.
 
 ### Dual Approval
 
@@ -69,7 +72,7 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 |-------|----------|--------|
 | Sprint issue opened (title "SPRINT -") | sprint-child-creator | Creates child issues with `sprint-child` |
 | Child issue closed (body has Parent Sprint) | auto-close-sprint | Updates burn-down; auto-closes at 100% |
-| Production release opened | notify-release-approver | Pings RELEASE_APPROVER |
+| Production release opened | notify-release-approver | Pings RELEASE_APPROVER; posts the release roll-up |
 | Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers |
 | QA/qa-request issue opened | auto-assign-qa | Assigns QA_ASSIGNEES |
 | PR opened, or commit pushed to `main` | auto-qa-request | Files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed — safety net, not a gate |
@@ -84,7 +87,7 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 |----------|---------|
 | sprint-child-creator | `issues.opened` (title contains "SPRINT -") |
 | auto-close-sprint | `issues.closed` (body contains "Parent Sprint") |
-| notify-release-approver | `issues.opened` (label `production`) |
+| notify-release-approver | `issues.opened` (label `production`), `workflow_dispatch` (roll-up refresh) |
 | authorize-deployment | `issue_comment.created` (on production issue) |
 | auto-assign-qa | `issues.opened` or `labeled` (label `qa` or `qa-request`) |
 | auto-qa-request | `pull_request.opened`/`ready_for_review`/`closed`, `push` to `main` |

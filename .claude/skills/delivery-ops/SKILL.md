@@ -66,7 +66,7 @@ This confirm-first default is for issues created **on explicit request** ("file 
   ```
   One feature per line, no bullets/numbering (matches the template's own instruction — `sprint-child-creator`'s parser just splits on newlines).
 
-**Production Release** — triggers `notify-release-approver` on open (posts a comment tagging `RELEASE_APPROVER`), and later `authorize-deployment` on comments:
+**Production Release** — triggers `notify-release-approver` on open (posts a comment tagging `RELEASE_APPROVER`, plus a *What's in this release* roll-up of the plain-English What Changed notes from QA Requests filed since the last authorized release), and later `authorize-deployment` on comments:
 - Title: `PRODUCTION RELEASE - <project> - vX.X.X`
 - Labels: `release`, `production`, `approval`
 - Body:
@@ -251,6 +251,14 @@ Given an SRS/PRD, or just a plain-language feature description, break it into a 
 4. **Report back everything created**, grouped by phase — sprint issue number, task issue numbers, and the placeholder-close.
 
 For a single small feature that doesn't warrant phase-level sequencing, skip the Sprint wrapper entirely — just file standalone Task issues (cross-referencing each other via "Related: #N" where relevant) using the normal Task recipe.
+
+### Release roll-up
+
+When a Production Release issue opens, `notify-release-approver` posts one comment starting with `<!-- delivery-os:release-rollup -->` that lists every QA Request filed since the previous authorized release, with its What Changed notes, ✅/⚠️ review status and QA outcome, plus the merged **Could affect** areas. It's a best guess (by filing date, since Delivery OS doesn't track commit ranges), it's informational, and it never blocks authorization.
+
+- **Refresh it** after changelogs get reviewed or rewritten: `gh workflow run notify-release-approver.yml --repo <owner>/<repo> -f release_issue=<N>`. This updates the existing comment in place and doesn't re-ping the approver. It's a real workflow run in their repo, so confirm first.
+- **When asked about a release's status**, read the roll-up comment and lead with its ⚠️ items. Those are the changelogs a dev still needs to review. Offer to rewrite drafts per "Writing the What Changed changelog" below, then refresh.
+- **If the roll-up looks wrong** (a change is missing, or something unrelated is listed), say so plainly rather than trusting it. The usual causes are a QA Request filed after the release issue was opened, one closed as not planned, or work that never got a QA Request.
 
 ### Writing the What Changed changelog
 

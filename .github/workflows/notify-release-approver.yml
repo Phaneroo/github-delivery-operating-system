@@ -1,15 +1,24 @@
 name: Notify Release Approver
 
+# Also posts the release roll-up: one comment listing the plain-English
+# "What Changed" notes from every QA Request this release likely covers.
+# Informational only; re-run it with
+#   gh workflow run notify-release-approver.yml -f release_issue=<N>
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      release_issue:
+        description: "Production Release issue number to refresh the roll-up for"
+        required: true
 
 permissions:
   issues: write
 
 jobs:
   notify:
-    if: contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production')
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production')
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -52,3 +61,88 @@ jobs:
               issue_number: context.issue.number,
               body: commentBody
             });
+
+  release-rollup:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production')
+    # Independent of `notify` (no `needs`), so a manual refresh works and a
+    # roll-up failure can never hold up or break the approver ping.
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+      contents: read # needed for actions/checkout, so this workflow's script can be required from the repo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Post release roll-up
+        uses: actions/github-script@v9
+        env:
+          RELEASE_ISSUE: ${{ github.event.inputs.release_issue || github.event.issue.number }}
+        with:
+          script: |
+            const {
+              ROLLUP_MARKER,
+              findPreviousAuthorizedRelease,
+              selectQaRequestsInWindow,
+              parseOriginPrNumber,
+              buildRollupComment,
+            } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-rollup.js`);
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const releaseNumber = parseInt(process.env.RELEASE_ISSUE, 10);
+
+            const { data: release } = await github.rest.issues.get({ owner, repo, issue_number: releaseNumber });
+            const releaseLabels = (release.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
+            if (!releaseLabels.includes('production')) {
+              core.setFailed(`#${releaseNumber} isn't a Production Release issue (no 'production' label).`);
+              return;
+            }
+
+            const productionIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'all', labels: 'production', per_page: 100
+            });
+            const previousRelease = findPreviousAuthorizedRelease(productionIssues, release);
+
+            // `since` filters on updated_at, which is always >= created_at,
+            // so it's a safe pre-filter for the created_at window below.
+            const qaIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'all', labels: 'qa-request', per_page: 100,
+              ...(previousRelease ? { since: previousRelease.created_at } : {})
+            });
+            const inWindow = selectQaRequestsInWindow(qaIssues, previousRelease && previousRelease.created_at, release.created_at);
+
+            // Leave out work whose PR hasn't merged — it isn't on main yet.
+            const qaRequests = [];
+            const unmerged = [];
+            for (const qa of inWindow) {
+              const prNumber = parseOriginPrNumber(qa.body);
+              if (prNumber) {
+                try {
+                  const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+                  if (!pr.merged) {
+                    unmerged.push({ number: qa.number, prNumber });
+                    continue;
+                  }
+                } catch (err) {
+                  console.log(`Couldn't check PR #${prNumber} for #${qa.number} (${err.message}) — including it.`);
+                }
+              }
+              qaRequests.push(qa);
+            }
+
+            const body = buildRollupComment({ qaRequests, unmerged, previousRelease });
+
+            // One roll-up per release: update it in place on a refresh.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: releaseNumber, per_page: 100
+            });
+            const existing = comments.find((c) => (c.body || '').startsWith(ROLLUP_MARKER));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: releaseNumber, body });
+            }
+            console.log(`Roll-up for #${releaseNumber}: ${qaRequests.length} QA Request(s), ${unmerged.length} unmerged skipped.`);

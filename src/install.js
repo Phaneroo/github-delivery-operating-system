@@ -29,7 +29,7 @@ const WORKFLOWS = [
 // logic exactly like the others, but setup-labels.yml requires it the same
 // way once installed — see loadLabels() below. Its sibling data file,
 // labels.tsv, is copied separately (different extension) — see LABELS_TSV.
-const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'auto-qa-request', 'labels'];
+const SCRIPTS = ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'auto-qa-request', 'release-rollup', 'labels'];
 const LABELS_TSV = 'labels.tsv';
 
 // These scripts are CommonJS (`require`/`module.exports`). Node picks CJS vs.
@@ -59,6 +59,31 @@ const REQUIRED_SCRIPT_BY_WORKFLOW = {
   'sprint-child-creator': 'sprint-child-creator',
   'auto-qa-request': 'auto-qa-request',
 };
+
+// Workflows that only started require()-ing a script in a later release, so
+// an older copy on disk legitimately needs nothing. Like setup-labels (see
+// below), the dependency is read from the installed file's own content —
+// mapping these unconditionally would flag every pre-upgrade install as
+// broken. notify-release-approver gained release-rollup.js with the release
+// roll-up job.
+const CONTENT_GATED_SCRIPT_BY_WORKFLOW = {
+  'notify-release-approver': 'release-rollup',
+};
+
+// The script an installed workflow requires, or null — unconditional ones
+// from REQUIRED_SCRIPT_BY_WORKFLOW, content-gated ones only when the file on
+// disk actually references the script.
+function requiredScriptFor(targetAbs, wf) {
+  if (REQUIRED_SCRIPT_BY_WORKFLOW[wf]) return REQUIRED_SCRIPT_BY_WORKFLOW[wf];
+  const gated = CONTENT_GATED_SCRIPT_BY_WORKFLOW[wf];
+  if (!gated) return null;
+  try {
+    const content = fs.readFileSync(path.join(targetAbs, '.github', 'workflows', `${wf}.yml`), 'utf8');
+    return content.includes(`${gated}.js`) ? gated : null;
+  } catch {
+    return null;
+  }
+}
 
 // setup-labels.yml-specific broken-install check. Returns the filenames
 // under .github/scripts that are missing, or [] if either the workflow
@@ -602,7 +627,7 @@ async function runStatus(options) {
       if (wf === 'setup-labels') {
         return { wf, missing: setupLabelsMissingFiles(targetAbs, setupLabelsOnCurrentFormat) };
       }
-      const requiredScript = REQUIRED_SCRIPT_BY_WORKFLOW[wf];
+      const requiredScript = requiredScriptFor(targetAbs, wf);
       if (!requiredScript) return { wf, missing: [] };
       const scriptFile = `${requiredScript}.js`;
       const missing = fs.existsSync(path.join(targetAbs, '.github', 'scripts', scriptFile)) ? [] : [scriptFile];
@@ -620,7 +645,7 @@ async function runStatus(options) {
   // condition is hit, not an immediate break.
   const scriptsRequiringPkgJson = installedWorkflows.some((wf) => {
     if (wf === 'setup-labels') return setupLabelsOnCurrentFormat;
-    return Boolean(REQUIRED_SCRIPT_BY_WORKFLOW[wf]);
+    return Boolean(requiredScriptFor(targetAbs, wf));
   });
   const scriptsPkgJsonMissing =
     scriptsRequiringPkgJson &&
@@ -885,6 +910,7 @@ module.exports = {
     SCRIPTS_PACKAGE_JSON,
     LABELS_TSV,
     REQUIRED_SCRIPT_BY_WORKFLOW,
+    CONTENT_GATED_SCRIPT_BY_WORKFLOW,
     setupLabelsMissingFiles,
     loadLabels,
   },

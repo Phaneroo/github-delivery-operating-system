@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-09-24
+
+### Changed
+
+- **New default: one rolling QA issue instead of a QA Request (+ Task) per change** (#88). Busy repos were getting two issues per push, and nothing closed them unless the repo cut Production Releases. Turning auto-filing off lost the "please test this" reminder. Now `auto-qa-request` keeps a single open issue, **QA REQUEST - Changes awaiting QA** (labels `qa-request`, `delivery-ops-filed`, `qa-rollup`):
+  - Each direct push to `main` and each **merged** PR adds a checklist line, `- [ ] <title> (<short sha or #PR>) by @author — for #N`, with plain-English draft bullets under it for devs to edit.
+  - If none is open, the first change opens one. The same commit or PR is never added twice. Docs-only changes and `[skip qa-request]` pushes add nothing. Rebase-merged PRs aren't counted twice.
+  - Direct pushes no longer create a synthetic Task; the rolling issue is the paper trail.
+  - Two runs racing to open the issue are folded into one, and concurrent appends re-check and retry.
+- **Settings.** New repo variable `DELIVERY_OS_AUTO_QA_MODE`: `rolling` (default) | `per-change` (the previous behavior, unchanged) | `off`. The 1.8.0 `DELIVERY_OS_AUTO_QA` still works when the new variable is unset: `all` → per-change (so repos that chose it explicitly keep it), `pr-only` → rolling with direct pushes adding nothing, `off` → off. An unrecognized value falls back to rolling, so a typo never turns the reminder off.
+- **Release roll-up** now lists every rolling-issue line (the open issue, plus ones approved since the last release) with its QA status, alongside any per-change QA Requests.
+
+### Added
+
+- **Approving or declining the rolling issue** (new `qa-rollup-approval.yml`). Only `QA_APPROVER` counts:
+  - **Approve:** a comment starting with `qa approved`, `approved`, `approve`, `qa ok`, `ok`, `looks good`, `lgtm`, `all good`, `tested`, `passed`, `good to go` or `ship it` (case-insensitive; anything may follow), or with ✅ 👍 ✔️; or ticking the issue's **Approved: all changes above have been tested** box. This ticks every line, sets QA Outcome to *Pass*, closes the issue as completed and posts a summary. The next change opens a fresh one.
+  - **Decline:** a comment starting with `not approved`, `declined`, `decline`, `rejected`, `reject`, `failed`, `changes needed`, `needs work`, `not ok` or `blocked`, or with ❌ 👎 🚫. The issue stays open with QA Outcome *Fail* and an acknowledgement, fixes append to it, and a later approval closes it.
+  - Decline phrases are checked first, so `not approved` is never read as `approved`. The latest verdict wins: a decline after approval reopens the issue, or points to the newer rolling issue. Anyone else's verdict is ignored with a short reply, and a non-approver's box tick is reverted. Emoji *reactions* can't trigger Actions, so the emoji must be in a comment.
+- **One shared, unit-tested verdict matcher** (`phraseRegex` / `matchVerdict` in `authorize-deployment-verdict.js`), used by both the rolling issue and `authorize-deployment`: comment-leading phrases, whole words, flexible spacing, decline before approve. The release gate keeps its original, stricter vocabulary; `lgtm` approves a rolling QA issue but not a release.
+- **`qa-rollup` label** (run *Setup Labels* or `--with-labels` after updating).
+- **Tests that run the real workflow scripts:** `test/fake-github.js` extracts a workflow's inline `github-script` and runs it against an in-memory GitHub. The rolling-mode filing, the approval workflow and per-change mode are all covered this way, and mutation-checked.
+
+### Migration
+
+- `install --update` leaves existing open auto-filed QA Requests as they are; nothing is mass-closed. When a pre-1.9.0 install that had `auto-qa-request` is updated, the output explains the new default and how to keep the old one (`DELIVERY_OS_AUTO_QA_MODE=per-change`). The `delivery-ops` skill's cleanup sweep proposes closing old per-change leftovers, and it never proposes closing the rolling issue itself.
+- `status` now checks that `qa-rollup-approval.yml` has both scripts it loads, and that a roll-up-era `notify-release-approver.yml` also has `auto-qa-request.js` (the rolling checklist parser).
+
 ## [1.8.0] - 2026-09-23
 
 ### Fixed

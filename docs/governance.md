@@ -75,7 +75,9 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | Production release opened | notify-release-approver | Pings RELEASE_APPROVER; posts the release roll-up |
 | Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers (not ones whose PR is still unmerged) |
 | QA/qa-request issue opened | auto-assign-qa | Assigns QA_ASSIGNEES |
-| PR opened or updated, or commit pushed to `main` | auto-qa-request | Files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed — safety net, not a gate |
+| Commit pushed to `main`, or PR merged | auto-qa-request | Rolling mode (default): adds a line to the open rolling QA issue, opening one if none — unless only docs/settings changed |
+| PR opened or updated, or commit pushed to `main` | auto-qa-request | Per-change mode: files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed |
+| QA approver comments or ticks the Approved box on the rolling QA issue | qa-rollup-approval | Approve → ticks every line and closes it; decline → keeps it open (Outcome *Fail*); anyone else → ignored with a reply |
 | PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR (reopening the PR reopens them) |
 | Bugs, QA, sprints, releases, PR merged | telegram-issues | Sends alerts (if secrets set) |
 
@@ -91,4 +93,5 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | authorize-deployment | `issue_comment.created` (on production issue) |
 | auto-assign-qa | `issues.opened` or `labeled` (label `qa` or `qa-request`) |
 | auto-qa-request | `pull_request.opened`/`ready_for_review`/`reopened`/`synchronize`/`closed`, `push` to `main` |
+| qa-rollup-approval | `issue_comment.created`, `issues.edited` (on the `qa-rollup` issue) |
 | telegram-issues | `issues`, `issue_comment`, `pull_request` |

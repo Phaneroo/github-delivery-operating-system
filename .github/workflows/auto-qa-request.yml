@@ -1,12 +1,21 @@
 name: Auto QA Request
 
-# Safety-net tracking, not a gate: files a QA Request whenever work reaches
-# `main`, whether or not it went through a PR, and whether or not it was
-# linked to an existing issue. Nothing is blocked — see docs/architecture.md.
+# Safety-net tracking, not a gate: whenever work reaches `main`, whether or
+# not it went through a PR, it gets a "please test this" reminder. Nothing is
+# blocked — see docs/architecture.md.
+#
+# Two styles, set by DELIVERY_OS_AUTO_QA_MODE:
+#   rolling (default)  one open "QA REQUEST - Changes awaiting QA" issue per
+#                      repo; each direct push / merged PR adds a checklist line.
+#                      QA_APPROVER approves or declines it (qa-rollup-approval.yml).
+#   per-change         the 1.8.0 behavior: a QA Request (+ Task if nothing is
+#                      linked) per PR as it opens and per direct push.
+#   off                nothing is filed.
 #
 # Tunable per repo without editing this file (so `install --update` keeps it):
-#   DELIVERY_OS_AUTO_QA   all (default) | pr-only | off
-#   DELIVERY_OS_AUTO_TASK false → direct pushes file only a QA Request, no Task
+#   DELIVERY_OS_AUTO_QA   1.8.0 setting, still honored: all → per-change,
+#                         pr-only → direct pushes add nothing, off → off
+#   DELIVERY_OS_AUTO_TASK false → per-change direct pushes file no Task
 #   DELIVERY_OS_AUTO_QA_QUIET_PATHS globs whose changes alone file nothing
 #                         (defaults to docs/settings — see auto-qa-request.js)
 # and per commit with `[skip qa-request]` in a direct push's message.
@@ -29,12 +38,13 @@ permissions:
 
 jobs:
   file-qa-request:
-    # Fast path for the DELIVERY_OS_AUTO_QA modes so no runner starts when
-    # nothing will be filed; the script re-checks with normalized values.
+    # Event shape only (a merged PR's `closed` event is how rolling mode
+    # records PRs); the script resolves the mode settings itself.
     if: >-
-      vars.DELIVERY_OS_AUTO_QA != 'off' &&
-      ((github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false) ||
-       (github.event_name == 'push' && vars.DELIVERY_OS_AUTO_QA != 'pr-only'))
+      vars.DELIVERY_OS_AUTO_QA_MODE != 'off' &&
+      ((github.event_name == 'pull_request' && github.event.pull_request.draft == false &&
+        (github.event.action != 'closed' || github.event.pull_request.merged == true)) ||
+       github.event_name == 'push')
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -48,6 +58,7 @@ jobs:
       - name: File QA request (and a backing Task, if nothing already tracks this work)
         uses: actions/github-script@v9
         env:
+          DELIVERY_OS_AUTO_QA_MODE: ${{ vars.DELIVERY_OS_AUTO_QA_MODE }}
           DELIVERY_OS_AUTO_QA: ${{ vars.DELIVERY_OS_AUTO_QA }}
           DELIVERY_OS_AUTO_TASK: ${{ vars.DELIVERY_OS_AUTO_TASK }}
           DELIVERY_OS_AUTO_QA_QUIET_PATHS: ${{ vars.DELIVERY_OS_AUTO_QA_QUIET_PATHS }}
@@ -64,8 +75,14 @@ jobs:
               pushLinkText,
               pushTitle,
               findFilingsForPr,
-              resolveAutoQaMode,
-              shouldFileForEvent,
+              resolveQaSettings,
+              ROLLING_TITLE,
+              ROLLING_LABELS,
+              buildChangeLine,
+              buildRollingQaBody,
+              hasChange,
+              appendChange,
+              parseChanges,
               autoTaskEnabledForDirectPush,
               resolveQuietPaths,
               isQuietChange,
@@ -81,9 +98,23 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            const mode = resolveAutoQaMode(process.env.DELIVERY_OS_AUTO_QA);
-            if (!shouldFileForEvent(mode, context.eventName)) {
-              console.log(`DELIVERY_OS_AUTO_QA=${mode} — nothing to file for a ${context.eventName} event.`);
+            const settings = resolveQaSettings(process.env.DELIVERY_OS_AUTO_QA_MODE, process.env.DELIVERY_OS_AUTO_QA);
+            const isPr = context.eventName === 'pull_request';
+            const prMerged = isPr && context.payload.action === 'closed';
+            if (settings.style === 'off') {
+              console.log('Auto QA is off for this repo — nothing to file.');
+              return;
+            }
+            if (!isPr && settings.prOnly) {
+              console.log('DELIVERY_OS_AUTO_QA=pr-only — direct pushes add nothing.');
+              return;
+            }
+            if (settings.style === 'rolling' && isPr && !prMerged) {
+              console.log('Rolling QA mode records a PR when it merges — nothing to do yet.');
+              return;
+            }
+            if (settings.style === 'per-change' && prMerged) {
+              console.log('Per-change mode filed this PR when it opened — nothing to do on merge.');
               return;
             }
 
@@ -143,6 +174,22 @@ jobs:
                 return;
               }
 
+              // Rolling mode records merged PRs from their `closed` event, so
+              // a rebase-merge push (no merge marker in its message) would
+              // otherwise be recorded twice. Ask GitHub which PR it came from.
+              if (settings.style === 'rolling') {
+                try {
+                  const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: context.sha });
+                  const mergedPr = prs.find((p) => p.merged_at);
+                  if (mergedPr) {
+                    console.log(`Push comes from merged PR #${mergedPr.number}, recorded by its own event — skipping.`);
+                    return;
+                  }
+                } catch (err) {
+                  console.log(`Couldn't check for an associated PR (${err.message}) — treating as a direct push.`);
+                }
+              }
+
               // The push payload carries no file lists (and at most 20
               // commits), so ask the API: the whole push range, or just the
               // commit for a branch's first push.
@@ -188,6 +235,101 @@ jobs:
               return;
             }
 
+            // First real issue this work links to. PR bodies link via closing
+            // keywords; commit messages also count `Refs #N` / bare `#N`,
+            // which can point at a PR rather than an issue.
+            async function findLinkedIssue() {
+              const candidates = viaDirectPush
+                ? extractCommitIssueReferences(prBody)
+                : extractLinkedIssueNumbers(prBody);
+              for (const n of candidates.slice(0, 5)) {
+                try {
+                  const linked = await github.rest.issues.get({ owner, repo, issue_number: n });
+                  if (linked.data.pull_request) {
+                    console.log(`#${n} is a pull request, not an issue — ignoring.`);
+                    continue;
+                  }
+                  return { number: n, acceptanceCriteria: extractAcceptanceCriteria(linked.data.body || '') };
+                } catch (err) {
+                  console.log(`Linked issue #${n} not found (${err.message}) — ignoring.`);
+                }
+              }
+              return { number: null, acceptanceCriteria: null };
+            }
+
+            if (settings.style === 'rolling') {
+              const linked = await findLinkedIssue();
+              const block = buildChangeLine({
+                title: prTitle,
+                ref: prNumber ? `#${prNumber}` : context.sha.slice(0, 7),
+                author,
+                linkedIssue: linked.number,
+                originMarker,
+                summary: seedChangeSummary({ title: prTitle, commitMessages }),
+              });
+
+              const listOpenRolling = async () =>
+                (await github.paginate(github.rest.issues.listForRepo, {
+                  owner, repo, state: 'open', labels: ROLLING_LABELS.join(','), per_page: 100
+                })).filter((i) => !i.pull_request).sort((a, b) => a.number - b.number);
+              const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+              // Two runs can race (pushes seconds apart). Appending is a
+              // read-modify-write of the body, so re-read after writing and
+              // retry if another run's write replaced ours.
+              for (let attempt = 1; attempt <= 5; attempt++) {
+                let open = await listOpenRolling();
+
+                if (!open.length) {
+                  const created = await github.rest.issues.create({
+                    owner, repo, title: ROLLING_TITLE, body: buildRollingQaBody(block), labels: ROLLING_LABELS
+                  });
+                  console.log(`Opened rolling QA issue #${created.data.number} with ${originMarker}.`);
+                  // If another run opened one at the same moment, fold the
+                  // newer ones into the oldest so only one stays open.
+                  await sleep(2000);
+                  open = await listOpenRolling();
+                  if (open.length > 1) {
+                    const [keep, ...extras] = open;
+                    let keepBody = keep.body || '';
+                    for (const extra of extras) {
+                      for (const change of parseChanges(extra.body)) {
+                        if (!hasChange(keepBody, change.originMarker)) keepBody = appendChange(keepBody, change.block);
+                      }
+                    }
+                    await github.rest.issues.update({ owner, repo, issue_number: keep.number, body: keepBody });
+                    for (const extra of extras) {
+                      await github.rest.issues.createComment({
+                        owner, repo, issue_number: extra.number,
+                        body: `Opened at the same moment as #${keep.number} — its changes were moved there. Closing this duplicate.`
+                      });
+                      await github.rest.issues.update({ owner, repo, issue_number: extra.number, state: 'closed', state_reason: 'not_planned' });
+                      console.log(`Folded duplicate rolling issue #${extra.number} into #${keep.number}.`);
+                    }
+                  }
+                  return;
+                }
+
+                const rolling = open[0];
+                if (hasChange(rolling.body, originMarker)) {
+                  console.log(`${originMarker} is already on rolling QA issue #${rolling.number} — skipping.`);
+                  return;
+                }
+                await github.rest.issues.update({ owner, repo, issue_number: rolling.number, body: appendChange(rolling.body, block) });
+                await sleep(1000 + Math.floor(Math.random() * 2000));
+                const { data: fresh } = await github.rest.issues.get({ owner, repo, issue_number: rolling.number });
+                if (hasChange(fresh.body, originMarker)) {
+                  console.log(`Added ${originMarker} to rolling QA issue #${rolling.number}.`);
+                  return;
+                }
+                console.log(`Another update replaced ours on #${rolling.number} — retrying (attempt ${attempt}).`);
+              }
+              core.setFailed(`Couldn't add ${originMarker} to the rolling QA issue after 5 attempts.`);
+              return;
+            }
+
+            // ---- per-change mode (the 1.8.0 behavior) ----
+
             // Idempotency: don't file a second QA Request for the same PR/push.
             const openQaRequests = await github.paginate(github.rest.issues.listForRepo, {
               owner, repo, state: 'open', labels: 'qa-request', per_page: 100
@@ -198,29 +340,7 @@ jobs:
             }
 
             // Find (or file) a Task issue this work is actually tracked under.
-            // PR bodies link via closing keywords; commit messages also count
-            // `Refs #N` / bare `#N`, which can point at a PR rather than an
-            // issue — so take the first candidate that's a real issue.
-            const candidates = viaDirectPush
-              ? extractCommitIssueReferences(prBody)
-              : extractLinkedIssueNumbers(prBody);
-            let relatedIssueNumber = null;
-            let acceptanceCriteria = null;
-
-            for (const n of candidates.slice(0, 5)) {
-              try {
-                const linked = await github.rest.issues.get({ owner, repo, issue_number: n });
-                if (linked.data.pull_request) {
-                  console.log(`#${n} is a pull request, not an issue — ignoring.`);
-                  continue;
-                }
-                relatedIssueNumber = n;
-                acceptanceCriteria = extractAcceptanceCriteria(linked.data.body || '');
-                break;
-              } catch (err) {
-                console.log(`Linked issue #${n} not found (${err.message}) — ignoring.`);
-              }
-            }
+            let { number: relatedIssueNumber, acceptanceCriteria } = await findLinkedIssue();
 
             if (!relatedIssueNumber && viaDirectPush && !autoTaskEnabledForDirectPush(process.env.DELIVERY_OS_AUTO_TASK)) {
               console.log('No linked issue, and DELIVERY_OS_AUTO_TASK=false — filing the QA Request without a Task.');

@@ -110,12 +110,19 @@ else
 fi
 
 # 1. Ensure target .github structure
+# 1.9.0 changed auto-qa-request's default to one rolling QA issue — note it
+# when an --update brings that to a repo that already had the old workflow
+# (the shell installer doesn't read the manifest, so presence is the signal).
+HAD_AUTO_QA=false
+if [ -f "${TARGET_ABS}/.github/workflows/auto-qa-request.yml" ] && ! grep -q "rolling" "${TARGET_ABS}/.github/workflows/auto-qa-request.yml" 2>/dev/null; then
+  HAD_AUTO_QA=true
+fi
 mkdir -p "${TARGET_ABS}/.github/workflows"
 mkdir -p "${TARGET_ABS}/.github/ISSUE_TEMPLATE"
 mkdir -p "${TARGET_ABS}/.github/scripts"
 
 # 2. Copy workflows
-WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels auto-qa-request"
+WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels auto-qa-request qa-rollup-approval"
 copy_managed_files "$WORKFLOWS" ".yml" "$WORKFLOWS_SRC" "${TARGET_ABS}/.github/workflows" ".github/workflows"
 WORKFLOWS_COPIED=$COPIED
 
@@ -268,6 +275,16 @@ else
     echo "No new files created (existing files were skipped)."
     echo "To update: use --update (run with --dry-run first to preview)."
   fi
+fi
+echo ""
+if [ "$OVERWRITE" = "true" ] && [ "$HAD_AUTO_QA" = "true" ]; then
+  echo ""
+  echo "  Note: auto-qa-request now keeps ONE rolling QA issue (\"QA REQUEST - Changes"
+  echo "  awaiting QA\") instead of filing a QA Request (+ Task) per change. QA_APPROVER"
+  echo "  approves it with a comment (e.g. \"approved\", \"lgtm\", ✅) or its Approved box."
+  echo "  - Existing open auto-filed QA Requests were left as they are."
+  echo "  - To keep the old behavior: set repo variable DELIVERY_OS_AUTO_QA_MODE=per-change."
+  echo "  - Run Setup Labels (or --with-labels) to create the new qa-rollup label."
 fi
 echo ""
 echo "=== Installation complete ==="

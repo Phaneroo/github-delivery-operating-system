@@ -15,7 +15,7 @@ const {
   resolveQuietPaths,
   globToRegExp,
   isQuietChange,
-  collectPushedFiles,
+  touchedPathsFromApiFiles,
   findFilingsForPr,
   CHANGELOG_REVIEW_BOX,
   seedChangeSummary,
@@ -175,20 +175,23 @@ test('isQuietChange: an unknown or empty file list, or no globs, is never quiet'
   assert.equal(isQuietChange(['README.md'], []), false);
 });
 
-// collectPushedFiles
+// touchedPathsFromApiFiles
 
-test('collectPushedFiles unions added/modified/removed across commits', () => {
-  const commits = [
-    { added: ['a.md'], modified: ['README.md'], removed: [] },
-    { added: [], modified: ['README.md'], removed: ['src/old.js'] },
+test('touchedPathsFromApiFiles lists every file, including a rename\'s old path', () => {
+  const files = [
+    { filename: 'README.md' },
+    { filename: 'docs/guide.md', previous_filename: 'src/guide.js' },
   ];
-  assert.deepEqual(collectPushedFiles(commits).sort(), ['README.md', 'a.md', 'src/old.js']);
+  assert.deepEqual(touchedPathsFromApiFiles(files), ['README.md', 'docs/guide.md', 'src/guide.js']);
+  // Moving code into docs/ is not a docs-only change.
+  assert.equal(isQuietChange(touchedPathsFromApiFiles(files), DEFAULT_QUIET_PATHS), false);
 });
 
-test('collectPushedFiles returns null when file lists are missing or there are no commits', () => {
-  assert.equal(collectPushedFiles([{ added: ['a.md'] }]), null);
-  assert.equal(collectPushedFiles([]), null);
-  assert.equal(collectPushedFiles(undefined), null);
+test('touchedPathsFromApiFiles returns null when unknown, empty, or possibly truncated', () => {
+  assert.equal(touchedPathsFromApiFiles(null), null);
+  assert.equal(touchedPathsFromApiFiles([]), null);
+  const capped = Array.from({ length: 300 }, (_, i) => ({ filename: `docs/${i}.md` }));
+  assert.equal(touchedPathsFromApiFiles(capped), null);
 });
 
 // findFilingsForPr

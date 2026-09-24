@@ -3,7 +3,7 @@ const os = require('os');
 const path = require('path');
 const { TEMPLATES } = require('./install');
 
-// `delivery-os shell-hook`: a zsh/bash snippet that prints a one-line reminder
+// `delivery-os shell-hook`: a zsh/bash snippet that prints a short reminder
 // when you cd into a repo whose Delivery OS install is behind the latest
 // release (#90) — the terminal counterpart of the Claude Code SessionStart
 // hook in .claude/hooks/delivery-os-update-check.js. It can only remind; the
@@ -28,10 +28,15 @@ function buildSnippet(shell) {
           '  __delivery_os_check',
         ]
       : [
+          // Runs before the user's own prompt code, so it hands back the
+          // last command's exit status untouched for PS1/starship/etc.
           '  __delivery_os_prompt() {',
-          '    [ "$PWD" = "$__delivery_os_pwd" ] && return 0',
-          '    __delivery_os_pwd=$PWD',
-          '    __delivery_os_check',
+          '    local ec=$?',
+          '    if [ "$PWD" != "$__delivery_os_pwd" ]; then',
+          '      __delivery_os_pwd=$PWD',
+          '      __delivery_os_check',
+          '    fi',
+          '    return $ec',
           '  }',
           '  PROMPT_COMMAND="__delivery_os_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}"',
         ];
@@ -43,10 +48,12 @@ function buildSnippet(shell) {
     '  awk -v a="$1" -v b="$2" \'BEGIN { split(a, x, "."); split(b, y, "."); for (i = 1; i <= 3; i++) { if (x[i] + 0 < y[i] + 0) exit 0; if (x[i] + 0 > y[i] + 0) exit 1 } exit 1 }\'',
     '}',
     '__delivery_os_refresh() {',
-    '  local v',
+    '  local v tmp',
     '  mkdir -p "${1%/*}" || return 0',
     '  v=$(curl -fsS --max-time 5 https://registry.npmjs.org/github-delivery-os/latest 2>/dev/null | grep -o \'"version":"[^"]*"\' | head -n 1 | cut -d\'"\' -f4)',
-    '  case "$v" in [0-9]*.[0-9]*.[0-9]*) printf \'%s\\n\' "$v" > "$1.tmp.$$" && mv "$1.tmp.$$" "$1" ;; esac',
+    '  case "$v" in [0-9]*.[0-9]*.[0-9]*) ;; *) return 0 ;; esac',
+    '  tmp=$(mktemp "$1.XXXXXX") || return 0',
+    '  printf \'%s\\n\' "$v" > "$tmp" && mv "$tmp" "$1" || rm -f "$tmp"',
     '}',
     '__delivery_os_check() {',
     '  local top manifest installed cache latest flags t',
@@ -55,6 +62,8 @@ function buildSnippet(shell) {
     '  __delivery_os_last=$top',
     '  manifest="$top/.github/delivery-os.json"',
     '  [ -r "$manifest" ] || return 0',
+    '  # The package\'s own source repo: its installed files are the source.',
+    '  grep -q \'"name"[[:space:]]*:[[:space:]]*"github-delivery-os"\' "$top/package.json" 2>/dev/null && return 0',
     '  installed=$(grep -o \'"version"[[:space:]]*:[[:space:]]*"[^"]*"\' "$manifest" 2>/dev/null | head -n 1 | sed \'s/.*"\\([^"]*\\)"$/\\1/\')',
     '  [ -n "$installed" ] || return 0',
     '  cache="${XDG_CACHE_HOME:-$HOME/.cache}/github-delivery-os/latest-version"',
@@ -69,7 +78,9 @@ function buildSnippet(shell) {
     '    [ -f "$top/.github/ISSUE_TEMPLATE/$t" ] && { flags="--with-templates "; break; }',
     '  done',
     '  [ -f "$top/.claude/skills/delivery-ops/SKILL.md" ] && flags="${flags}--with-skill "',
-    '  printf \'Delivery OS %s installed, %s available. To update, run in %s:\\n  npx github-delivery-os@latest install %s--with-labels --update .\\n\' "$installed" "$latest" "$top" "$flags"',
+    '  # stderr: zsh runs chpwd hooks inside $(cd ...) too, and this must never',
+    '  # end up in a script\'s captured output.',
+    '  printf \'Delivery OS %s installed, %s available. To update, run in %s:\\n  npx github-delivery-os@latest install %s--with-labels --update .\\n\' "$installed" "$latest" "$top" "$flags" >&2',
     '}',
     'case $- in *i*)',
     ...register,
@@ -83,9 +94,11 @@ function detectShell(env = process.env) {
   return SHELLS.includes(name) ? name : null;
 }
 
-function rcFile(shell, env = process.env) {
+// macOS terminals open bash as a login shell, which reads ~/.bash_profile
+// and often never sources ~/.bashrc.
+function rcFile(shell, env = process.env, platform = process.platform) {
   if (shell === 'zsh') return path.join(env.ZDOTDIR || os.homedir(), '.zshrc');
-  return path.join(os.homedir(), '.bashrc');
+  return path.join(os.homedir(), platform === 'darwin' ? '.bash_profile' : '.bashrc');
 }
 
 // Everything in `content` outside our marked block (or the whole thing if
@@ -118,6 +131,7 @@ function uninstallSnippet(file) {
 }
 
 function runShellHook({ shell, install = false, uninstall = false }) {
+  if (install && uninstall) throw new Error('Pass either --install or --uninstall, not both.');
   const resolved = shell || detectShell();
   if (!resolved) {
     throw new Error('Could not tell which shell you use from $SHELL — pass one: shell-hook zsh | shell-hook bash');
@@ -138,7 +152,7 @@ function runShellHook({ shell, install = false, uninstall = false }) {
   const result = installSnippet(file, resolved);
   console.log(`${result === 'added' ? 'Added' : 'Updated'} the Delivery OS update check in ${file}.`);
   console.log('Open a new terminal (or source that file). From then on, cd-ing into a repo whose');
-  console.log('Delivery OS install is out of date prints a one-line reminder with the update command.');
+  console.log('Delivery OS install is out of date prints a short reminder with the update command.');
 }
 
 module.exports = {

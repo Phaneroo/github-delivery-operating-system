@@ -174,29 +174,48 @@ function updateHookPath(targetAbs) {
   return path.join(targetAbs, UPDATE_HOOK_REL_PATH);
 }
 
-function isUpdateHookEntry(entry) {
-  return Boolean(
-    entry &&
-      Array.isArray(entry.hooks) &&
-      entry.hooks.some((h) => h && typeof h.command === 'string' && h.command.includes(UPDATE_HOOK_MARKER))
-  );
+// Our hook is identified item by item (inside an entry's `hooks` list), not
+// by whole entry: a user may well have added their own command next to ours
+// in the same { matcher, hooks } object, and that must survive an update or
+// an uninstall.
+function isUpdateHookCommand(h) {
+  return Boolean(h && typeof h.command === 'string' && h.command.includes(UPDATE_HOOK_MARKER));
 }
 
-// Reads .claude/settings.json: { settings } (an empty object when the file
-// doesn't exist yet) or { error } when it exists but isn't a JSON object —
-// in which case callers leave it alone rather than risk clobbering it.
+function entryHasUpdateHook(entry) {
+  return Boolean(entry && Array.isArray(entry.hooks) && entry.hooks.some(isUpdateHookCommand));
+}
+
+// Every SessionStart entry with our command taken out; entries left with no
+// commands at all are dropped. Anything that isn't one of our commands is
+// kept exactly as it was.
+function withoutUpdateHook(entries) {
+  return entries
+    .map((entry) =>
+      entryHasUpdateHook(entry) ? { ...entry, hooks: entry.hooks.filter((h) => !isUpdateHookCommand(h)) } : entry
+    )
+    .filter((entry) => !(entry && Array.isArray(entry.hooks) && entry.hooks.length === 0));
+}
+
+// Reads .claude/settings.json: { settings, entries } (empty when the file
+// doesn't exist yet) or { error } when it, its "hooks" or its
+// "hooks.SessionStart" isn't the shape Claude Code expects — in which case
+// callers leave the file alone rather than risk clobbering what's there.
 function readSettings(targetAbs) {
   const file = path.join(targetAbs, SETTINGS_REL_PATH);
-  if (!fs.existsSync(file)) return { settings: {}, exists: false };
+  if (!fs.existsSync(file)) return { settings: {}, entries: [], exists: false };
+  let settings;
   try {
-    const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
-      return { error: 'not a JSON object' };
-    }
-    return { settings, exists: true };
+    settings = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (err) {
     return { error: err.message };
   }
+  const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+  if (!isObject(settings)) return { error: 'not a JSON object' };
+  if (settings.hooks !== undefined && !isObject(settings.hooks)) return { error: '"hooks" is not an object' };
+  const entries = settings.hooks && settings.hooks.SessionStart;
+  if (entries !== undefined && !Array.isArray(entries)) return { error: '"hooks.SessionStart" is not a list' };
+  return { settings, entries: entries || [], exists: true };
 }
 
 function writeSettings(targetAbs, settings) {
@@ -205,46 +224,44 @@ function writeSettings(targetAbs, settings) {
   fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
 }
 
-function hasUpdateHookRegistered(targetAbs) {
-  const { settings } = readSettings(targetAbs);
-  const entries = settings && settings.hooks && settings.hooks.SessionStart;
-  return Array.isArray(entries) && entries.some(isUpdateHookEntry);
-}
-
-// Adds our SessionStart entry to .claude/settings.json, keeping every other
-// setting and hook as is. An existing entry of ours is refreshed only with
-// --update, the same rule as every other installed file. Returns a short
-// status for logging: 'added' | 'updated' | 'exists' | 'error: <reason>'.
-function registerUpdateHook(targetAbs, { overwrite, dryRun }) {
-  const { settings, error } = readSettings(targetAbs);
-  if (error) return `error: ${error}`;
-  const hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
-  const entries = Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
-  const index = entries.findIndex(isUpdateHookEntry);
-  if (index !== -1 && !overwrite) return 'exists';
-  if (dryRun) return index === -1 ? 'added' : 'updated';
-  const next = index === -1 ? [...entries, UPDATE_HOOK_ENTRY] : entries.map((e, i) => (i === index ? UPDATE_HOOK_ENTRY : e));
-  writeSettings(targetAbs, { ...settings, hooks: { ...hooks, SessionStart: next } });
-  return index === -1 ? 'added' : 'updated';
-}
-
-// Removes our SessionStart entry, pruning containers it leaves empty. Deletes
-// the file only if nothing at all is left in it. Returns true if it removed one.
-function unregisterUpdateHook(targetAbs, { dryRun }) {
-  const { settings, error, exists } = readSettings(targetAbs);
-  if (error || !exists) return false;
-  const hooks = settings.hooks;
-  const entries = hooks && Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
-  if (!entries.some(isUpdateHookEntry)) return false;
-  if (dryRun) return true;
-  const next = { ...settings, hooks: { ...hooks, SessionStart: entries.filter((e) => !isUpdateHookEntry(e)) } };
-  if (next.hooks.SessionStart.length === 0) delete next.hooks.SessionStart;
-  if (Object.keys(next.hooks).length === 0) delete next.hooks;
+// Writes `entries` back as hooks.SessionStart, pruning containers left empty,
+// and deletes the file only if nothing at all is left in it.
+function writeSessionStart(targetAbs, settings, entries) {
+  const hooks = { ...(settings.hooks || {}), SessionStart: entries };
+  if (entries.length === 0) delete hooks.SessionStart;
+  const next = { ...settings, hooks };
+  if (Object.keys(hooks).length === 0) delete next.hooks;
   if (Object.keys(next).length === 0) {
-    fs.unlinkSync(path.join(targetAbs, SETTINGS_REL_PATH));
+    fs.rmSync(path.join(targetAbs, SETTINGS_REL_PATH), { force: true });
   } else {
     writeSettings(targetAbs, next);
   }
+}
+
+function hasUpdateHookRegistered(targetAbs) {
+  const { entries } = readSettings(targetAbs);
+  return Array.isArray(entries) && entries.some(entryHasUpdateHook);
+}
+
+// Adds our SessionStart entry to .claude/settings.json, keeping every other
+// setting and hook as is. An existing registration of ours is refreshed only
+// with --update, the same rule as every other installed file: our old
+// command is taken out wherever it sits and the current entry appended.
+// Returns 'added' | 'updated' | 'exists' | 'error: <reason>'.
+function registerUpdateHook(targetAbs, { overwrite, dryRun }) {
+  const { settings, entries, error } = readSettings(targetAbs);
+  if (error) return `error: ${error}`;
+  const present = entries.some(entryHasUpdateHook);
+  if (present && !overwrite) return 'exists';
+  if (!dryRun) writeSessionStart(targetAbs, settings, [...withoutUpdateHook(entries), UPDATE_HOOK_ENTRY]);
+  return present ? 'updated' : 'added';
+}
+
+// Removes our command (only ours) from SessionStart. Returns true if it did.
+function unregisterUpdateHook(targetAbs, { dryRun }) {
+  const { settings, entries, error, exists } = readSettings(targetAbs);
+  if (error || !exists || !entries.some(entryHasUpdateHook)) return false;
+  if (!dryRun) writeSessionStart(targetAbs, settings, withoutUpdateHook(entries));
   return true;
 }
 

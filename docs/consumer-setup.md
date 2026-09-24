@@ -55,7 +55,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `-t, --with-templates` | Copy issue templates |
 | `-l, --with-labels` | Create labels via `gh` CLI |
-| `-s, --with-skill` | Add the `delivery-ops` Claude Code skill |
+| `-s, --with-skill` | Add the `delivery-ops` Claude Code skill and its update-check hook |
 | `-u, --update` | Replace existing files |
 | `-d, --dry-run` | Preview without changing files |
 
@@ -65,7 +65,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `--with-templates` | Copy issue templates (sprint, task, bug, QA, production release) |
 | `--with-labels` | Create labels via `gh` CLI (requires `gh auth` and GitHub remote) |
-| `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status |
+| `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status — plus `.claude/hooks/delivery-os-update-check.js`, registered in `.claude/settings.json`, which offers the update when a session starts in an out-of-date repo |
 | `--update` | Replace existing workflow/template files |
 | `--no-update` | Explicitly skip existing files (default behavior) |
 | `--dry-run` | Show what would happen without changing any files |
@@ -99,7 +99,7 @@ You don't have to remember to run `status`. Two opt-in prompts compare `.github/
 - **In your terminal** — any shell session, zsh or bash, no Claude Code needed:
 
   ```bash
-  npx github-delivery-os@latest shell-hook --install     # adds a marked block to ~/.zshrc or ~/.bashrc
+  npx github-delivery-os@latest shell-hook --install     # adds a marked block to ~/.zshrc, or ~/.bashrc (~/.bash_profile on macOS)
   npx github-delivery-os@latest shell-hook --uninstall   # removes it
   npx github-delivery-os@latest shell-hook zsh           # just print the snippet, to add it yourself
   ```

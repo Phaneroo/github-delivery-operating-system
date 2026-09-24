@@ -375,25 +375,31 @@ for (const shell of ['bash', 'zsh']) {
 
       let r = runSnippet(shell, repo, cache); // no manifest
       assert.equal(r.status, 0, r.stderr);
-      assert.equal(r.stdout, '');
+      assert.equal(r.stderr, '');
 
       writeManifestVersion(repo, '1.9.0');
-      assert.equal(runSnippet(shell, repo, cache).stdout, '');
+      assert.equal(runSnippet(shell, repo, cache).stderr, '');
 
       writeManifestVersion(repo, '1.8.0');
       fs.mkdirSync(path.join(repo, '.github', 'ISSUE_TEMPLATE'), { recursive: true });
       fs.writeFileSync(path.join(repo, '.github', 'ISSUE_TEMPLATE', 'task.yml'), '');
       r = runSnippet(shell, repo, cache);
       assert.equal(r.status, 0, r.stderr);
-      assert.match(r.stdout, /Delivery OS 1\.8\.0 installed, 1\.9\.0 available/);
-      assert.match(r.stdout, /npx github-delivery-os@latest install --with-templates --with-labels --update \./);
+      assert.equal(r.stdout, '', 'the reminder goes to stderr, never into captured output');
+      assert.match(r.stderr, /Delivery OS 1\.8\.0 installed, 1\.9\.0 available/);
+      assert.match(r.stderr, /npx github-delivery-os@latest install --with-templates --with-labels --update \./);
 
       fs.mkdirSync(path.join(repo, 'sub'));
-      assert.match(runSnippet(shell, path.join(repo, 'sub'), cache).stdout, /1\.8\.0 installed/, 'works from a subdirectory');
+      assert.match(runSnippet(shell, path.join(repo, 'sub'), cache).stderr, /1\.8\.0 installed/, 'works from a subdirectory');
+
+      // The package's own source repo is never prompted (its files are the source).
+      fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'github-delivery-os' }, null, 2));
+      assert.equal(runSnippet(shell, repo, cache).stderr, '');
+      fs.rmSync(path.join(repo, 'package.json'));
 
       const notRepo = mkTmp();
       try {
-        assert.equal(runSnippet(shell, notRepo, cache).stdout, '');
+        assert.equal(runSnippet(shell, notRepo, cache).stderr, '');
       } finally {
         rm(notRepo);
       }
@@ -403,3 +409,136 @@ for (const shell of ['bash', 'zsh']) {
     }
   });
 }
+
+test('shell snippet (bash): the prompt hook hands back the last command\'s exit status (review: it reset $? to 0)', () => {
+  if (!hasCommand('bash')) return;
+  const dir = mkTmp();
+  try {
+    const script = `${shellTest.buildSnippet('bash')}\n__delivery_os_prompt() { :; }\n`;
+    // Source the real wrapper (not the stub above): pull it out of an interactive-only block.
+    const wrapper = shellTest.buildSnippet('bash').match(/ {2}__delivery_os_prompt\(\) \{[\s\S]*?\n {2}\}/)[0];
+    const r = spawnSync('bash', ['-c', `${script}\n${wrapper}\ncd "${dir}"; false; __delivery_os_prompt; echo "ec=$?"; (exit 3); __delivery_os_prompt; echo "ec=$?"`], {
+      env: { ...process.env, XDG_CACHE_HOME: dir, HOME: dir },
+      encoding: 'utf8',
+    });
+    assert.match(r.stdout, /ec=1\nec=3/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('shell snippet (zsh): cd inside $(...) never leaks the reminder into captured output (review: chpwd runs in subshells)', () => {
+  if (!hasCommand('zsh') || !hasCommand('git')) return;
+  const repo = mkTmp();
+  const cache = mkTmp();
+  try {
+    execFileSync('git', ['init', '-q', repo]);
+    writeManifestVersion(repo, '1.8.0');
+    seedCache(cache, '1.9.0');
+    const r = spawnSync('zsh', ['-f', '-i', '-c', `${shellTest.buildSnippet('zsh')}\nx=$(cd "${repo}" && echo done); print -r -- "captured=$x"`], {
+      env: { ...process.env, XDG_CACHE_HOME: cache, HOME: cache },
+      encoding: 'utf8',
+    });
+    assert.match(r.stdout, /captured=done$/m);
+    assert.match(r.stderr, /1\.8\.0 installed/);
+  } finally {
+    rm(repo);
+    rm(cache);
+  }
+});
+
+test('shell-hook: bash on macOS goes in ~/.bash_profile (login shells skip ~/.bashrc)', () => {
+  assert.equal(path.basename(shellTest.rcFile('bash', {}, 'darwin')), '.bash_profile');
+  assert.equal(path.basename(shellTest.rcFile('bash', {}, 'linux')), '.bashrc');
+  assert.equal(shellTest.rcFile('zsh', { ZDOTDIR: '/z' }, 'darwin'), path.join('/z', '.zshrc'));
+});
+
+test('shell-hook: --install with --uninstall is an error, not a silent uninstall', () => {
+  const { runShellHook } = require('../src/shell-hook');
+  assert.throws(() => runShellHook({ shell: 'zsh', install: true, uninstall: true }), /either --install or --uninstall/);
+});
+
+test('update hook: silent in the package\'s own source repo (review: it offered to overwrite the source)', () => {
+  const repo = mkTmp();
+  const cache = mkTmp();
+  try {
+    seedCache(cache, '9.9.9');
+    writeManifestVersion(repo, '1.0.0');
+    fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'github-delivery-os' }));
+    assert.equal(runHookScript(repo, cache).stdout, '');
+    fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'some-app' }));
+    assert.match(runHookScript(repo, cache).stdout, /1\.0\.0 installed/);
+  } finally {
+    rm(repo);
+    rm(cache);
+  }
+});
+
+test('update hook: offline with a stale cache re-stamps it, so the next session doesn\'t wait on npm again', async () => {
+  const dir = mkTmp();
+  try {
+    const file = seedCache(dir, '1.8.0', hook.CACHE_TTL_MS + 60000);
+    assert.equal(await hook.latestVersion({ file, fetch: async () => null }), '1.8.0');
+    let fetched = false;
+    await hook.latestVersion({ file, fetch: async () => { fetched = true; return '1.9.0'; } });
+    assert.equal(fetched, false, 'backed off for a day');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('update hook: suggested command matches status\'s buildUpdateCommand (they are separate copies)', () => {
+  const dir = mkTmp();
+  try {
+    const { buildUpdateCommand } = installTest;
+    const setTemplates = (on) =>
+      on
+        ? (fs.mkdirSync(path.join(dir, '.github', 'ISSUE_TEMPLATE'), { recursive: true }),
+          fs.writeFileSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', 'task.yml'), ''))
+        : fs.rmSync(path.join(dir, '.github'), { recursive: true, force: true });
+    const setSkill = (on) =>
+      on
+        ? (fs.mkdirSync(path.dirname(skillPath(dir)), { recursive: true }), fs.writeFileSync(skillPath(dir), ''))
+        : fs.rmSync(path.join(dir, '.claude'), { recursive: true, force: true });
+    for (const hasTemplates of [false, true]) {
+      for (const hasSkill of [false, true]) {
+        setTemplates(hasTemplates);
+        setSkill(hasSkill);
+        assert.equal(hook.updateCommand(dir), buildUpdateCommand({ hasTemplates, hasSkill }));
+      }
+    }
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--update and uninstall touch only our command, not a user hook sharing its entry (review: whole entry was replaced/removed)', () => {
+  const dir = mkTmp();
+  try {
+    const mine = { type: 'command', command: 'echo mine' };
+    const shared = { matcher: 'startup', hooks: [{ type: 'command', command: 'node old/delivery-os-update-check.js' }, mine] };
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, SETTINGS_REL_PATH), JSON.stringify({ hooks: { SessionStart: [shared] } }));
+
+    assert.equal(registerUpdateHook(dir, { overwrite: true, dryRun: false }), 'updated');
+    assert.deepEqual(readSettingsFile(dir).hooks.SessionStart, [{ matcher: 'startup', hooks: [mine] }, UPDATE_HOOK_ENTRY]);
+
+    assert.equal(installTest.unregisterUpdateHook(dir, { dryRun: false }), true);
+    assert.deepEqual(readSettingsFile(dir).hooks.SessionStart, [{ matcher: 'startup', hooks: [mine] }]);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a hand-written SessionStart that isn\'t a list is left untouched (review: it was silently replaced)', () => {
+  const dir = mkTmp();
+  try {
+    const content = JSON.stringify({ hooks: { SessionStart: { matcher: 'startup', hooks: [] } } });
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, SETTINGS_REL_PATH), content);
+    assert.match(registerUpdateHook(dir, { overwrite: true, dryRun: false }), /^error: "hooks.SessionStart" is not a list/);
+    assert.equal(fs.readFileSync(path.join(dir, SETTINGS_REL_PATH), 'utf8'), content);
+  } finally {
+    rm(dir);
+  }
+});

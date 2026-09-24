@@ -5,16 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.10.0] - 2026-09-24
 
 ### Added
 
 - **You're told when a repo's install is out of date** (#90). Until now you only found out by running `status` yourself.
   - **In Claude Code:** `--with-skill` now also installs `.claude/hooks/delivery-os-update-check.js` and registers it as a SessionStart hook in `.claude/settings.json`, merged in next to any settings and hooks already there. When a session starts in a repo whose `.github/delivery-os.json` is behind the latest release, you see *"Delivery OS 1.8.0 installed, 1.9.0 available"* and Claude offers to run the update command. It runs the command only after you confirm, because the update rewrites workflow and template files.
-  - **In your terminal:** new `shell-hook` command. `npx github-delivery-os@latest shell-hook --install` adds a marked block to `~/.zshrc` or `~/.bashrc` (`--uninstall` removes it, and `shell-hook zsh|bash` just prints it). After that, `cd`-ing into an out-of-date repo prints a reminder with the update command, once per repo visit. It never runs anything.
-  - Both stay silent with no manifest, offline, or on any error. They share a cache of the latest version (`~/.cache/github-delivery-os/latest-version`) that's refreshed at most once a day, so opening a repo stays instant. The terminal hook refreshes it in the background.
-  - `status` shows whether the hook is set up. `uninstall --with-skill` removes the hook and only its own `settings.json` entry, and deletes the file only if nothing else is left in it. A `settings.json` that can't be parsed is left untouched, and the installer prints the entry to add by hand.
-  - This repo now commits its own `.github/delivery-os.json`, `.claude/settings.json` and hook, so the prompt works here too.
+  - **In your terminal:** new `shell-hook` command. `npx github-delivery-os@latest shell-hook --install` adds a marked block to `~/.zshrc`, or for bash to `~/.bashrc` (`~/.bash_profile` on macOS, whose terminals open login shells). `--uninstall` removes it, and `shell-hook zsh|bash` just prints it. After that, `cd`-ing into an out-of-date repo prints a reminder with the update command, once per repo visit. The reminder goes to stderr, so it never ends up in a script's `$(cd …)` output, and the bash hook passes the last command's exit status through to your prompt. It never runs anything.
+  - Both stay silent with no manifest, offline, on any error, and in this package's own source repo, where running the installer would overwrite the source. They share a cache of the latest version (`~/.cache/github-delivery-os/latest-version`) that's refreshed at most once a day, so opening a repo stays instant. When npm can't be reached, the last known version is kept for another day, so an offline machine doesn't wait on the timeout at every session start. The terminal hook refreshes it in the background.
+  - `status` shows whether the hook is set up. `uninstall --with-skill` removes the hook and only its own `settings.json` entry, and deletes the file only if nothing else is left in it. A command of your own that shares an entry with ours is kept on update and uninstall. A `settings.json` that can't be parsed, or whose `hooks` / `hooks.SessionStart` isn't the shape Claude Code expects, is left untouched, and the installer prints the entry to add by hand.
+  - This repo now commits its own install of the skill and hook (`.github/delivery-os.json`, `.claude/settings.json`), so `status` reports it as complete. The prompt itself stays silent here, as described above.
 
 ### Fixed
 

@@ -39,7 +39,7 @@ Full workflow table, quick start, and Claude Code walkthroughs are on the [landi
 Each direct push to `main` and each PR merged into `main` adds a checklist line to a single open issue, *QA REQUEST - Changes awaiting QA*. Docs-only changes and `[skip qa-request]` commits are left off. A repo never has more than one of these open.
 
 Only the QA approver (`QA_APPROVER`) can decide:
-- **Approve:** comment starting with `qa approved`, `approved`, `approve`, `qa ok`, `ok`, `looks good`, `lgtm`, `all good`, `tested`, `passed`, `good to go`, `ship it`, or with ✅ 👍 ✔️. Or tick the issue's **Approved** box. This closes the issue, and the next change opens a fresh one.
+- **Approve:** comment starting with `qa approved`, `approved`, `qa ok`, `looks good`, `lgtm`, `all good`, `good to go`, `ship it` (anything may follow), or just `ok`, `approve`, `tested` or `passed` as the whole comment ("Tested!" counts; "Ok, I'll test tomorrow" doesn't), or with ✅ 👍 ✔️. Or tick the issue's **Approved** box. This closes the issue, and the next change opens a fresh one.
 - **Decline:** comment starting with `not approved`, `declined`, `decline`, `rejected`, `reject`, `failed`, `changes needed`, `needs work`, `not ok`, `blocked`, or with ❌ 👎 🚫. The issue stays open, and fixes are added to it.
 
 Emoji *reactions* don't count, because GitHub Actions can't see them; put the emoji in a comment. To go back to one QA Request per change, set the repo variable `DELIVERY_OS_AUTO_QA_MODE=per-change`. Details are in [Consumer Setup](docs/consumer-setup.md#rolling-qa-issue-default).

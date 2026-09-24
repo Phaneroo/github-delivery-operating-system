@@ -38,15 +38,30 @@ function phraseRegex(phrases) {
 }
 
 /**
+ * For words too common to trust as a prefix ("Ok, I'll test these
+ * tomorrow", "Tested #12 — login crashes"): they count only when they are
+ * essentially the whole comment — the word plus optional punctuation,
+ * symbols or emoji ("ok", "Tested!", "passed ✅").
+ *
+ * @param {string[]} phrases
+ * @returns {RegExp}
+ */
+function wholeCommentRegex(phrases) {
+  const alternatives = phrases.map((p) => escapeRegExp(p.trim()).replace(/\s+/g, '\\s+'));
+  return new RegExp(`^(?:${alternatives.join('|')})[\\s\\p{P}\\p{S}\\p{Emoji_Modifier}\\uFE0F\\u200D]*$`, 'iu');
+}
+
+/**
  * @param {string} text - a comment body
- * @param {{ approve: RegExp, decline: RegExp, approveEmoji?: string[], declineEmoji?: string[] }} vocab
+ * @param {{ approve: RegExp, decline: RegExp, approveWhole?: RegExp,
+ *   approveEmoji?: string[], declineEmoji?: string[] }} vocab
  * @returns {'approved' | 'declined' | null}
  */
 function matchVerdict(text, vocab) {
   const t = (text || '').trim();
   const startsWithAny = (emojis) => (emojis || []).some((e) => t.startsWith(e));
   if (vocab.decline.test(t) || startsWithAny(vocab.declineEmoji)) return 'declined';
-  if (vocab.approve.test(t) || startsWithAny(vocab.approveEmoji)) return 'approved';
+  if (vocab.approve.test(t) || (vocab.approveWhole && vocab.approveWhole.test(t)) || startsWithAny(vocab.approveEmoji)) return 'approved';
   return null;
 }
 
@@ -60,10 +75,13 @@ const QA_APPROVE_RE = phraseRegex(RELEASE_QA_APPROVE_PHRASES);
 
 // Rolling QA issue (qa-rollup-approval): QA_APPROVER only. GitHub Actions
 // can't trigger on emoji *reactions*, so an emoji must start a comment.
+// Anything may follow these...
 const ROLLING_QA_APPROVE_PHRASES = [
-  'qa approved', 'approved', 'approve', 'qa ok', 'ok', 'looks good', 'lgtm',
-  'all good', 'tested', 'passed', 'good to go', 'ship it',
+  'qa approved', 'approved', 'qa ok', 'looks good', 'lgtm', 'all good',
+  'good to go', 'ship it',
 ];
+// ...but these short, everyday words approve only as the whole comment.
+const ROLLING_QA_APPROVE_WHOLE_COMMENT = ['ok', 'approve', 'tested', 'passed'];
 const ROLLING_QA_DECLINE_PHRASES = [
   'not approved', 'declined', 'decline', 'rejected', 'reject', 'failed',
   'changes needed', 'needs work', 'not ok', 'blocked',
@@ -72,6 +90,7 @@ const ROLLING_QA_APPROVE_EMOJI = ['✅', '👍', '✔️', '✔'];
 const ROLLING_QA_DECLINE_EMOJI = ['❌', '👎', '🚫'];
 const ROLLING_QA_VOCAB = {
   approve: phraseRegex(ROLLING_QA_APPROVE_PHRASES),
+  approveWhole: wholeCommentRegex(ROLLING_QA_APPROVE_WHOLE_COMMENT),
   decline: phraseRegex(ROLLING_QA_DECLINE_PHRASES),
   approveEmoji: ROLLING_QA_APPROVE_EMOJI,
   declineEmoji: ROLLING_QA_DECLINE_EMOJI,
@@ -188,6 +207,7 @@ module.exports = {
   RELEASE_APPROVE_PHRASES,
   RELEASE_QA_APPROVE_PHRASES,
   ROLLING_QA_APPROVE_PHRASES,
+  ROLLING_QA_APPROVE_WHOLE_COMMENT,
   ROLLING_QA_DECLINE_PHRASES,
   ROLLING_QA_APPROVE_EMOJI,
   ROLLING_QA_DECLINE_EMOJI,

@@ -149,7 +149,7 @@ Since 1.9.0, `auto-qa-request` keeps **one** open QA issue per repo instead of f
 - **Adding changes.** When a direct push lands on `main`, or a PR is merged into `main` (recorded from that push, so fork PRs and merge, squash and rebase merges all count, and PRs merged into other branches don't), the rolling issue *QA REQUEST - Changes awaiting QA* (labels `qa-request`, `delivery-ops-filed`, `qa-rollup`) gets a checklist line: `- [ ] <title> (<short sha or #PR>) by @author`, plus `— for #N` when the change links an issue (`Closes #N`, `Refs #N`, `#N`). Under each line is a plain-English draft built from its commits, which devs can edit. If no rolling issue is open, the first change opens one. The same commit or PR is never added twice. Docs/settings-only changes and `[skip qa-request]` pushes add nothing. PRs are added when they reach `main`, not when they open. A commit author with no GitHub account is named without an `@`.
 - **No synthetic Tasks.** The rolling issue is the paper trail, so direct pushes don't create a Task.
 - **Approving (QA approver only).** The approver can:
-  - comment starting with any of `qa approved`, `approved`, `approve`, `qa ok`, `ok`, `looks good`, `lgtm`, `all good`, `tested`, `passed`, `good to go`, `ship it` (case-insensitive; anything may follow), or
+  - comment starting with any of `qa approved`, `approved`, `qa ok`, `looks good`, `lgtm`, `all good`, `good to go`, `ship it` (anything may follow), or just `ok`, `approve`, `tested` or `passed` as the whole comment ("Tested!" counts; "Ok, I'll test tomorrow" doesn't), case-insensitive, or
   - comment starting with ✅, 👍 or ✔️, or
   - tick the **Approved: all changes above have been tested** box at the bottom of the issue.
 

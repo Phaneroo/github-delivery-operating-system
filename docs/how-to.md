@@ -130,7 +130,7 @@ Once both approve, the issue receives `ready-for-deploy`. To decline, release ap
 
 By default, changes that reach `main` collect on one open issue, **QA REQUEST - Changes awaiting QA** (label `qa-rollup`). Test the listed changes, then, as the `QA_APPROVER`:
 
-- **Approve:** comment starting with `approved`, `lgtm`, `looks good`, `tested`, `ship it`, ✅, 👍 (or any phrase from [the full list](consumer-setup.md#rolling-qa-issue-default)), or tick **Approved: all changes above have been tested**. The issue closes with a summary, and the next change opens a fresh one.
+- **Approve:** comment starting with `approved`, `lgtm`, `looks good`, `ship it`, ✅, 👍, or just `ok` / `tested` / `passed` as the whole comment (or any phrase from [the full list](consumer-setup.md#rolling-qa-issue-default)), or tick **Approved: all changes above have been tested**. The issue closes with a summary, and the next change opens a fresh one.
 - **Decline:** comment starting with `declined`, `needs work`, `not ok`, `failed`, ❌, 👎 (or any phrase from the full list). The issue stays open, and fixes pushed afterwards are added to it. Approve once they're tested.
 
 A comment from anyone else is ignored with a short reply. Emoji *reactions* don't count; put the emoji in a comment.

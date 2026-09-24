@@ -25,6 +25,7 @@ const {
   nextRollingQaAction,
   selectFilingsToCloseOnRelease,
   ROLLING_QA_APPROVE_PHRASES,
+  ROLLING_QA_APPROVE_WHOLE_COMMENT,
   ROLLING_QA_DECLINE_PHRASES,
   ROLLING_QA_APPROVE_EMOJI,
   ROLLING_QA_DECLINE_EMOJI,
@@ -160,6 +161,23 @@ test('every approval phrase approves, case-insensitively, with anything after it
     assert.equal(matchRollingQaVerdict(phrase), 'approved', phrase);
     assert.equal(matchRollingQaVerdict(`${phrase.toUpperCase()} — thanks!`), 'approved', `${phrase} (upper + suffix)`);
   }
+});
+
+test('ok / approve / tested / passed approve only as the whole comment (punctuation and emoji allowed)', () => {
+  for (const word of ROLLING_QA_APPROVE_WHOLE_COMMENT) {
+    assert.equal(matchRollingQaVerdict(word), 'approved', word);
+    assert.equal(matchRollingQaVerdict(`${word.toUpperCase()}!`), 'approved', `${word}!`);
+    assert.equal(matchRollingQaVerdict(`${word} ✅`), 'approved', `${word} ✅`);
+    assert.equal(matchRollingQaVerdict(`${word} 👍🏽`), 'approved', `${word} 👍🏽`);
+  }
+});
+
+test('everyday replies starting with a short word do not approve', () => {
+  // Regression (code review): these used to close the rolling issue as approved.
+  assert.equal(matchRollingQaVerdict("Ok, I'll test these tomorrow"), null);
+  assert.equal(matchRollingQaVerdict('Tested #12 — login crashes on Safari'), null);
+  assert.equal(matchRollingQaVerdict('Approve after the hotfix lands'), null);
+  assert.equal(matchRollingQaVerdict('Passed the first two, still checking the rest'), null);
 });
 
 test('every approval emoji approves (including skin tones)', () => {

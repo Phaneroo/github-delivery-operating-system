@@ -12,5 +12,6 @@ require('./authorize-deployment-verdict.test.js');
 require('./sprint-child-creator.test.js');
 require('./auto-close-sprint.test.js');
 require('./auto-qa-request.test.js');
+require('./release-rollup.test.js');
 
 run();

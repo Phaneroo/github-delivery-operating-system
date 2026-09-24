@@ -50,6 +50,7 @@
     ".github/scripts/auto-close-sprint.js",
     ".github/scripts/sprint-child-creator.js",
     ".github/scripts/auto-qa-request.js",
+    ".github/scripts/release-rollup.js",
     ".github/scripts/labels.js",
     ".github/scripts/labels.tsv",
     ".github/scripts/package.json",

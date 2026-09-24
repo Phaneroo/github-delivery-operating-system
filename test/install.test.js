@@ -699,6 +699,46 @@ test('status DOES flag a genuinely broken 1.5.1+ install (workflow content requi
   }
 });
 
+async function statusOutputWithNotifyWorkflow(content, withScript) {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.github', 'workflows', 'notify-release-approver.yml'), content);
+    fs.mkdirSync(path.join(dir, '.github', 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.github', 'scripts', 'package.json'), '{"type":"commonjs"}');
+    if (withScript) fs.writeFileSync(path.join(dir, '.github', 'scripts', 'release-rollup.js'), '');
+
+    console.log = (...args) => lines.push(args.join(' '));
+    const origCwd = process.cwd();
+    process.chdir(dir);
+    await runStatus({ targetDir: '.', checkUpdates: false });
+    process.chdir(origCwd);
+    return lines.join('\n');
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+}
+
+test('status does not flag an older notify-release-approver.yml (no release roll-up) as broken', async () => {
+  const output = await statusOutputWithNotifyWorkflow('# pre-roll-up notify workflow, requires no script', false);
+  assert.doesNotMatch(output, /Broken install detected/);
+  assert.doesNotMatch(output, /release-rollup\.js/);
+});
+
+test('status flags a notify-release-approver.yml that requires release-rollup.js when it is missing', async () => {
+  const output = await statusOutputWithNotifyWorkflow("require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-rollup.js`)", false);
+  assert.match(output, /Broken install detected/);
+  assert.match(output, /release-rollup\.js/);
+});
+
+test('status is happy with a notify-release-approver.yml whose release-rollup.js is present', async () => {
+  const output = await statusOutputWithNotifyWorkflow("require('.github/scripts/release-rollup.js')", true);
+  assert.doesNotMatch(output, /Broken install detected/);
+});
+
 test('status names the actually-missing file, not always "labels.js" (labels.js present, only labels.tsv missing)', async () => {
   // Regression guard: an earlier version of this check ORed together
   // "script missing" and "data file missing" but only ever logged

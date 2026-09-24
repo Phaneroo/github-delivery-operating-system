@@ -91,6 +91,23 @@ The manifest is only written/updated when the files it describes are actually cu
 
 **Note:** this version tracking only applies to the `npx github-delivery-os` install path. The `scripts/install.sh` clone-and-run alternative does not currently write or read this manifest.
 
+### Getting told when an update is out
+
+You don't have to remember to run `status`. Two opt-in prompts compare `.github/delivery-os.json` with the latest release and speak up only when the repo is behind:
+
+- **In Claude Code** — installed with `--with-skill`. A SessionStart hook (`.claude/hooks/delivery-os-update-check.js`, registered in `.claude/settings.json` next to any settings you already have) runs when a session starts in the repo. If the install is behind, you see *"Delivery OS 1.8.0 installed, 1.9.0 available"* and Claude offers to run the update command. It only runs it after you say yes, since it rewrites the workflow and template files. Commit both files so everyone on the team gets the prompt; Claude Code runs a project's hooks once the folder is trusted.
+- **In your terminal** — any shell session, zsh or bash, no Claude Code needed:
+
+  ```bash
+  npx github-delivery-os@latest shell-hook --install     # adds a marked block to ~/.zshrc or ~/.bashrc
+  npx github-delivery-os@latest shell-hook --uninstall   # removes it
+  npx github-delivery-os@latest shell-hook zsh           # just print the snippet, to add it yourself
+  ```
+
+  After that, `cd`-ing into a repo whose install is behind prints a two-line reminder with the update command. It stays quiet as you move around inside the same repo. This one is per person (it lives in your shell startup file), and it can only remind — it never runs anything.
+
+Both are silent when the repo has no manifest, when you're offline, or when anything about the check fails. The latest version is looked up at most once a day and cached in `~/.cache/github-delivery-os/latest-version` (or under `$XDG_CACHE_HOME`), so opening a repo stays instant. The terminal hook refreshes that cache in the background, so a new release shows up on the next `cd` after the refresh.
+
 ---
 
 ## What Gets Installed
@@ -107,7 +124,7 @@ The manifest is only written/updated when the files it describes are actually cu
 | `telegram-issues.yml` | Sends Telegram alerts for bugs, QA, sprints, releases, PR merges |
 | `setup-labels.yml` | One-time workflow to create all required labels |
 
-With `--with-skill`, also: `.claude/skills/delivery-ops/SKILL.md` — a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code (creating sprint/release/QA/bug/task issues in the shape these workflows parse, commenting as an approver with the right keyword conventions, checking status, running autonomous task tracking — identifying and filing tasks/bugs, grouping them into phases via sprints, maintaining a roadmap issue, and updating/closing issues as work progresses — turning a spec/SRS/feature description into a full phase-and-task breakdown filed as real issues, and running a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything). Optional — most repos aren't using Claude Code, so this isn't written unless asked for.
+With `--with-skill`, also: `.claude/skills/delivery-ops/SKILL.md` — a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code (creating sprint/release/QA/bug/task issues in the shape these workflows parse, commenting as an approver with the right keyword conventions, checking status, running autonomous task tracking — identifying and filing tasks/bugs, grouping them into phases via sprints, maintaining a roadmap issue, and updating/closing issues as work progresses — turning a spec/SRS/feature description into a full phase-and-task breakdown filed as real issues, and running a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything). Optional — most repos aren't using Claude Code, so this isn't written unless asked for. It comes with `.claude/hooks/delivery-os-update-check.js` and an entry in `.claude/settings.json` that registers it, which together offer the update when a session starts in an out-of-date repo (see [Getting told when an update is out](#getting-told-when-an-update-is-out)).
 
 ---
 
@@ -265,7 +282,7 @@ npx github-delivery-os uninstall --with-skill .       # Also remove the delivery
 npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
 ```
 
-This removes the eight workflow files, optionally the issue templates and the Claude Code skill, and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
+This removes the nine workflow files, optionally the issue templates and the Claude Code skill (with its update-check hook and its entry in `.claude/settings.json`, leaving your other settings alone), and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
 
 **Manual alternative** — delete these files from `.github/workflows/`:
 - `sprint-child-creator.yml`

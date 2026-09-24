@@ -6,6 +6,23 @@ const { execFileSync } = require('child_process');
 const MANIFEST_FILE = 'delivery-os.json'; // written to .github/delivery-os.json in the target repo
 const SKILL_REL_PATH = path.join('.claude', 'skills', 'delivery-ops', 'SKILL.md'); // opt-in via --with-skill
 
+// Travels with the skill: a Claude Code SessionStart hook that offers the
+// update when the repo's install is behind npm (#90). Registered in the
+// repo's .claude/settings.json, merged in next to whatever else is there.
+const UPDATE_HOOK_REL_PATH = path.join('.claude', 'hooks', 'delivery-os-update-check.js');
+const SETTINGS_REL_PATH = path.join('.claude', 'settings.json');
+const UPDATE_HOOK_MARKER = 'delivery-os-update-check.js'; // identifies our entry in settings.json
+const UPDATE_HOOK_ENTRY = {
+  matcher: 'startup',
+  hooks: [
+    {
+      type: 'command',
+      command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/delivery-os-update-check.js"',
+      timeout: 10,
+    },
+  ],
+};
+
 // If you add/remove/rename an entry here, also update package.json's "files"
 // array — it lists these paths explicitly (not the whole .github/workflows
 // directory) so this package's own maintainer workflows (ci.yml, release.yml,
@@ -151,6 +168,84 @@ function manifestPath(targetAbs) {
 
 function skillPath(targetAbs) {
   return path.join(targetAbs, SKILL_REL_PATH);
+}
+
+function updateHookPath(targetAbs) {
+  return path.join(targetAbs, UPDATE_HOOK_REL_PATH);
+}
+
+function isUpdateHookEntry(entry) {
+  return Boolean(
+    entry &&
+      Array.isArray(entry.hooks) &&
+      entry.hooks.some((h) => h && typeof h.command === 'string' && h.command.includes(UPDATE_HOOK_MARKER))
+  );
+}
+
+// Reads .claude/settings.json: { settings } (an empty object when the file
+// doesn't exist yet) or { error } when it exists but isn't a JSON object —
+// in which case callers leave it alone rather than risk clobbering it.
+function readSettings(targetAbs) {
+  const file = path.join(targetAbs, SETTINGS_REL_PATH);
+  if (!fs.existsSync(file)) return { settings: {}, exists: false };
+  try {
+    const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return { error: 'not a JSON object' };
+    }
+    return { settings, exists: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+function writeSettings(targetAbs, settings) {
+  const file = path.join(targetAbs, SETTINGS_REL_PATH);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
+}
+
+function hasUpdateHookRegistered(targetAbs) {
+  const { settings } = readSettings(targetAbs);
+  const entries = settings && settings.hooks && settings.hooks.SessionStart;
+  return Array.isArray(entries) && entries.some(isUpdateHookEntry);
+}
+
+// Adds our SessionStart entry to .claude/settings.json, keeping every other
+// setting and hook as is. An existing entry of ours is refreshed only with
+// --update, the same rule as every other installed file. Returns a short
+// status for logging: 'added' | 'updated' | 'exists' | 'error: <reason>'.
+function registerUpdateHook(targetAbs, { overwrite, dryRun }) {
+  const { settings, error } = readSettings(targetAbs);
+  if (error) return `error: ${error}`;
+  const hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
+  const entries = Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
+  const index = entries.findIndex(isUpdateHookEntry);
+  if (index !== -1 && !overwrite) return 'exists';
+  if (dryRun) return index === -1 ? 'added' : 'updated';
+  const next = index === -1 ? [...entries, UPDATE_HOOK_ENTRY] : entries.map((e, i) => (i === index ? UPDATE_HOOK_ENTRY : e));
+  writeSettings(targetAbs, { ...settings, hooks: { ...hooks, SessionStart: next } });
+  return index === -1 ? 'added' : 'updated';
+}
+
+// Removes our SessionStart entry, pruning containers it leaves empty. Deletes
+// the file only if nothing at all is left in it. Returns true if it removed one.
+function unregisterUpdateHook(targetAbs, { dryRun }) {
+  const { settings, error, exists } = readSettings(targetAbs);
+  if (error || !exists) return false;
+  const hooks = settings.hooks;
+  const entries = hooks && Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [];
+  if (!entries.some(isUpdateHookEntry)) return false;
+  if (dryRun) return true;
+  const next = { ...settings, hooks: { ...hooks, SessionStart: entries.filter((e) => !isUpdateHookEntry(e)) } };
+  if (next.hooks.SessionStart.length === 0) delete next.hooks.SessionStart;
+  if (Object.keys(next.hooks).length === 0) delete next.hooks;
+  if (Object.keys(next).length === 0) {
+    fs.unlinkSync(path.join(targetAbs, SETTINGS_REL_PATH));
+  } else {
+    writeSettings(targetAbs, next);
+  }
+  return true;
 }
 
 // Numeric x.y.z comparison: true when `version` is older than `than`.
@@ -440,6 +535,38 @@ function runInstall(options) {
     }
   }
 
+  // The update-check hook travels with the skill (same flag, same skip/
+  // overwrite rule), plus its registration in .claude/settings.json.
+  const hookSrc = path.join(pkgRoot, UPDATE_HOOK_REL_PATH);
+  if (withSkill && fs.existsSync(hookSrc)) {
+    const hookDest = updateHookPath(targetAbs);
+    if (fs.existsSync(hookDest) && !overwrite) {
+      console.log(`  Skipped (exists): ${UPDATE_HOOK_REL_PATH}`);
+      skillSkipped++;
+    } else if (dryRun) {
+      console.log(`  [dry-run] Would create: ${UPDATE_HOOK_REL_PATH}`);
+      skillCopied++;
+    } else {
+      fs.mkdirSync(path.dirname(hookDest), { recursive: true });
+      fs.copyFileSync(hookSrc, hookDest);
+      console.log(`  Created: ${UPDATE_HOOK_REL_PATH}`);
+      skillCopied++;
+    }
+
+    const result = registerUpdateHook(targetAbs, { overwrite, dryRun });
+    const prefix = dryRun ? '[dry-run] Would register' : 'Registered';
+    if (result === 'added' || result === 'updated') {
+      console.log(`  ${prefix} the update-check hook in ${SETTINGS_REL_PATH}`);
+    } else if (result === 'exists') {
+      console.log(`  Skipped (exists): update-check hook in ${SETTINGS_REL_PATH}`);
+    } else {
+      // Don't touch a settings file we can't parse — say how to add it by hand.
+      console.log(`  Skipped: could not read ${SETTINGS_REL_PATH} (${result.slice('error: '.length)}).`);
+      console.log('    To get the update prompt, add this to its "hooks" → "SessionStart" list:');
+      console.log(`    ${JSON.stringify(UPDATE_HOOK_ENTRY)}`);
+    }
+  }
+
   // Create labels via gh
   let labelsCreated = 0;
   let labelsSkipReason = '';
@@ -528,7 +655,8 @@ function runInstall(options) {
   //     current when part of it demonstrably wasn't touched.
   const templatesPresentButNotTouched =
     !withTemplates && TEMPLATES.some((t) => fs.existsSync(path.join(templatesDest, t)));
-  const skillPresentButNotTouched = !withSkill && fs.existsSync(skillPath(targetAbs));
+  const skillPresentButNotTouched =
+    !withSkill && (fs.existsSync(skillPath(targetAbs)) || fs.existsSync(updateHookPath(targetAbs)));
   const cleanInstall =
     workflowsSkipped === 0 &&
     templatesSkipped === 0 &&
@@ -782,6 +910,14 @@ async function runStatus(options) {
         ? '  ✓ delivery-ops'
         : '  ○ delivery-ops (not installed — re-run install with --with-skill)'
     );
+    if (skillInstalled) {
+      const hookReady = fs.existsSync(updateHookPath(targetAbs)) && hasUpdateHookRegistered(targetAbs);
+      console.log(
+        hookReady
+          ? '  ✓ update-check hook (offers updates when a session starts)'
+          : `  ○ update-check hook (not set up — run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: true })})`
+      );
+    }
     console.log('');
   }
 
@@ -884,6 +1020,19 @@ function runUninstall(options) {
       }
       skillRemoved++;
     }
+    const hookDest = updateHookPath(targetAbs);
+    if (fs.existsSync(hookDest)) {
+      if (dryRun) {
+        console.log(`  [dry-run] Would remove: ${UPDATE_HOOK_REL_PATH}`);
+      } else {
+        fs.unlinkSync(hookDest);
+        console.log(`  Removed: ${UPDATE_HOOK_REL_PATH}`);
+      }
+      skillRemoved++;
+    }
+    if (unregisterUpdateHook(targetAbs, { dryRun })) {
+      console.log(`  ${dryRun ? '[dry-run] Would remove' : 'Removed'}: update-check hook from ${SETTINGS_REL_PATH}`);
+    }
   }
 
   // Remove the version manifest too — but only once nothing Delivery-OS-
@@ -903,7 +1052,7 @@ function runUninstall(options) {
     SCRIPTS.some((name) => fs.existsSync(path.join(scriptsDest, `${name}.js`))) ||
     fs.existsSync(path.join(scriptsDest, SCRIPTS_PACKAGE_JSON)) ||
     fs.existsSync(path.join(scriptsDest, LABELS_TSV));
-  const skillRemains = fs.existsSync(skillPath(targetAbs));
+  const skillRemains = fs.existsSync(skillPath(targetAbs)) || fs.existsSync(updateHookPath(targetAbs));
   const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains;
 
   const manifestDest = manifestPath(targetAbs);
@@ -945,6 +1094,7 @@ module.exports = {
   runInstall,
   runStatus,
   runUninstall,
+  TEMPLATES, // also read by src/shell-hook.js
   // Exposed for tests only — not part of the CLI's public API.
   __test__: {
     manifestPath,
@@ -956,6 +1106,13 @@ module.exports = {
     buildUpdateCommand,
     skillPath,
     SKILL_REL_PATH,
+    updateHookPath,
+    UPDATE_HOOK_REL_PATH,
+    SETTINGS_REL_PATH,
+    UPDATE_HOOK_ENTRY,
+    registerUpdateHook,
+    unregisterUpdateHook,
+    hasUpdateHookRegistered,
     WORKFLOWS,
     TEMPLATES,
     SCRIPTS,

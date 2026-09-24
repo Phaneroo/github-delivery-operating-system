@@ -67,7 +67,7 @@ program
 program
   .command('shell-hook [shell]')
   .description('Remind you in the terminal when a repo\'s Delivery OS install is out of date (zsh or bash)')
-  .option('--install', 'Add the reminder to your shell startup file (~/.zshrc or ~/.bashrc)')
+  .option('--install', 'Add the reminder to your shell startup file (~/.zshrc, or ~/.bashrc / ~/.bash_profile on macOS)')
   .option('--uninstall', 'Remove it from your shell startup file')
   .action((shell, options) => {
     runShellHook({ shell, install: options.install ?? false, uninstall: options.uninstall ?? false });

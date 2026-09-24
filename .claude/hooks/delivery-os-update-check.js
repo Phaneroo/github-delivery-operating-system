@@ -41,6 +41,17 @@ function cacheFile(env = process.env) {
   return path.join(base, 'github-delivery-os', 'latest-version');
 }
 
+// The package's own source repo commits a manifest too, but there the
+// "installed" files are the source itself — running the published installer
+// over them would overwrite work in progress. Never prompt there.
+function isPackageSourceRepo(repoDir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(repoDir, 'package.json'), 'utf8')).name === 'github-delivery-os';
+  } catch {
+    return false;
+  }
+}
+
 function readInstalledVersion(repoDir) {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, '.github', 'delivery-os.json'), 'utf8'));
@@ -113,7 +124,9 @@ function fetchLatestVersion(timeoutMs = FETCH_TIMEOUT_MS) {
 }
 
 // A fresh cache wins; otherwise ask npm and cache the answer. If npm can't be
-// reached, a stale cached value is still better than nothing.
+// reached, a stale cached value is still better than nothing — and it's
+// written back, so an offline machine waits on the timeout at most once a
+// day rather than at every session start.
 async function latestVersion({ file = cacheFile(), fetch = fetchLatestVersion, now = Date.now() } = {}) {
   const cached = readCache(file, now);
   if (cached && cached.fresh) return cached.version;
@@ -122,6 +135,7 @@ async function latestVersion({ file = cacheFile(), fetch = fetchLatestVersion, n
     writeCache(file, fetched);
     return fetched;
   }
+  if (cached) writeCache(file, cached.version);
   return cached ? cached.version : null;
 }
 
@@ -155,6 +169,7 @@ function buildOutput(installed, latest, command) {
 
 async function main() {
   const repoDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  if (isPackageSourceRepo(repoDir)) return;
   const installed = readInstalledVersion(repoDir);
   if (!installed) return;
   const latest = await latestVersion();
@@ -170,6 +185,7 @@ module.exports = {
   CACHE_TTL_MS,
   TEMPLATES,
   cacheFile,
+  isPackageSourceRepo,
   readInstalledVersion,
   isOlderVersion,
   readCache,

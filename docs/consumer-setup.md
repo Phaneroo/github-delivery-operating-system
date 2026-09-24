@@ -99,7 +99,7 @@ You don't have to remember to run `status`. Two opt-in prompts compare `.github/
 - **In your terminal** — any shell session, zsh or bash, no Claude Code needed:
 
   ```bash
-  npx github-delivery-os@latest shell-hook --install     # adds a marked block to ~/.zshrc or ~/.bashrc
+  npx github-delivery-os@latest shell-hook --install     # adds a marked block to ~/.zshrc, or ~/.bashrc (~/.bash_profile on macOS)
   npx github-delivery-os@latest shell-hook --uninstall   # removes it
   npx github-delivery-os@latest shell-hook zsh           # just print the snippet, to add it yourself
   ```

@@ -2,7 +2,7 @@
 
 const assert = require('assert/strict');
 const { test } = require('./harness');
-const { computeVerdict, selectFilingsToCloseOnRelease } = require('../.github/scripts/authorize-deployment-verdict');
+const { computeVerdict, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
 const { buildAutoTaskBody, buildQaRequestBody } = require('../.github/scripts/auto-qa-request');
 
 const RELEASE = 'alice';
@@ -164,4 +164,22 @@ test('selectFilingsToCloseOnRelease never touches issues without an auto-qa-requ
     { number: 3, body: autoQaBody, created_at: BEFORE, pull_request: {} },
   ];
   assert.deepEqual(selectFilingsToCloseOnRelease(issues, RELEASE_REQUESTED_AT), []);
+});
+
+// parseFilingPrNumber
+
+test('parseFilingPrNumber reads the PR from an auto-filed QA Request or Task', () => {
+  const prQa = buildQaRequestBody({
+    relatedIssueNumber: 1, prNumber: 12, prTitle: 't', prUrl: '', branch: 'b',
+    filesChanged: [], acceptanceCriteria: null, originMarker: 'PR #12',
+  });
+  const prTask = buildAutoTaskBody({ number: 12, title: 't', url: 'https://x/pull/12', author: 'a', viaDirectPush: false });
+  assert.equal(parseFilingPrNumber(prQa), 12);
+  assert.equal(parseFilingPrNumber(prTask), 12);
+});
+
+test('parseFilingPrNumber returns null for direct-push filings', () => {
+  assert.equal(parseFilingPrNumber(autoQaBody), null);
+  assert.equal(parseFilingPrNumber(autoTaskBody), null);
+  assert.equal(parseFilingPrNumber(''), null);
 });

@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      pull-requests: read # to check a filing's PR has merged before closing it on release
       contents: read # needed for actions/checkout, so the verdict script can be required from the repo
     # Serialize per-issue: two comments posted seconds apart (e.g. a decline
     # immediately corrected with an approval) can trigger overlapping runs.
@@ -42,7 +43,7 @@ jobs:
             // .github/scripts/authorize-deployment-verdict.js and
             // test/authorize-deployment-verdict.test.js) rather than inline here,
             // so it isn't only verified by hand whenever it changes.
-            const { computeVerdict, selectFilingsToCloseOnRelease } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const { computeVerdict, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
@@ -150,7 +151,30 @@ jobs:
                 const openFilings = await github.paginate(github.rest.issues.listForRepo, {
                   owner, repo, state: "open", labels: "delivery-ops-filed", per_page: 100
                 });
-                const toClose = selectFilingsToCloseOnRelease(openFilings, liveIssue.created_at);
+                const candidates = openFilings.filter((i) =>
+                  selectFilingsToCloseOnRelease(openFilings, liveIssue.created_at).includes(i.number));
+
+                // A filing for a PR that hasn't merged isn't in this release —
+                // leave it open so the release that does ship it covers it.
+                const mergedByPr = new Map();
+                const toClose = [];
+                for (const issue of candidates) {
+                  const prNumber = parseFilingPrNumber(issue.body);
+                  if (prNumber) {
+                    if (!mergedByPr.has(prNumber)) {
+                      try {
+                        const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+                        mergedByPr.set(prNumber, Boolean(pr.merged));
+                      } catch (e) {
+                        console.log(`Couldn't check PR #${prNumber} (${e.message || e}) — leaving its filings open.`);
+                        mergedByPr.set(prNumber, false);
+                      }
+                    }
+                    if (!mergedByPr.get(prNumber)) continue;
+                  }
+                  toClose.push(issue.number);
+                }
+
                 for (const n of toClose) {
                   try {
                     await github.rest.issues.createComment({

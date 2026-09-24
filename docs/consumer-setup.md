@@ -144,8 +144,8 @@ Each line under "Sprint Features" becomes a child issue with `Parent Sprint: #N`
 
 Repos that push straight to `main` (common for solo-maintained prototypes) get a QA Request — and, if nothing is linked, a backing Task — on every push. To keep that accurate and quiet:
 
-- **Link the push to an issue in its commit message.** `Closes #27`, `Refs #27`, or a bare `#27` all link the QA Request to #27, and no new Task is filed. (References to pull requests, other repos, or issues that don't exist are ignored.)
-- **Skip a trivial push** by putting `[skip qa-request]` anywhere in its commit message. Only this workflow honors it — `[skip ci]` would skip every workflow.
+- **Link the push to an issue in its commit message.** `Closes #27`, `Refs #27`, or a bare `#27` in any commit of the push links the QA Request to #27, and no new Task is filed. (References to pull requests, other repos, or issues that don't exist are ignored.)
+- **Skip a trivial push** by putting `[skip qa-request]` in its commit message. It opts out that commit, not the whole push: a push is skipped only when every commit in it is marked, so a marked typo fix can't hide real changes pushed with it. Only this workflow honors it — `[skip ci]` would skip every workflow.
 - **Docs- and settings-only changes file nothing.** A push or PR that only touches paths matching `DELIVERY_OS_AUTO_QA_QUIET_PATHS` (README edits, `docs/`, editor config…) is skipped. Anything else — code, workflows, `package.json` — still files.
 - **Turn it down repo-wide** with `DELIVERY_OS_AUTO_QA` / `DELIVERY_OS_AUTO_TASK` above. These are repo variables, not workflow edits, so `install --update` keeps them.
 
@@ -159,8 +159,8 @@ Those notes are collected again when a release is requested: the Production Rele
 
 `auto-qa-request` only ever closes what it filed itself (identified by its footer and the `delivery-ops-filed` label) — never an issue a person filed:
 
-- **PR closed without merging** → its auto-filed Task and QA Request are closed as *not planned*, with a comment.
-- **Release authorized** (`authorize-deployment` adds `ready-for-deploy`) → every open auto-filed Task and QA Request created *before that release issue was opened* is closed as *completed*, with a comment pointing at the release, and the release issue gets a summary comment. Opt out with `DELIVERY_OS_AUTO_CLOSE=false`.
+- **PR closed without merging** → its auto-filed Task and QA Request are closed as *not planned*, with a comment. **Reopening the PR reopens them.**
+- **Release authorized** (`authorize-deployment` adds `ready-for-deploy`) → every open auto-filed Task and QA Request created *before that release issue was opened* is closed as *completed* — except ones whose PR hasn't merged yet, which stay open for the release that ships them —, with a comment pointing at the release, and the release issue gets a summary comment. Opt out with `DELIVERY_OS_AUTO_CLOSE=false`.
 
 Repos that never cut a Production Release (e.g. push-to-`main` prototypes) have no release event to close on — the `delivery-ops` skill's cleanup sweep flags those leftovers for you to confirm instead.
 

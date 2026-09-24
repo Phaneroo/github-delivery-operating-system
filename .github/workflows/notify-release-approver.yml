@@ -106,29 +106,40 @@ jobs:
             });
             const previousRelease = findPreviousAuthorizedRelease(productionIssues, release);
 
-            // `since` filters on updated_at, which is always >= created_at,
-            // so it's a safe pre-filter for the created_at window below.
-            const qaIssues = await github.paginate(github.rest.issues.listForRepo, {
-              owner, repo, state: 'all', labels: 'qa-request', per_page: 100,
+            // Every open request (an old one still open hasn't shipped yet),
+            // plus closed ones touched since the previous release. `since`
+            // filters on updated_at, which is always >= created_at, so it's a
+            // safe pre-filter for the created_at window below.
+            const openQa = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'qa-request', per_page: 100
+            });
+            const closedQa = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'closed', labels: 'qa-request', per_page: 100,
               ...(previousRelease ? { since: previousRelease.created_at } : {})
             });
+            const qaIssues = [...openQa, ...closedQa];
             const inWindow = selectQaRequestsInWindow(qaIssues, previousRelease && previousRelease.created_at, release.created_at);
 
             // Leave out work whose PR hasn't merged — it isn't on main yet.
+            // One lookup per distinct PR, run concurrently.
+            const prNumbers = [...new Set(inWindow.map((qa) => parseOriginPrNumber(qa.body)).filter(Boolean))];
+            const mergedByPr = new Map(await Promise.all(prNumbers.map(async (n) => {
+              try {
+                const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: n });
+                return [n, Boolean(pr.merged)];
+              } catch (err) {
+                console.log(`Couldn't check PR #${n} (${err.message}) — including its QA Request.`);
+                return [n, true];
+              }
+            })));
+
             const qaRequests = [];
             const unmerged = [];
             for (const qa of inWindow) {
               const prNumber = parseOriginPrNumber(qa.body);
-              if (prNumber) {
-                try {
-                  const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-                  if (!pr.merged) {
-                    unmerged.push({ number: qa.number, prNumber });
-                    continue;
-                  }
-                } catch (err) {
-                  console.log(`Couldn't check PR #${prNumber} for #${qa.number} (${err.message}) — including it.`);
-                }
+              if (prNumber && !mergedByPr.get(prNumber)) {
+                unmerged.push({ number: qa.number, prNumber });
+                continue;
               }
               qaRequests.push(qa);
             }

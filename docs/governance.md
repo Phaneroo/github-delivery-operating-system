@@ -46,7 +46,7 @@ flowchart LR
 When a production release issue is opened (template auto-applies `production`):
 
 1. **notify-release-approver** pings `RELEASE_APPROVER` with sprint reference and QA recommendation.
-2. It also posts a **release roll-up**: one comment titled *What's in this release* that collects the plain-English **What Changed** notes from every QA Request filed since the last authorized release. Each one is marked ✅ (dev-reviewed) or ⚠️ (not reviewed, still a draft, or missing), and the **Could affect** areas are merged into one list. QA Requests closed as *not planned* and ones whose PR hasn't merged are left out.
+2. It also posts a **release roll-up**: one comment titled *What's in this release* that collects the plain-English **What Changed** notes from every QA Request filed since the last authorized release, plus any older one still open (its work hasn't shipped yet, e.g. its PR merged after the previous release). Each one is marked ✅ (dev-reviewed) or ⚠️ (not reviewed, still a draft, or missing), and the **Could affect** areas are merged into one list. QA Requests closed as *not planned* and ones whose PR hasn't merged are left out.
 3. Approver reviews and comments.
 
 The roll-up is a **best guess and informational only**: Delivery OS doesn't track exact commit ranges per release, so it goes by when QA Requests were filed, and it never blocks authorization. Refresh it after changes with `gh workflow run notify-release-approver.yml -f release_issue=<N>`; the existing comment is updated in place.
@@ -73,10 +73,10 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | Sprint issue opened (title "SPRINT -") | sprint-child-creator | Creates child issues with `sprint-child` |
 | Child issue closed (body has Parent Sprint) | auto-close-sprint | Updates burn-down; auto-closes at 100% |
 | Production release opened | notify-release-approver | Pings RELEASE_APPROVER; posts the release roll-up |
-| Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers |
+| Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers (not ones whose PR is still unmerged) |
 | QA/qa-request issue opened | auto-assign-qa | Assigns QA_ASSIGNEES |
-| PR opened, or commit pushed to `main` | auto-qa-request | Files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed — safety net, not a gate |
-| PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR |
+| PR opened or updated, or commit pushed to `main` | auto-qa-request | Files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed — safety net, not a gate |
+| PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR (reopening the PR reopens them) |
 | Bugs, QA, sprints, releases, PR merged | telegram-issues | Sends alerts (if secrets set) |
 
 ---
@@ -90,5 +90,5 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | notify-release-approver | `issues.opened` (label `production`), `workflow_dispatch` (roll-up refresh) |
 | authorize-deployment | `issue_comment.created` (on production issue) |
 | auto-assign-qa | `issues.opened` or `labeled` (label `qa` or `qa-request`) |
-| auto-qa-request | `pull_request.opened`/`ready_for_review`/`closed`, `push` to `main` |
+| auto-qa-request | `pull_request.opened`/`ready_for_review`/`reopened`/`synchronize`/`closed`, `push` to `main` |
 | telegram-issues | `issues`, `issue_comment`, `pull_request` |

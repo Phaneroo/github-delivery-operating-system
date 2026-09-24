@@ -154,7 +154,7 @@ Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges 
 ```bash
 npx github-delivery-os uninstall .                    # Remove workflows only
 npx github-delivery-os uninstall --with-templates .    # Remove workflows + templates
-npx github-delivery-os uninstall --with-skill .        # Also remove the delivery-ops Claude Code skill
+npx github-delivery-os uninstall --with-skill .        # Also remove the delivery-ops Claude Code skill and its update-check hook
 npx github-delivery-os uninstall --dry-run .           # Preview
 ```
 
@@ -202,6 +202,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 |------|--------|
 | Install | `./scripts/install.sh --with-templates /path/to/repo` |
 | Update install | Add `--update` |
+| Get update reminders | Claude Code: install with `--with-skill`. Terminal: `npx github-delivery-os@latest shell-hook --install` |
 | Create sprint | New issue → SPRINT PLANNING |
 | Request release | New issue → PRODUCTION RELEASE & QA SIGN-OFF |
 | Approve release | Comment `approved` (dual: both approvers) |

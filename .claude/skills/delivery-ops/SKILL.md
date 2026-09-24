@@ -160,7 +160,7 @@ gh issue comment <number> --repo <owner>/<repo> --body "Approved, ship it"
 
 ## The rolling QA issue
 
-By default (`DELIVERY_OS_AUTO_QA_MODE` unset or `rolling`), `auto-qa-request` keeps **one** open issue per repo, *QA REQUEST - Changes awaiting QA*, with labels `qa-request` + `delivery-ops-filed` + `qa-rollup`. It doesn't file a QA Request per change. Each direct push to `main` and each merged PR adds a line under **Changes**: `- [ ] <title> (<short sha or #PR>) by @author — for #N`, with plain-English draft bullets indented below. Docs-only and `[skip qa-request]` changes add nothing. When none is open, the next change opens one.
+By default (`DELIVERY_OS_AUTO_QA_MODE` unset or `rolling`), `auto-qa-request` keeps **one** open issue per repo, *QA REQUEST - Changes awaiting QA*, with labels `qa-request` + `delivery-ops-filed` + `qa-rollup`. It doesn't file a QA Request per change. Each direct push to `main` and each PR merged into `main` (recorded from the push, so fork PRs count too) adds a line under **Changes**: `- [ ] <title> (<short sha or #PR>) by @author — for #N`, with plain-English draft bullets indented below. Docs-only and `[skip qa-request]` changes add nothing. When none is open, the next change opens one.
 
 - **Find it:** `gh issue list --repo <owner>/<repo> --label qa-rollup --state open`. Read its list with `--json body`. Each line ends in a hidden `<!-- delivery-os:origin=... -->` marker; leave those intact when editing, since they're how duplicates are prevented.
 - **Approve or decline:** `qa-rollup-approval` acts only on the `QA_APPROVER` login, with the same login check as "Commenting as an approver" above. The comment must *start* with a phrase or emoji:

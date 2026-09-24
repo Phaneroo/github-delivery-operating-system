@@ -4,6 +4,15 @@
 // can be unit tested directly (see test/auto-qa-request.test.js) instead of
 // only verified by hand.
 
+/** Escapes a string for literal use inside a RegExp. */
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Issue bodies edited in GitHub's web UI can come back with CRLF line
+// endings; every body parser/rewriter below normalizes first.
+const lf = (text) => (text || '').replace(/\r\n/g, '\n');
+
 const CLOSING_KEYWORD_RE = /\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s*:?\s*#(\d+)/gi;
 
 /**
@@ -99,30 +108,6 @@ function pushTitle(headMessage, messages) {
   return ((source || '').split('\n')[0] || '')
     .replace(/\s*\[skip qa-request\]\s*/gi, ' ')
     .trim();
-}
-
-const AUTO_QA_MODES = ['all', 'pr-only', 'off'];
-
-/**
- * @param {string | undefined} value - the `DELIVERY_OS_AUTO_QA` repo variable
- * @returns {'all' | 'pr-only' | 'off'} the normalized mode; unset or
- *   unrecognized values fall back to `all` (the pre-variable behavior), so a
- *   typo never silently turns the safety net off.
- */
-function resolveAutoQaMode(value) {
-  const mode = (value || '').trim().toLowerCase();
-  return AUTO_QA_MODES.includes(mode) ? mode : 'all';
-}
-
-/**
- * @param {'all' | 'pr-only' | 'off'} mode - from resolveAutoQaMode
- * @param {string} eventName - `pull_request` or `push`
- * @returns {boolean} whether this event should file anything at all
- */
-function shouldFileForEvent(mode, eventName) {
-  if (mode === 'off') return false;
-  if (mode === 'pr-only') return eventName === 'pull_request';
-  return true;
 }
 
 /**
@@ -258,11 +243,13 @@ const QA_STYLES = ['rolling', 'per-change', 'off'];
  * @param {string | undefined} modeVar - DELIVERY_OS_AUTO_QA_MODE
  * @param {string | undefined} legacyVar - DELIVERY_OS_AUTO_QA (1.8.0)
  * @returns {{ style: 'rolling' | 'per-change' | 'off', prOnly: boolean }}
- *   An explicit, valid MODE wins. Otherwise the 1.8.0 variable keeps its
- *   meaning where it was set explicitly: `all` → per-change (the behavior
- *   that repo chose), `off` → off. Unset or unrecognized → `rolling`, the
- *   new default; a typo never turns the reminder off. `pr-only` still means
- *   "direct pushes add nothing", whatever the style.
+ *   An explicit, valid MODE wins. Otherwise the 1.8.0 variable decides:
+ *   `all` → per-change (the behavior that repo chose), `off` → off, and
+ *   `pr-only` → rolling with direct pushes adding nothing (a deliberate
+ *   choice: pr-only repos move to the rolling issue, PRs only; set
+ *   MODE=per-change alongside it to keep a QA Request per PR). Unset or
+ *   unrecognized → `rolling`, the new default; a typo never turns the
+ *   reminder off. `pr-only` means "direct pushes add nothing" in any style.
  */
 function resolveQaSettings(modeVar, legacyVar) {
   const mode = (modeVar || '').trim().toLowerCase();
@@ -295,15 +282,21 @@ const originTag = (originMarker) => `<!-- delivery-os:origin=${originMarker} -->
  * One checklist entry: the change's title and reference, plus its
  * plain-English draft bullets indented underneath for the dev to edit.
  *
- * @param {{ title: string, ref: string, author: string | null,
- *   linkedIssue: number | null, originMarker: string, summary?: string }} change
- *   - ref: short sha or `#PR`; summary: seedChangeSummary output
+ * @param {{ title: string, ref: string, author?: string | null,
+ *   authorName?: string | null, linkedIssue: number | null,
+ *   originMarker: string, summary?: string, addedAt?: string }} change
+ *   - ref: short sha or `#PR`; author: a GitHub login (gets an @-mention);
+ *   authorName: a plain git display name, used only when there's no login
+ *   (an @ on a display name would ping an unrelated account); summary:
+ *   seedChangeSummary output; addedAt: ISO time, so a release roll-up can
+ *   leave out changes added after the release was requested
  * @returns {string}
  */
-function buildChangeLine({ title, ref, author, linkedIssue, originMarker, summary }) {
-  const by = author ? ` by @${author}` : '';
+function buildChangeLine({ title, ref, author, authorName, linkedIssue, originMarker, summary, addedAt }) {
+  const by = author ? ` by @${author}` : authorName ? ` by ${authorName}` : '';
   const forIssue = linkedIssue ? ` — for #${linkedIssue}` : '';
-  const head = `- [ ] ${title} (${ref})${by}${forIssue} ${originTag(originMarker)}`;
+  const added = addedAt ? ` <!-- delivery-os:added=${addedAt} -->` : '';
+  const head = `- [ ] ${title} (${ref})${by}${forIssue}${added} ${originTag(originMarker)}`;
   const cleanTitle = (title || '').trim().toLowerCase();
   const bullets = (summary || '')
     .split('\n')
@@ -365,7 +358,7 @@ function buildRollingQaBody(firstChange) {
  * @returns {boolean} whether that change is already on the list
  */
 function hasChange(body, originMarker) {
-  return (body || '').includes(originTag(originMarker));
+  return lf(body).includes(originTag(originMarker));
 }
 
 /**
@@ -374,7 +367,7 @@ function hasChange(body, originMarker) {
  * @returns {string} body with the block added at the end of the checklist
  */
 function appendChange(body, block) {
-  const b = body || '';
+  const b = lf(body);
   const end = b.indexOf(CHANGES_END);
   if (end !== -1) return `${b.slice(0, end)}${block}\n${b.slice(end)}`;
   // Markers edited away: keep the change rather than drop it.
@@ -384,16 +377,29 @@ function appendChange(body, block) {
 
 /**
  * @param {string} body
+ * @param {string} originMarker
+ * @returns {string} body without that change's entry (head line + bullets) —
+ *   used to take back a change written into an issue that got closed under us
+ */
+function removeChange(body, originMarker) {
+  const entry = parseChanges(body).find((c) => c.originMarker === originMarker);
+  if (!entry) return lf(body);
+  return lf(body).replace(`${entry.block}\n`, '').replace(entry.block, '');
+}
+
+/**
+ * @param {string} body
  * @returns {Array<{ originMarker: string, checked: boolean, text: string,
- *   bullets: string[], block: string }>} every change on the list, in order
+ *   bullets: string[], block: string, addedAt: string | null }>} every change
+ *   on the list, in order
  */
 function parseChanges(body) {
   const changes = [];
   let current = null; // the entry whose indented bullets we're collecting
-  for (const line of (body || '').split('\n')) {
-    const head = line.match(/^- \[([ xX])\] (.*?)\s*<!-- delivery-os:origin=(.*?) -->\s*$/);
+  for (const line of lf(body).split('\n')) {
+    const head = line.match(/^- \[([ xX])\] (.*?)\s*(?:<!-- delivery-os:added=(.*?) -->\s*)?<!-- delivery-os:origin=(.*?) -->\s*$/);
     if (head) {
-      current = { originMarker: head[3], checked: head[1] !== ' ', text: head[2], bullets: [], block: line };
+      current = { originMarker: head[4], checked: head[1] !== ' ', text: head[2], bullets: [], block: line, addedAt: head[3] || null };
       changes.push(current);
     } else if (current && /^\s+- /.test(line)) {
       current.bullets.push(line.trim());
@@ -405,14 +411,14 @@ function parseChanges(body) {
   return changes;
 }
 
-const APPROVAL_LINE_RE = new RegExp(`^- \\[([ xX])\\] ${APPROVAL_BOX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+const APPROVAL_LINE_RE = new RegExp(`^- \\[([ xX])\\] ${escapeRegExp(APPROVAL_BOX)}\\s*$`, 'm');
 
 /**
  * @param {string} body
  * @returns {boolean} whether the Approved box is ticked
  */
 function approvalBoxTicked(body) {
-  const m = (body || '').match(APPROVAL_LINE_RE);
+  const m = lf(body).match(APPROVAL_LINE_RE);
   return Boolean(m && m[1] !== ' ');
 }
 
@@ -426,7 +432,7 @@ function approvalBoxJustTicked(oldBody, newBody) {
 }
 
 const setApprovalBox = (body, ticked) =>
-  (body || '').replace(APPROVAL_LINE_RE, `- [${ticked ? 'x' : ' '}] ${APPROVAL_BOX}`);
+  lf(body).replace(APPROVAL_LINE_RE, `- [${ticked ? 'x' : ' '}] ${APPROVAL_BOX}`);
 
 /**
  * @param {string} body
@@ -434,7 +440,7 @@ const setApprovalBox = (body, ticked) =>
  * @returns {string}
  */
 function setQaOutcome(body, outcome) {
-  return (body || '').replace(/(### QA Outcome\n\n)[^\n]*/, `$1${outcome}`);
+  return lf(body).replace(/(### QA Outcome\n\n)[^\n]*/, `$1${outcome}`);
 }
 
 /**
@@ -443,7 +449,7 @@ function setQaOutcome(body, outcome) {
  *   ticked, QA Outcome Pass
  */
 function markRollingApproved(body) {
-  const ticked = (body || '')
+  const ticked = lf(body)
     .split('\n')
     .map((l) => (/^- \[ \] .*<!-- delivery-os:origin=/.test(l) ? l.replace('- [ ] ', '- [x] ') : l))
     .join('\n');
@@ -673,8 +679,7 @@ function buildQaRequestBody({
 function qaRequestAlreadyExists(openQaRequests, originMarker) {
   // Anchored on the footer and a non-digit after the marker, so `PR #2`
   // doesn't match a request filed for PR #21.
-  const escaped = originMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`origin: ${escaped}(?![\\w])`);
+  const re = new RegExp(`origin: ${escapeRegExp(originMarker)}(?![\\w])`);
   return (openQaRequests || []).some((issue) => re.test(issue.body || ''));
 }
 
@@ -685,8 +690,6 @@ module.exports = {
   allCommitsSkipped,
   pushLinkText,
   pushTitle,
-  resolveAutoQaMode,
-  shouldFileForEvent,
   autoTaskEnabledForDirectPush,
   DEFAULT_QUIET_PATHS,
   resolveQuietPaths,
@@ -702,7 +705,9 @@ module.exports = {
   buildRollingQaBody,
   hasChange,
   appendChange,
+  removeChange,
   parseChanges,
+  escapeRegExp,
   approvalBoxTicked,
   approvalBoxJustTicked,
   setQaOutcome,

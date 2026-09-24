@@ -23,11 +23,17 @@
  * @param {string[]} phrases
  * @returns {RegExp} matches when a comment starts with any of the phrases
  */
+// Same helper as auto-qa-request.js's escapeRegExp; duplicated (one line)
+// so authorize-deployment only ever needs its own script installed.
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function phraseRegex(phrases) {
   const alternatives = phrases
     .slice()
     .sort((a, b) => b.length - a.length)
-    .map((p) => p.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
+    .map((p) => escapeRegExp(p.trim()).replace(/\s+/g, '\\s+'));
   return new RegExp(`^(?:${alternatives.join('|')})\\b`, 'i');
 }
 

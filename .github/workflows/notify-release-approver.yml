@@ -149,7 +149,7 @@ jobs:
             // the previous release (closed ones come from closedQa above).
             const rolling = selectRollingIssues(qaIssues, previousRelease && previousRelease.created_at, release.created_at);
 
-            const body = buildRollupComment({ qaRequests, unmerged, previousRelease, rolling });
+            const body = buildRollupComment({ qaRequests, unmerged, previousRelease, rolling, releaseCreatedAt: release.created_at });
 
             // One roll-up per release: update it in place on a refresh.
             const comments = await github.paginate(github.rest.issues.listComments, {

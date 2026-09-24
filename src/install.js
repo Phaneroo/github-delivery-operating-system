@@ -178,7 +178,9 @@ function rollingQaMigrationNote(priorVersion, hadAutoQaWorkflow) {
     '  - Existing open auto-filed QA Requests were left as they are. The delivery-ops',
     '    skill\'s cleanup sweep can propose closing old leftovers.',
     '  - To keep the old behavior, set the repo variable DELIVERY_OS_AUTO_QA_MODE=per-change',
-    '    (DELIVERY_OS_AUTO_QA=all already keeps it).',
+    '    (DELIVERY_OS_AUTO_QA=all already keeps it). A repo with DELIVERY_OS_AUTO_QA=pr-only',
+    '    moves to the rolling issue, PRs only; add DELIVERY_OS_AUTO_QA_MODE=per-change to keep',
+    '    a QA Request per PR.',
     '  - Run Setup Labels (or --with-labels) to create the new `qa-rollup` label.',
   ].join('\n');
 }

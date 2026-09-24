@@ -27,6 +27,7 @@ on:
     # synchronize: a PR that started docs-only can gain code later, so it's
     # re-checked on every push (the idempotency check stops duplicates).
     # reopened: restores what was closed when the PR was closed unmerged.
+    # (per-change mode; rolling mode records PRs from the push to main)
     types: [opened, ready_for_review, reopened, synchronize, closed]
   push:
     branches: [main]
@@ -38,13 +39,20 @@ permissions:
 
 jobs:
   file-qa-request:
-    # Event shape only (a merged PR's `closed` event is how rolling mode
-    # records PRs); the script resolves the mode settings itself.
+    # Fast path so no runner starts when nothing can be filed; the script
+    # re-resolves the settings (trimmed, case-insensitive) either way.
+    # - push to main: every mode except off. Rolling mode records merged PRs
+    #   here too (the push always has a write token, unlike a fork PR's own
+    #   events, and only ever means "reached main").
+    # - pull_request: per-change mode only (explicit, or the 1.8.0 `all`).
     if: >-
-      vars.DELIVERY_OS_AUTO_QA_MODE != 'off' &&
-      ((github.event_name == 'pull_request' && github.event.pull_request.draft == false &&
-        (github.event.action != 'closed' || github.event.pull_request.merged == true)) ||
-       github.event_name == 'push')
+      (github.event_name == 'push' &&
+       vars.DELIVERY_OS_AUTO_QA_MODE != 'off' &&
+       !(vars.DELIVERY_OS_AUTO_QA_MODE == '' && vars.DELIVERY_OS_AUTO_QA == 'off')) ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.event.pull_request.draft == false &&
+       (vars.DELIVERY_OS_AUTO_QA_MODE == 'per-change' ||
+        (vars.DELIVERY_OS_AUTO_QA_MODE != 'rolling' && vars.DELIVERY_OS_AUTO_QA_MODE != 'off' && vars.DELIVERY_OS_AUTO_QA == 'all')))
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -82,6 +90,7 @@ jobs:
               buildRollingQaBody,
               hasChange,
               appendChange,
+              removeChange,
               parseChanges,
               autoTaskEnabledForDirectPush,
               resolveQuietPaths,
@@ -100,28 +109,23 @@ jobs:
 
             const settings = resolveQaSettings(process.env.DELIVERY_OS_AUTO_QA_MODE, process.env.DELIVERY_OS_AUTO_QA);
             const isPr = context.eventName === 'pull_request';
-            const prMerged = isPr && context.payload.action === 'closed';
             if (settings.style === 'off') {
               console.log('Auto QA is off for this repo — nothing to file.');
               return;
             }
-            if (!isPr && settings.prOnly) {
+            if (isPr && (settings.style !== 'per-change' || context.payload.action === 'closed')) {
+              console.log('Nothing to do for this PR event (rolling mode records PRs from the push to main).');
+              return;
+            }
+            if (!isPr && settings.style === 'per-change' && settings.prOnly) {
               console.log('DELIVERY_OS_AUTO_QA=pr-only — direct pushes add nothing.');
               return;
             }
-            if (settings.style === 'rolling' && isPr && !prMerged) {
-              console.log('Rolling QA mode records a PR when it merges — nothing to do yet.');
-              return;
-            }
-            if (settings.style === 'per-change' && prMerged) {
-              console.log('Per-change mode filed this PR when it opened — nothing to do on merge.');
-              return;
-            }
 
-            let prNumber, prTitle, prUrl, prBody, branch, author, filesChanged, touchedPaths, commitMessages, viaDirectPush, originMarker;
+            let prNumber, prTitle, prUrl, prBody, branch, author, authorName, filesChanged, touchedPaths, commitMessages, viaDirectPush, originMarker;
 
-            if (context.eventName === 'pull_request') {
-              const pr = context.payload.pull_request;
+            // Fills the PR fields, files and commits from a PR object.
+            async function loadPr(pr) {
               prNumber = pr.number;
               prTitle = pr.title;
               prUrl = pr.html_url;
@@ -130,6 +134,20 @@ jobs:
               author = pr.user.login;
               viaDirectPush = false;
               originMarker = `PR #${prNumber}`;
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner, repo, pull_number: prNumber, per_page: 100
+              });
+              filesChanged = files.map((f) => f.filename);
+              touchedPaths = touchedPathsFromApiFiles(files);
+              const commits = await github.paginate(github.rest.pulls.listCommits, {
+                owner, repo, pull_number: prNumber, per_page: 100
+              });
+              commitMessages = commits.map((c) => c.commit.message);
+            }
+
+            if (isPr) {
+              const pr = context.payload.pull_request;
+              prNumber = pr.number;
 
               // Reopening a PR that was closed unmerged: bring back the Task /
               // QA Request closed then, instead of filing duplicates.
@@ -149,84 +167,94 @@ jobs:
                 if (toReopen.length) return;
               }
 
-              const files = await github.paginate(github.rest.pulls.listFiles, {
-                owner, repo, pull_number: prNumber, per_page: 100
-              });
-              filesChanged = files.map((f) => f.filename);
-              touchedPaths = touchedPathsFromApiFiles(files);
-
-              const commits = await github.paginate(github.rest.pulls.listCommits, {
-                owner, repo, pull_number: prNumber, per_page: 100
-              });
-              commitMessages = commits.map((c) => c.commit.message);
+              await loadPr(pr);
             } else {
               const headCommit = context.payload.head_commit;
               const message = headCommit ? headCommit.message : '';
 
-              // A push to main from merging (or squash-merging) a PR is
-              // already covered by the pull_request event above — skip it,
-              // otherwise every ordinary merge would also look like an
-              // untracked direct push and file a duplicate Task + QA Request.
-              // (Rebase-merge commits carry no reliable marker and can't be
-              // detected this way; see parseMergedPrNumber's doc comment.)
-              if (parseMergedPrNumber(message) !== null) {
+              // Per-change mode: a push to main from merging (or
+              // squash-merging) a PR is already covered by that PR's own
+              // pull_request event — skip it, otherwise every ordinary merge
+              // would also look like an untracked direct push. (Rebase-merge
+              // commits carry no reliable marker; see parseMergedPrNumber.)
+              if (settings.style === 'per-change' && parseMergedPrNumber(message) !== null) {
                 console.log('Push is a PR merge already handled by the pull_request event — skipping.');
                 return;
               }
 
-              // Rolling mode records merged PRs from their `closed` event, so
-              // a rebase-merge push (no merge marker in its message) would
-              // otherwise be recorded twice. Ask GitHub which PR it came from.
+              // Rolling mode: is this push a PR landing on main (merge,
+              // squash or rebase)? GitHub knows which PR a commit came from.
+              // Only PRs merged INTO main count — a push of `develop` whose tip
+              // came from a PR merged into `develop` is still a direct push.
+              let mergedPr = null;
               if (settings.style === 'rolling') {
                 try {
                   const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: context.sha });
-                  const mergedPr = prs.find((p) => p.merged_at);
-                  if (mergedPr) {
-                    console.log(`Push comes from merged PR #${mergedPr.number}, recorded by its own event — skipping.`);
-                    return;
+                  mergedPr = prs.find((p) => p.merged_at && p.base && p.base.ref === 'main') || null;
+                } catch (err) {
+                  // Fall back to the merge-commit message, confirmed via the API.
+                  const n = parseMergedPrNumber(message);
+                  console.log(`Couldn't look up the push's PR (${err.message})${n ? ` — checking #${n} from the commit message` : ''}.`);
+                  if (n) {
+                    try {
+                      const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: n });
+                      if (pr.merged_at && pr.base.ref === 'main') mergedPr = pr;
+                    } catch (e) {
+                      console.log(`Couldn't read PR #${n} (${e.message}) — treating as a direct push.`);
+                    }
+                  }
+                }
+              }
+              if (mergedPr) {
+                console.log(`Push lands PR #${mergedPr.number} on main — recording the PR.`);
+                await loadPr(mergedPr);
+              } else {
+                if (settings.prOnly) {
+                  console.log('DELIVERY_OS_AUTO_QA=pr-only — direct pushes add nothing.');
+                  return;
+                }
+
+                // The push payload carries no file lists (and at most 20
+                // commits), so ask the API: the whole push range, or just the
+                // commit for a branch's first push.
+                let apiFiles = null;
+                let apiMessages = null;
+                try {
+                  const before = context.payload.before;
+                  if (before && !/^0+$/.test(before)) {
+                    const { data } = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${before}...${context.sha}` });
+                    apiFiles = data.files || [];
+                    apiMessages = (data.commits || []).map((c) => c.commit.message);
+                  } else {
+                    const { data } = await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
+                    apiFiles = data.files || [];
+                    apiMessages = [data.commit.message];
                   }
                 } catch (err) {
-                  console.log(`Couldn't check for an associated PR (${err.message}) — treating as a direct push.`);
+                  console.log(`Couldn't list the push's files/commits (${err.message}) — using the event payload.`);
                 }
-              }
+                commitMessages = apiMessages || (context.payload.commits || []).map((c) => c.message);
 
-              // The push payload carries no file lists (and at most 20
-              // commits), so ask the API: the whole push range, or just the
-              // commit for a branch's first push.
-              let apiFiles = null;
-              let apiMessages = null;
-              try {
-                const before = context.payload.before;
-                if (before && !/^0+$/.test(before)) {
-                  const { data } = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${before}...${context.sha}` });
-                  apiFiles = data.files || [];
-                  apiMessages = (data.commits || []).map((c) => c.commit.message);
-                } else {
-                  const { data } = await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
-                  apiFiles = data.files || [];
-                  apiMessages = [data.commit.message];
+                // Per-commit opt-out: skip only when every commit is marked.
+                if (allCommitsSkipped(commitMessages)) {
+                  console.log('Every commit in this push has [skip qa-request] — skipping.');
+                  return;
                 }
-              } catch (err) {
-                console.log(`Couldn't list the push's files/commits (${err.message}) — using the event payload.`);
-              }
-              commitMessages = apiMessages || (context.payload.commits || []).map((c) => c.message);
 
-              // Per-commit opt-out: skip only when every commit is marked.
-              if (allCommitsSkipped(commitMessages)) {
-                console.log('Every commit in this push has [skip qa-request] — skipping.');
-                return;
+                prNumber = null;
+                prTitle = pushTitle(message, commitMessages) || `Direct push to main (${context.sha.slice(0, 7)})`;
+                prUrl = '';
+                prBody = pushLinkText(message, commitMessages); // a direct push's issue links live in its commit messages
+                branch = 'main';
+                author = headCommit && headCommit.author ? (headCommit.author.username || headCommit.author.name) : null;
+                // Only a real GitHub username gets an @-mention on the rolling line.
+                const pushLogin = headCommit && headCommit.author ? headCommit.author.username || null : null;
+                authorName = pushLogin ? null : author;
+                touchedPaths = touchedPathsFromApiFiles(apiFiles);
+                filesChanged = apiFiles ? apiFiles.map((f) => f.filename) : [];
+                viaDirectPush = true;
+                originMarker = `Direct push #${context.sha}`;
               }
-
-              prNumber = null;
-              prTitle = pushTitle(message, commitMessages) || `Direct push to main (${context.sha.slice(0, 7)})`;
-              prUrl = '';
-              prBody = pushLinkText(message, commitMessages); // a direct push's issue links live in its commit messages
-              branch = 'main';
-              author = headCommit && headCommit.author ? (headCommit.author.username || headCommit.author.name) : null;
-              touchedPaths = touchedPathsFromApiFiles(apiFiles);
-              filesChanged = apiFiles ? apiFiles.map((f) => f.filename) : [];
-              viaDirectPush = true;
-              originMarker = `Direct push #${context.sha}`;
             }
 
             const quietPaths = resolveQuietPaths(process.env.DELIVERY_OS_AUTO_QA_QUIET_PATHS);
@@ -262,7 +290,9 @@ jobs:
               const block = buildChangeLine({
                 title: prTitle,
                 ref: prNumber ? `#${prNumber}` : context.sha.slice(0, 7),
-                author,
+                author: authorName ? null : author,
+                authorName,
+                addedAt: new Date().toISOString(),
                 linkedIssue: linked.number,
                 originMarker,
                 summary: seedChangeSummary({ title: prTitle, commitMessages }),
@@ -318,6 +348,16 @@ jobs:
                 await github.rest.issues.update({ owner, repo, issue_number: rolling.number, body: appendChange(rolling.body, block) });
                 await sleep(1000 + Math.floor(Math.random() * 2000));
                 const { data: fresh } = await github.rest.issues.get({ owner, repo, issue_number: rolling.number });
+                // Approved and closed while we were writing? Our line landed on
+                // a list that's already signed off — take it back and start
+                // over (the next attempt opens a fresh rolling issue).
+                if (fresh.state !== 'open') {
+                  if (hasChange(fresh.body, originMarker)) {
+                    await github.rest.issues.update({ owner, repo, issue_number: rolling.number, body: removeChange(fresh.body, originMarker) });
+                  }
+                  console.log(`#${rolling.number} was closed while adding ${originMarker} — retrying on a fresh rolling issue.`);
+                  continue;
+                }
                 if (hasChange(fresh.body, originMarker)) {
                   console.log(`Added ${originMarker} to rolling QA issue #${rolling.number}.`);
                   return;

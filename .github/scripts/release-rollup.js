@@ -166,7 +166,7 @@ function extractQaOutcome(body) {
  * }} params - qaRequests already exclude `unmerged`
  * @returns {string} the roll-up comment body (starts with ROLLUP_MARKER)
  */
-function buildRollupComment({ qaRequests, unmerged, previousRelease, rolling = [] }) {
+function buildRollupComment({ qaRequests, unmerged, previousRelease, rolling = [], releaseCreatedAt = null }) {
   const scope = previousRelease
     ? `QA Requests filed since the last authorized release (#${previousRelease.number}, opened ${previousRelease.created_at.slice(0, 10)}), plus older ones still open`
     : 'all QA Requests filed before this release (no earlier authorized release found)';
@@ -187,12 +187,25 @@ function buildRollupComment({ qaRequests, unmerged, previousRelease, rolling = [
   };
 
   // Rolling QA issues: one section each, one line per change.
+  // Which of a rolling issue's lines belong to this release: added before it
+  // was requested, and either added since the previous release or still
+  // awaiting QA (an approved line from before then shipped in that one).
+  // Lines without a timestamp (pre-1.9.0 test data) are always included.
+  const lo = previousRelease ? Date.parse(previousRelease.created_at) : -Infinity;
+  const hi = releaseCreatedAt ? Date.parse(releaseCreatedAt) : Infinity;
   let rollingChanges = 0;
   let rollingApproved = 0;
   for (const issue of rolling) {
-    const changes = parseChanges(issue.body);
     const outcome = extractQaOutcome(issue.body);
     const approved = issue.state === 'closed' && issue.state_reason === 'completed';
+    const all = parseChanges(issue.body);
+    const later = all.filter((c) => c.addedAt && Date.parse(c.addedAt) > hi).length;
+    const changes = all.filter((c) => {
+      if (!c.addedAt) return true;
+      const t = Date.parse(c.addedAt);
+      return t <= hi && (t > lo || !approved);
+    });
+    if (!changes.length && !later) continue;
     const status = approved
       ? '✅ QA approved'
       : outcome.toLowerCase() === 'fail'
@@ -212,7 +225,8 @@ function buildRollupComment({ qaRequests, unmerged, previousRelease, rolling = [
         }
       }
     }
-    if (!changes.length) out.push('_No changes listed._');
+    if (!changes.length) out.push('_No changes from before this release was requested._');
+    if (later) out.push(`_${later} change(s) added after this release was requested aren't included._`);
     out.push('');
     rollingChanges += changes.length;
     if (approved) rollingApproved += changes.length;

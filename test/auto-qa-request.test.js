@@ -11,8 +11,6 @@ const {
   allCommitsSkipped,
   pushLinkText,
   pushTitle,
-  resolveAutoQaMode,
-  shouldFileForEvent,
   autoTaskEnabledForDirectPush,
   DEFAULT_QUIET_PATHS,
   resolveQuietPaths,
@@ -124,39 +122,6 @@ test('pushTitle names the push after its newest unmarked commit', () => {
   assert.equal(pushTitle('Add export', ['Add export']), 'Add export');
   assert.equal(pushTitle('Only marked [skip qa-request]', ['Only marked [skip qa-request]']), 'Only marked');
   assert.equal(pushTitle('', []), '');
-});
-
-// resolveAutoQaMode / shouldFileForEvent
-
-test('resolveAutoQaMode defaults to all when unset', () => {
-  assert.equal(resolveAutoQaMode(undefined), 'all');
-  assert.equal(resolveAutoQaMode(''), 'all');
-});
-
-test('resolveAutoQaMode normalizes case and whitespace', () => {
-  assert.equal(resolveAutoQaMode(' PR-Only '), 'pr-only');
-  assert.equal(resolveAutoQaMode('OFF'), 'off');
-  assert.equal(resolveAutoQaMode('all'), 'all');
-});
-
-test('resolveAutoQaMode falls back to all for unrecognized values', () => {
-  assert.equal(resolveAutoQaMode('none'), 'all');
-  assert.equal(resolveAutoQaMode('pronly'), 'all');
-});
-
-test('shouldFileForEvent: all files for PRs and pushes', () => {
-  assert.equal(shouldFileForEvent('all', 'pull_request'), true);
-  assert.equal(shouldFileForEvent('all', 'push'), true);
-});
-
-test('shouldFileForEvent: pr-only files for PRs but not direct pushes', () => {
-  assert.equal(shouldFileForEvent('pr-only', 'pull_request'), true);
-  assert.equal(shouldFileForEvent('pr-only', 'push'), false);
-});
-
-test('shouldFileForEvent: off files nothing', () => {
-  assert.equal(shouldFileForEvent('off', 'pull_request'), false);
-  assert.equal(shouldFileForEvent('off', 'push'), false);
 });
 
 // autoTaskEnabledForDirectPush

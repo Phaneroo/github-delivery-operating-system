@@ -10,13 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **New default: one rolling QA issue instead of a QA Request (+ Task) per change** (#88). Busy repos were getting two issues per push, and nothing closed them unless the repo cut Production Releases. Turning auto-filing off lost the "please test this" reminder. Now `auto-qa-request` keeps a single open issue, **QA REQUEST - Changes awaiting QA** (labels `qa-request`, `delivery-ops-filed`, `qa-rollup`):
-  - Each direct push to `main` and each **merged** PR adds a checklist line, `- [ ] <title> (<short sha or #PR>) by @author — for #N`, with plain-English draft bullets under it for devs to edit.
-  - If none is open, the first change opens one. The same commit or PR is never added twice. Docs-only changes and `[skip qa-request]` pushes add nothing. Rebase-merged PRs aren't counted twice.
+  - Each direct push to `main` and each PR **merged into `main`** adds a checklist line, `- [ ] <title> (<short sha or #PR>) by @author — for #N`, with plain-English draft bullets under it for devs to edit.
+  - If none is open, the first change opens one. The same commit or PR is never added twice. Docs-only changes and `[skip qa-request]` pushes add nothing.
+  - PRs are recorded from the push to `main`: GitHub is asked which PR the commit came from. That covers merge, squash and rebase merges and fork PRs (whose own events run with a read-only token), and ignores PRs merged into other branches. PR events no longer start a runner in rolling mode.
+  - A commit author with no GitHub login is named without an `@`, so the name doesn't ping an unrelated account. Lines carry a hidden "added" timestamp, so a release roll-up leaves out changes added after the release was requested.
+  - Body edits tolerate CRLF line endings, as saved by GitHub's web editor.
   - Direct pushes no longer create a synthetic Task; the rolling issue is the paper trail.
   - Two runs racing to open the issue are folded into one, and concurrent appends re-check and retry.
-- **Settings.** New repo variable `DELIVERY_OS_AUTO_QA_MODE`: `rolling` (default) | `per-change` (the previous behavior, unchanged) | `off`. The 1.8.0 `DELIVERY_OS_AUTO_QA` still works when the new variable is unset: `all` → per-change (so repos that chose it explicitly keep it), `pr-only` → rolling with direct pushes adding nothing, `off` → off. An unrecognized value falls back to rolling, so a typo never turns the reminder off.
+- **Settings.** New repo variable `DELIVERY_OS_AUTO_QA_MODE`: `rolling` (default) | `per-change` (the previous behavior, unchanged) | `off`. The 1.8.0 `DELIVERY_OS_AUTO_QA` still works when the new variable is unset: `all` → per-change (so repos that chose it explicitly keep it), `off` → off, and `pr-only` → **rolling** with direct pushes adding nothing. A pr-only repo therefore moves to the rolling issue for its PRs; set `DELIVERY_OS_AUTO_QA_MODE=per-change` alongside it to keep a QA Request per PR (the update note says so too). An unrecognized value falls back to rolling, so a typo never turns the reminder off.
 - **Change drafts leave out `[skip qa-request]` commits.** A commit marked trivial by its author no longer shows up in a change's plain-English draft, in either mode.
-- **Release roll-up** now lists every rolling-issue line (the open issue, plus ones approved since the last release) with its QA status, alongside any per-change QA Requests.
+- **Release roll-up** now lists the rolling-issue lines that belong to the release (added before it was requested; since the previous release, or still awaiting QA), each with its QA status, alongside any per-change QA Requests.
 
 ### Added
 

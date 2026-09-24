@@ -284,6 +284,7 @@ if [ "$OVERWRITE" = "true" ] && [ "$HAD_AUTO_QA" = "true" ]; then
   echo "  approves it with a comment (e.g. \"approved\", \"lgtm\", ✅) or its Approved box."
   echo "  - Existing open auto-filed QA Requests were left as they are."
   echo "  - To keep the old behavior: set repo variable DELIVERY_OS_AUTO_QA_MODE=per-change."
+  echo "    (DELIVERY_OS_AUTO_QA=pr-only repos move to the rolling issue, PRs only, unless it's set.)"
   echo "  - Run Setup Labels (or --with-labels) to create the new qa-rollup label."
 fi
 echo ""

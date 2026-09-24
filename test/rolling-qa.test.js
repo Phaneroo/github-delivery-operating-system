@@ -12,6 +12,7 @@ const {
   buildRollingQaBody,
   hasChange,
   appendChange,
+  removeChange,
   parseChanges,
   approvalBoxTicked,
   approvalBoxJustTicked,
@@ -114,6 +115,18 @@ test('hasChange detects a change already on the list (no duplicates)', () => {
   assert.equal(hasChange(body, 'Direct push #sha1'), true);
   assert.equal(hasChange(body, 'Direct push #sha2'), false);
   assert.equal(hasChange(body, 'PR #1'), false);
+});
+
+test('the body helpers work on CRLF bodies (as saved by GitHub\'s web editor)', () => {
+  // Regression (code review): setQaOutcome did nothing on CRLF bodies.
+  const crlf = appendChange(buildRollingQaBody(change(1)), change(2)).replace(/\n/g, '\r\n');
+  assert.equal(parseChanges(crlf).length, 2);
+  assert.equal(hasChange(crlf, 'Direct push #sha2'), true);
+  assert.match(markRollingDeclined(crlf), /### QA Outcome\n\nFail/);
+  const approved = markRollingApproved(crlf);
+  assert.match(approved, /### QA Outcome\n\nPass/);
+  assert.equal(approvalBoxTicked(approved), true);
+  assert.equal(parseChanges(removeChange(crlf, 'Direct push #sha2')).length, 1);
 });
 
 test('approving ticks every change and the Approved box and sets QA Outcome Pass; declining clears the box and sets Fail', () => {
@@ -255,33 +268,92 @@ test('rolling: a linked issue is referenced on the line and no Task is filed', a
   assert.equal(store.issues.filter((i) => i.labels.includes('task')).length, 1, 'only the pre-existing Task');
 });
 
-test('rolling: a PR adds its line when it merges (not when it opens), and its merge push is skipped', async () => {
-  const pulls = { 7: { files: [{ filename: 'src/a.js' }], commits: ['Add export', 'Tidy export'], merged: true } };
+test('rolling: a PR is recorded when it lands on main (from the push), never from its own events', async () => {
+  // Regression (code review): recording from the PR's `closed` event missed
+  // fork PRs (read-only token) and counted PRs merged into other branches.
+  const pulls = { 7: { title: 'Export button', body: 'Closes #99', merged: true } };
   const { github, store } = createFakeRepo({
     pulls,
-    commits: { m1: { files: ['src/a.js'], messages: ['Add export'], prs: [{ number: 7, merged_at: '2026-09-24T00:00:00Z' }] } },
+    commits: { m1: { files: ['src/a.js'], messages: ['Merge pull request #7 from o/branch-7'], prs: [7] } },
   });
-  await runScript(FILE_SCRIPT, { github, context: prContext(7, { title: 'Export button' }) });
-  assert.equal(store.issues.length, 0, 'nothing at open');
+  github.rest.pulls.listFiles = async () => [{ filename: 'src/a.js' }];
+  github.rest.pulls.listCommits = async () => [{ commit: { message: 'Add export' } }, { commit: { message: 'Tidy export' } }];
 
-  await runScript(FILE_SCRIPT, { github, context: prContext(7, { action: 'closed', merged: true, title: 'Export button', body: 'Closes #99' }) });
+  await runScript(FILE_SCRIPT, { github, context: prContext(7, { title: 'Export button' }) });
+  await runScript(FILE_SCRIPT, { github, context: prContext(7, { action: 'closed', merged: true, title: 'Export button' }) });
+  assert.equal(store.issues.length, 0, 'nothing from the PR\'s own events');
+
+  await runScript(FILE_SCRIPT, { github, context: pushContext('m1', 'Merge pull request #7 from o/branch-7') });
   const body = openRolling(store)[0].body;
-  assert.match(body, /- \[ \] Export button \(#7\) by @dev <!-- delivery-os:origin=PR #7 -->/);
+  assert.match(body, /- \[ \] Export button \(#7\) by @dev <!-- delivery-os:added=.*? --> <!-- delivery-os:origin=PR #7 -->/);
   assert.match(body, /\n {2}- Add export\n {2}- Tidy export/);
 
-  // A rebase-merge push of the same PR carries no merge marker; it's matched by commit instead.
-  await runScript(FILE_SCRIPT, { github, context: pushContext('m1', 'Add export') });
+  // The same merge seen again (e.g. a re-run) isn't added twice.
+  await runScript(FILE_SCRIPT, { github, context: pushContext('m1', 'Merge pull request #7 from o/branch-7') });
   assert.equal(parseChanges(openRolling(store)[0].body).length, 1);
 });
 
-test('rolling + pr-only: direct pushes add nothing, merged PRs still do', async () => {
-  const pulls = { 8: { files: [{ filename: 'src/a.js' }], commits: ['Fix'], merged: true } };
-  const { github, store } = createFakeRepo({ pulls, commits: codePush('a1', 'Direct fix') });
+test('rolling: a commit from a PR merged into another branch is a direct push when it reaches main', async () => {
+  // Regression (code review): any merged PR used to count, so pushing `develop`
+  // to main was skipped as "already recorded".
+  const { github, store } = createFakeRepo({
+    pulls: { 12: { title: 'Develop work', merged: true, base: 'develop' } },
+    commits: { d1: { files: ['src/a.js'], messages: ['Develop work (#12)'], prs: [12] } },
+  });
+  await runScript(FILE_SCRIPT, { github, context: pushContext('d1', 'Develop work (#12)') });
+  assert.deepEqual(parseChanges(openRolling(store)[0].body).map((c) => c.originMarker), ['Direct push #d1']);
+});
+
+test('rolling: if the PR lookup fails, a merge-commit message is confirmed through the API', async () => {
+  const { github, store } = createFakeRepo({
+    pulls: { 7: { title: 'Export button', merged: true } },
+    commits: { m1: { files: ['src/a.js'], messages: ['Merge pull request #7 from o/branch-7'], lookupFails: true } },
+  });
+  await runScript(FILE_SCRIPT, { github, context: pushContext('m1', 'Merge pull request #7 from o/branch-7') });
+  assert.deepEqual(parseChanges(openRolling(store)[0].body).map((c) => c.originMarker), ['PR #7']);
+});
+
+test('rolling + pr-only: direct pushes add nothing, PRs landing on main still do', async () => {
+  const { github, store } = createFakeRepo({
+    pulls: { 8: { title: 'Fix', merged: true } },
+    commits: { ...codePush('a1', 'Direct fix'), m8: { files: ['src/a.js'], messages: ['Fix (#8)'], prs: [8] } },
+  });
   const env = { DELIVERY_OS_AUTO_QA: 'pr-only' };
   await runScript(FILE_SCRIPT, { github, context: pushContext('a1', 'Direct fix'), env });
   assert.equal(store.issues.length, 0);
-  await runScript(FILE_SCRIPT, { github, context: prContext(8, { action: 'closed', merged: true }), env });
-  assert.equal(parseChanges(openRolling(store)[0].body).length, 1);
+  await runScript(FILE_SCRIPT, { github, context: pushContext('m8', 'Fix (#8)'), env });
+  assert.deepEqual(parseChanges(openRolling(store)[0].body).map((c) => c.originMarker), ['PR #8']);
+});
+
+test('rolling: a commit author with no GitHub login is named without an @-mention', async () => {
+  // Regression (code review): "by @John Smith" pinged an unrelated @John.
+  const { github, store } = createFakeRepo({ commits: codePush('a1', 'Add wave') });
+  await runScript(FILE_SCRIPT, { github, context: pushContext('a1', 'Add wave', { name: 'John Smith' }) });
+  assert.match(openRolling(store)[0].body, /Add wave \(a1\) by John Smith </);
+});
+
+test('rolling: a change written while the issue was approved and closed moves to a fresh issue', async () => {
+  // Regression (code review): the append landed on a closed, approved issue and was lost.
+  const { github, store } = createFakeRepo({
+    issues: [{ number: 40, title: ROLLING_TITLE, labels: ROLLING, body: buildRollingQaBody(change(1)) }],
+    commits: codePush('a2', 'Two'),
+  });
+  const realUpdate = github.rest.issues.update;
+  let closedUnderUs = false;
+  github.rest.issues.update = async (args) => {
+    const result = await realUpdate(args);
+    if (!closedUnderUs && args.issue_number === 40 && hasChange(args.body || '', 'Direct push #a2')) {
+      closedUnderUs = true; // the approver's verdict closes it right after our write
+      await realUpdate({ issue_number: 40, state: 'closed', state_reason: 'completed' });
+    }
+    return result;
+  };
+  await runScript(FILE_SCRIPT, { github, context: pushContext('a2', 'Two') });
+  const closed = store.issues.find((i) => i.number === 40);
+  assert.equal(hasChange(closed.body, 'Direct push #a2'), false, 'taken back out of the closed issue');
+  const open = openRolling(store);
+  assert.equal(open.length, 1);
+  assert.deepEqual(parseChanges(open[0].body).map((c) => c.originMarker), ['Direct push #a2']);
 });
 
 test('rolling: after approval closes the issue, the next change opens a fresh one', async () => {

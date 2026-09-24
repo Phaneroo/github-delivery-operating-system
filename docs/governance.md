@@ -75,7 +75,7 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | Production release opened | notify-release-approver | Pings RELEASE_APPROVER; posts the release roll-up |
 | Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers (not ones whose PR is still unmerged) |
 | QA/qa-request issue opened | auto-assign-qa | Assigns QA_ASSIGNEES |
-| Commit pushed to `main`, or PR merged | auto-qa-request | Rolling mode (default): adds a line to the open rolling QA issue, opening one if none — unless only docs/settings changed |
+| Commit pushed to `main` (a direct push, or a PR merged into `main`) | auto-qa-request | Rolling mode (default): adds a line to the open rolling QA issue, opening one if none — unless only docs/settings changed |
 | PR opened or updated, or commit pushed to `main` | auto-qa-request | Per-change mode: files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed |
 | QA approver comments or ticks the Approved box on the rolling QA issue | qa-rollup-approval | Approve → ticks every line and closes it; decline → keeps it open (Outcome *Fail*); anyone else → ignored with a reply |
 | PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR (reopening the PR reopens them) |

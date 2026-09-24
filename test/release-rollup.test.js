@@ -248,3 +248,28 @@ test('buildRollupComment lists each rolling change with its QA status and merges
   assert.match(comment, /\*\*Rolling QA:\*\* 2 of 6 change\(s\) QA-approved\./);
   assert.doesNotMatch(comment, /No QA Requests found/);
 });
+
+test('buildRollupComment leaves out rolling lines added after the release was requested, and approved lines from before the previous one', () => {
+  // Regression (code review): a refresh listed changes pushed after the release request.
+  const line = (n, addedAt) => buildChangeLine({ title: `Change ${n}`, ref: `s${n}`, author: 'dev', linkedIssue: null, originMarker: `Direct push #s${n}`, addedAt });
+  let open = buildRollingQaBody(line(1, '2026-09-08T00:00:00Z'));
+  open = appendChange(open, line(2, '2026-09-15T00:00:00Z'));
+  open = appendChange(open, line(3, '2026-09-25T00:00:00Z'));
+  let closed = buildRollingQaBody(line(4, '2026-09-05T00:00:00Z'));
+  closed = markRollingApproved(appendChange(closed, line(5, '2026-09-12T00:00:00Z')));
+  const comment = buildRollupComment({
+    qaRequests: [], unmerged: [],
+    previousRelease: { number: 9, created_at: '2026-09-10T00:00:00Z' },
+    releaseCreatedAt: '2026-09-20T00:00:00Z',
+    rolling: [
+      { number: 60, state: 'closed', state_reason: 'completed', body: closed },
+      { number: 61, state: 'open', body: open },
+    ],
+  });
+  assert.doesNotMatch(comment, /Change 4/, 'approved before the previous release: shipped there');
+  assert.match(comment, /Change 5/);
+  assert.match(comment, /Change 1/, 'older but still awaiting QA');
+  assert.match(comment, /Change 2/);
+  assert.doesNotMatch(comment, /Change 3/);
+  assert.match(comment, /_1 change\(s\) added after this release was requested aren't included\._/);
+});

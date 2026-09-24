@@ -35,6 +35,22 @@ function createFakeRepo({ issues = [], pulls = {}, commits = {} } = {}) {
   let clock = Date.parse('2026-09-24T00:00:00Z');
   const now = () => new Date((clock += 1000)).toISOString();
 
+  // A full PR object as the REST API returns it. `pulls[n]` may set
+  // title/body/author/base/merged; merged PRs default to base `main`.
+  const prObject = (n) => {
+    const p = pulls[n] || {};
+    return {
+      number: n,
+      title: p.title || `PR ${n}`,
+      body: p.body || '',
+      html_url: `https://github.com/o/r/pull/${n}`,
+      user: { login: p.author || 'dev' },
+      head: { ref: `branch-${n}` },
+      base: { ref: p.base || 'main' },
+      merged: Boolean(p.merged),
+      merged_at: p.merged ? '2026-09-24T00:00:00Z' : null,
+    };
+  };
   const labelNames = (i) => i.labels.map((l) => (typeof l === 'string' ? l : l.name));
   const find = (n) => {
     const issue = store.issues.find((i) => i.number === n);
@@ -78,7 +94,7 @@ function createFakeRepo({ issues = [], pulls = {}, commits = {} } = {}) {
     pulls: {
       listFiles: async ({ pull_number }) => (pulls[pull_number] || {}).files || [],
       listCommits: async ({ pull_number }) => ((pulls[pull_number] || {}).commits || []).map((m) => ({ commit: { message: m } })),
-      get: async ({ pull_number }) => ({ data: { merged: Boolean((pulls[pull_number] || {}).merged) } }),
+      get: async ({ pull_number }) => ({ data: prObject(pull_number) }),
     },
     repos: {
       compareCommitsWithBasehead: async ({ basehead }) => {
@@ -90,7 +106,11 @@ function createFakeRepo({ issues = [], pulls = {}, commits = {} } = {}) {
         const c = commits[ref] || { files: [], messages: [''] };
         return { data: { files: c.files.map((f) => ({ filename: f })), commit: { message: c.messages[c.messages.length - 1] } } };
       },
-      listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => ({ data: (commits[commit_sha] || {}).prs || [] }),
+      listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => {
+        const c = commits[commit_sha] || {};
+        if (c.lookupFails) throw new Error('Server Error');
+        return { data: (c.prs || []).map(prObject) };
+      },
     },
   };
 
@@ -130,12 +150,17 @@ async function runScript(script, { github, context, env = {} }) {
 const repo = { owner: 'o', repo: 'r' };
 
 /** A push-event context; `sha` must match an entry in the fake repo's `commits`. */
+/** `author`: a GitHub login, or a commit author object ({ name, username? }). */
 function pushContext(sha, headMessage, author = 'dev') {
   return {
     eventName: 'push',
     repo,
     sha,
-    payload: { before: 'b'.repeat(40), head_commit: { message: headMessage, author: { username: author } }, commits: [{ message: headMessage }] },
+    payload: {
+      before: 'b'.repeat(40),
+      head_commit: { message: headMessage, author: typeof author === 'string' ? { username: author, name: author } : author },
+      commits: [{ message: headMessage }],
+    },
   };
 }
 

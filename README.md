@@ -36,7 +36,7 @@ Full workflow table, quick start, and Claude Code walkthroughs are on the [landi
 
 ### Rolling QA issue
 
-Each direct push to `main` and each merged PR adds a checklist line to a single open issue, *QA REQUEST - Changes awaiting QA*. Docs-only changes and `[skip qa-request]` commits are left off. A repo never has more than one of these open.
+Each direct push to `main` and each PR merged into `main` adds a checklist line to a single open issue, *QA REQUEST - Changes awaiting QA*. Docs-only changes and `[skip qa-request]` commits are left off. A repo never has more than one of these open.
 
 Only the QA approver (`QA_APPROVER`) can decide:
 - **Approve:** comment starting with `qa approved`, `approved`, `approve`, `qa ok`, `ok`, `looks good`, `lgtm`, `all good`, `tested`, `passed`, `good to go`, `ship it`, or with ✅ 👍 ✔️. Or tick the issue's **Approved** box. This closes the issue, and the next change opens a fresh one.

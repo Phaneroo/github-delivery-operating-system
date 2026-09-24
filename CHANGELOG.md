@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auto-filed issues now get closed.** When a PR is closed without merging, `auto-qa-request` closes the Task/QA Request it filed for it (*not planned*). When a release is authorized, `authorize-deployment` closes every open auto-filed Task/QA Request created before the release issue (*completed*) and comments on each one. It identifies them by the auto-qa-request footer and never touches human- or skill-filed issues. Opt out with `DELIVERY_OS_AUTO_CLOSE=false`.
 - **Cleanup sweep: "Auto-filed leftovers" check** in the `delivery-ops` skill. It proposes closing auto-filed issues whose work already landed. This covers repos that never cut a Production Release, and filings from before auto-close existed.
 - Direct-push QA Requests now list the pushed files.
+- **Plain-English, dev-reviewed changelog on every QA Request** (#79): QA needs to know what changed in order to know what to test. `qa_request.yml` gains a required **What Changed (plain English)** field and a **Changelog Review** checkbox, ticked by the developer once the description is accurate. `auto-qa-request` seeds a draft from the PR's or push's commit subjects, with merge/fixup commits, `(#N)` and `Closes #N` clutter stripped. The `delivery-ops` skill writes the plain-English version from the actual diff (user-visible behavior, no code jargon, plus a `Could affect:` line). Its status check and cleanup sweep flag unreviewed changelogs. It never ticks the review box itself.
 
 ### Changed
 

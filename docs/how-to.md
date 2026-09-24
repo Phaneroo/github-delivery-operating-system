@@ -115,10 +115,13 @@ Once both approve, the issue receives `ready-for-deploy`. To decline, release ap
 ## Request QA Testing
 
 1. Issues → New issue → **QA REQUEST**
-2. Fill in related issue (#), what to test, environment, acceptance criteria
-3. Submit
+2. Fill in related issue (#), **What Changed (plain English)**, what to test, environment, acceptance criteria
+3. The developer who made the change ticks **Changelog Review** once the What Changed section is accurate
+4. Submit
 
 **What happens:** Issue gets `qa-request` label. If `QA_ASSIGNEES` is set, those users are assigned.
+
+**Writing What Changed:** one bullet per change a user could notice, described the way they'd experience it ("The login page now remembers your email"), with no file, function or library names. End with a `Could affect:` line naming nearby features worth re-checking. QA uses this to decide what to test, so it should make sense to someone who never reads the code. Auto-filed QA Requests start with a draft built from commit messages; the dev rewrites it (or asks the `delivery-ops` skill to) and ticks the box.
 
 ---
 

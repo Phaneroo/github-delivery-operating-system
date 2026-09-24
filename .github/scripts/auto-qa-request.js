@@ -277,10 +277,59 @@ function buildAutoTaskBody({ number, title, url, author, viaDirectPush }) {
   ].join('\n');
 }
 
+const CHANGELOG_HEADING = '### What Changed (plain English)';
+const CHANGELOG_REVIEW_HEADING = '### Changelog Review';
+const CHANGELOG_REVIEW_BOX = 'Dev reviewed: this describes the change accurately, in plain English';
+const CHANGELOG_DRAFT_NOTE =
+  '_Draft built from commit messages. Dev: rewrite it in plain English (what a user will notice, and what could break), then tick the box below so QA knows it can rely on it._';
+
+/**
+ * Seeds the QA Request's plain-English changelog with the closest thing
+ * the workflow has to a human description, the commit subjects, as a
+ * clearly marked draft for a dev (or the delivery-ops skill) to rewrite.
+ * Drops merge commits, fixup/squash noise, `[skip …]` markers and trailing
+ * `(#N)` / closing-keyword clutter so the draft reads as change notes.
+ *
+ * @param {{ title: string, commitMessages?: string[] }} params
+ * @returns {string} a bullet list, at most 10 items
+ */
+function seedChangeSummary({ title, commitMessages }) {
+  const clean = (line) =>
+    line
+      .replace(/\[skip [^\]]*\]/gi, '')
+      .replace(/\s*\(#\d+\)\s*$/, '')
+      .replace(/\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved|refs?)\s*:?\s*#\d+/gi, '')
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, '')
+      .trim();
+
+  const bullets = [];
+  for (const message of commitMessages || []) {
+    const subject = clean((message || '').split('\n')[0]);
+    if (!subject || /^(merge\b|fixup!|squash!)/i.test(subject)) continue;
+    if (!bullets.some((b) => b.toLowerCase() === subject.toLowerCase())) bullets.push(subject);
+  }
+  if (!bullets.length) bullets.push(clean(title || '') || 'Describe what changed');
+
+  const shown = bullets.slice(0, 10).map((b) => `- ${b}`);
+  if (bullets.length > 10) shown.push(`- …and ${bullets.length - 10} more commit(s)`);
+  return shown.join('\n');
+}
+
+/**
+ * @param {string} body - a QA Request body
+ * @returns {boolean} whether a dev has ticked the changelog-review box
+ */
+function isChangelogReviewed(body) {
+  const escaped = CHANGELOG_REVIEW_BOX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`- \\[[xX]\\] ${escaped}`).test(body || '');
+}
+
 /**
  * @param {{ relatedIssueNumber: number | null, prNumber: number | null,
  *   prTitle: string, prUrl: string, branch: string, filesChanged: string[],
- *   acceptanceCriteria: string | null, originMarker: string }} params
+ *   acceptanceCriteria: string | null, originMarker: string,
+ *   changeSummary?: string }} params - changeSummary from seedChangeSummary
  * @returns {string} body for an auto-filed QA Request issue, matching
  *   qa_request.yml's field headings.
  */
@@ -293,6 +342,7 @@ function buildQaRequestBody({
   filesChanged,
   acceptanceCriteria,
   originMarker,
+  changeSummary,
 }) {
   const filesList = (filesChanged || []).length
     ? filesChanged.map((f) => `- \`${f}\``).join('\n')
@@ -308,6 +358,16 @@ function buildQaRequestBody({
     '### Related Sprint Task Issue (#)',
     '',
     relatedIssueNumber ? `#${relatedIssueNumber}` : '_None — no issue was linked to this work._',
+    '',
+    CHANGELOG_HEADING,
+    '',
+    changeSummary || seedChangeSummary({ title: prTitle }),
+    '',
+    CHANGELOG_DRAFT_NOTE,
+    '',
+    CHANGELOG_REVIEW_HEADING,
+    '',
+    `- [ ] ${CHANGELOG_REVIEW_BOX}`,
     '',
     '### What to Test',
     '',
@@ -358,6 +418,9 @@ module.exports = {
   isQuietChange,
   collectPushedFiles,
   findFilingsForPr,
+  CHANGELOG_REVIEW_BOX,
+  seedChangeSummary,
+  isChangelogReviewed,
   extractAcceptanceCriteria,
   parseMergedPrNumber,
   buildAutoTaskBody,

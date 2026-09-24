@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert/strict');
+const fs = require('fs');
+const path = require('path');
 const { test } = require('./harness');
 const {
   extractLinkedIssueNumbers,
@@ -15,6 +17,9 @@ const {
   isQuietChange,
   collectPushedFiles,
   findFilingsForPr,
+  CHANGELOG_REVIEW_BOX,
+  seedChangeSummary,
+  isChangelogReviewed,
   extractAcceptanceCriteria,
   parseMergedPrNumber,
   buildAutoTaskBody,
@@ -194,6 +199,65 @@ test('findFilingsForPr finds the Task and QA Request auto-filed for a PR, and no
   const otherPr = { number: 4, body: buildQaRequestBody({ relatedIssueNumber: 1, prNumber: 21, prTitle: 't', prUrl: '', branch: 'b', filesChanged: [], acceptanceCriteria: null, originMarker: 'PR #21' }) };
   const human = { number: 5, body: 'Mentions PR #2 in passing' };
   assert.deepEqual(findFilingsForPr([task, qa, otherPr, human], 2), [1, 3]);
+});
+
+// seedChangeSummary / isChangelogReviewed
+
+test('seedChangeSummary turns commit subjects into clean bullets', () => {
+  const summary = seedChangeSummary({
+    title: 'ignored',
+    commitMessages: [
+      'Add dark mode toggle (#12)\n\nLong body',
+      'Fix login redirect, closes #4 [skip qa-request]',
+      'Refs #9: tidy settings page',
+    ],
+  });
+  assert.equal(summary, '- Add dark mode toggle\n- Fix login redirect\n- tidy settings page');
+});
+
+test('seedChangeSummary drops merge/fixup commits and case-insensitive duplicates', () => {
+  const summary = seedChangeSummary({
+    title: 'ignored',
+    commitMessages: ['Add export', 'Merge branch main into feature', 'fixup! Add export', 'add export'],
+  });
+  assert.equal(summary, '- Add export');
+});
+
+test('seedChangeSummary falls back to the title when there are no usable commits', () => {
+  assert.equal(seedChangeSummary({ title: 'Add dark mode (#12)', commitMessages: [] }), '- Add dark mode');
+  assert.equal(seedChangeSummary({ title: '', commitMessages: undefined }), '- Describe what changed');
+});
+
+test('seedChangeSummary caps the list at 10 bullets', () => {
+  const commitMessages = Array.from({ length: 13 }, (_, i) => `Change ${i + 1}`);
+  const lines = seedChangeSummary({ title: 't', commitMessages }).split('\n');
+  assert.equal(lines.length, 11);
+  assert.equal(lines[10], '- …and 3 more commit(s)');
+});
+
+test('buildQaRequestBody includes the plain-English changelog and an unticked dev-review box', () => {
+  const body = buildQaRequestBody({
+    relatedIssueNumber: 1, prNumber: 2, prTitle: 'Add export', prUrl: '', branch: 'b',
+    filesChanged: [], acceptanceCriteria: null, originMarker: 'PR #2',
+    changeSummary: '- Add export',
+  });
+  assert.match(body, /### What Changed \(plain English\)\n\n- Add export\n\n_Draft/);
+  assert.match(body, /### Changelog Review\n\n- \[ \] Dev reviewed/);
+  assert.equal(isChangelogReviewed(body), false);
+  assert.ok(body.indexOf('What Changed') < body.indexOf('What to Test'), 'changelog should come before What to Test');
+});
+
+test('isChangelogReviewed is true only once a dev ticks the box', () => {
+  assert.equal(isChangelogReviewed(`- [x] ${CHANGELOG_REVIEW_BOX}`), true);
+  assert.equal(isChangelogReviewed(`- [X] ${CHANGELOG_REVIEW_BOX}`), true);
+  assert.equal(isChangelogReviewed(`- [ ] ${CHANGELOG_REVIEW_BOX}`), false);
+  assert.equal(isChangelogReviewed(''), false);
+});
+
+test('qa_request.yml template uses the same review checkbox text the workflow writes', () => {
+  const template = fs.readFileSync(path.join(__dirname, '..', '.github', 'ISSUE_TEMPLATE', 'qa_request.yml'), 'utf8');
+  assert.ok(template.includes(`label: "${CHANGELOG_REVIEW_BOX}"`));
+  assert.ok(template.includes('label: "What Changed (plain English)"'));
 });
 
 // extractAcceptanceCriteria

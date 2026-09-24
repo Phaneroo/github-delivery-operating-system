@@ -10,6 +10,7 @@ const {
   hasSkipMarker,
   allCommitsSkipped,
   pushLinkText,
+  pushTitle,
   resolveAutoQaMode,
   shouldFileForEvent,
   autoTaskEnabledForDirectPush,
@@ -115,6 +116,14 @@ test('pushLinkText reads links from every commit, head first', () => {
   assert.deepEqual(extractCommitIssueReferences(text), [12]);
   assert.deepEqual(extractCommitIssueReferences(pushLinkText('Fixes #3', ['See #9', 'Fixes #3'])), [3, 9]);
   assert.equal(pushLinkText('Only commit', undefined), 'Only commit');
+});
+
+test('pushTitle names the push after its newest unmarked commit', () => {
+  // Found in the real-repo re-test: a marked head commit became the QA Request title.
+  assert.equal(pushTitle('Fix README typo [skip qa-request]', ['Add a shout helper\n\nRefs #1', 'Fix README typo [skip qa-request]']), 'Add a shout helper');
+  assert.equal(pushTitle('Add export', ['Add export']), 'Add export');
+  assert.equal(pushTitle('Only marked [skip qa-request]', ['Only marked [skip qa-request]']), 'Only marked');
+  assert.equal(pushTitle('', []), '');
 });
 
 // resolveAutoQaMode / shouldFileForEvent

@@ -62,6 +62,7 @@ jobs:
               extractCommitIssueReferences,
               allCommitsSkipped,
               pushLinkText,
+              pushTitle,
               findFilingsForPr,
               resolveAutoQaMode,
               shouldFileForEvent,
@@ -170,7 +171,7 @@ jobs:
               }
 
               prNumber = null;
-              prTitle = (message.split('\n')[0] || '').trim() || `Direct push to main (${context.sha.slice(0, 7)})`;
+              prTitle = pushTitle(message, commitMessages) || `Direct push to main (${context.sha.slice(0, 7)})`;
               prUrl = '';
               prBody = pushLinkText(message, commitMessages); // a direct push's issue links live in its commit messages
               branch = 'main';

@@ -84,6 +84,23 @@ function pushLinkText(headMessage, messages) {
   return [headMessage || '', ...rest].join('\n\n');
 }
 
+/**
+ * Title for a direct push's filings: the newest commit that isn't marked
+ * `[skip qa-request]` (a marked typo fix on top shouldn't name the work),
+ * with any marker stripped.
+ *
+ * @param {string} headMessage
+ * @param {string[]} messages - every commit message in the push, oldest first
+ * @returns {string} a one-line title, or '' if there's nothing usable
+ */
+function pushTitle(headMessage, messages) {
+  const unmarked = (messages || []).filter((m) => !hasSkipMarker(m));
+  const source = hasSkipMarker(headMessage) && unmarked.length ? unmarked[unmarked.length - 1] : headMessage;
+  return ((source || '').split('\n')[0] || '')
+    .replace(/\s*\[skip qa-request\]\s*/gi, ' ')
+    .trim();
+}
+
 const AUTO_QA_MODES = ['all', 'pr-only', 'off'];
 
 /**
@@ -445,6 +462,7 @@ module.exports = {
   hasSkipMarker,
   allCommitsSkipped,
   pushLinkText,
+  pushTitle,
   resolveAutoQaMode,
   shouldFileForEvent,
   autoTaskEnabledForDirectPush,

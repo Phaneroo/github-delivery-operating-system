@@ -102,7 +102,8 @@ The manifest is only written/updated when the files it describes are actually cu
 | `notify-release-approver.yml` | Pings release approver when a production release issue is opened, and posts a roll-up of what's in the release |
 | `authorize-deployment.yml` | Dual approval (release approver + QA) before deployment |
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
-| `auto-qa-request.yml` | Files a QA Request (and a backing Task, if none is linked) whenever a PR opens or a commit lands directly on `main`, unless only docs/settings changed — a safety net, not a gate. Closes those filings if the PR is closed without merging |
+| `auto-qa-request.yml` | QA reminder whenever work reaches `main` (a safety net, not a gate). By default it adds a line to the one **rolling QA issue**; in `per-change` mode it files a QA Request (plus a Task if nothing is linked) per PR or direct push. Docs/settings-only changes are skipped |
+| `qa-rollup-approval.yml` | Applies the QA approver's approve/decline (comment or checkbox) to the rolling QA issue |
 | `telegram-issues.yml` | Sends Telegram alerts for bugs, QA, sprints, releases, PR merges |
 | `setup-labels.yml` | One-time workflow to create all required labels |
 
@@ -135,23 +136,47 @@ Each line under "Sprint Features" becomes a child issue with `Parent Sprint: #N`
 | `QA_APPROVER` | GitHub username of QA approver (for dual approval) |
 | `QA_ASSIGNEES` | Comma-separated usernames for QA auto-assignment (e.g. `user1,user2`) |
 | `PROJECT_NAME` | Optional; shown in release approval notifications |
-| `DELIVERY_OS_AUTO_QA` | Optional; when `auto-qa-request` files: `all` (default: every PR and direct push to `main`), `pr-only` (PRs only — direct pushes file nothing), or `off` |
-| `DELIVERY_OS_AUTO_TASK` | Optional; set to `false` so a direct push with no linked issue files only a QA Request, without a synthetic backing Task. PRs are unaffected |
+| `DELIVERY_OS_AUTO_QA_MODE` | Optional; how `auto-qa-request` reminds QA: `rolling` (default, one open rolling QA issue), `per-change` (the pre-1.9.0 behavior: one QA Request + Task per change), or `off` |
+| `DELIVERY_OS_AUTO_QA` | Optional; the 1.8.0 setting, still honored when `DELIVERY_OS_AUTO_QA_MODE` is unset: `all` → per-change, `pr-only` → **rolling**, with direct pushes adding nothing (PRs still do; set `DELIVERY_OS_AUTO_QA_MODE=per-change` too to keep a QA Request per PR), `off` → nothing is filed |
+| `DELIVERY_OS_AUTO_TASK` | Optional, per-change mode only; set to `false` so a direct push with no linked issue files only a QA Request, without a synthetic backing Task. PRs are unaffected. (Rolling mode never files a Task) |
 | `DELIVERY_OS_AUTO_QA_QUIET_PATHS` | Optional; comma-separated globs whose changes alone file nothing. Unset = docs and settings (`**/*.md`, `docs/**`, `LICENSE*`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.vscode/**`, `.idea/**`, `.github/ISSUE_TEMPLATE/**`, `.github/CODEOWNERS`, `.github/dependabot.yml`); a list replaces those defaults; `none` files for every change |
 | `DELIVERY_OS_AUTO_CLOSE` | Optional; set to `false` to stop `authorize-deployment` closing auto-filed issues when a release is authorized |
 
+#### Rolling QA issue (default)
+
+Since 1.9.0, `auto-qa-request` keeps **one** open QA issue per repo instead of filing a QA Request (and often a Task) for every change:
+
+- **Adding changes.** When a direct push lands on `main`, or a PR is merged into `main` (recorded from that push, so fork PRs and merge, squash and rebase merges all count, and PRs merged into other branches don't), the rolling issue *QA REQUEST - Changes awaiting QA* (labels `qa-request`, `delivery-ops-filed`, `qa-rollup`) gets a checklist line: `- [ ] <title> (<short sha or #PR>) by @author`, plus `— for #N` when the change links an issue (`Closes #N`, `Refs #N`, `#N`). Under each line is a plain-English draft built from its commits, which devs can edit. If no rolling issue is open, the first change opens one. The same commit or PR is never added twice. Docs/settings-only changes and `[skip qa-request]` pushes add nothing. PRs are added when they reach `main`, not when they open. A commit author with no GitHub account is named without an `@`.
+- **No synthetic Tasks.** The rolling issue is the paper trail, so direct pushes don't create a Task.
+- **Approving (QA approver only).** The approver can:
+  - comment starting with any of `qa approved`, `approved`, `qa ok`, `looks good`, `lgtm`, `all good`, `good to go`, `ship it` (anything may follow), or just `ok`, `approve`, `tested` or `passed` as the whole comment ("Tested!" counts; "Ok, I'll test tomorrow" doesn't), case-insensitive, or
+  - comment starting with ✅, 👍 or ✔️, or
+  - tick the **Approved: all changes above have been tested** box at the bottom of the issue.
+
+  Approval ticks every line, sets QA Outcome to *Pass*, closes the issue as completed and posts a summary of what it covered. The next change opens a fresh rolling issue.
+- **Declining (QA approver only).** The approver comments starting with any of `not approved`, `declined`, `decline`, `rejected`, `reject`, `failed`, `changes needed`, `needs work`, `not ok`, `blocked`, or with ❌, 👎 or 🚫. The issue stays open with QA Outcome *Fail* and an acknowledgement. Fixes pushed afterwards are added to the same list, and a later approval closes it.
+- **Rules.** Decline phrases are checked first, so `not approved` is never read as `approved`. Phrases must *start* the comment and match whole words (`okay` isn't `ok`). The approver's latest verdict wins: a decline after an approval reopens the issue (or points to the newer rolling issue if one has started). Approve/decline comments or box ticks from anyone else are ignored with a short reply, and a ticked box is unticked. Ordinary discussion is left alone.
+- **Emoji reactions don't count.** GitHub Actions can't trigger on reactions, so the emoji has to be in a comment.
+- **Release roll-up.** A Production Release's *What's in this release* comment lists the rolling-issue lines that belong to it, each with its QA status: lines added before the release was requested, and since the previous release (or still awaiting QA). Lines added after the request are counted but not listed.
+- **Switching back.** Set `DELIVERY_OS_AUTO_QA_MODE=per-change` (or keep `DELIVERY_OS_AUTO_QA=all`) for one QA Request per change. Set it to `off` to file nothing. A repo that had `DELIVERY_OS_AUTO_QA=pr-only` moves to the rolling issue with PRs only; add `DELIVERY_OS_AUTO_QA_MODE=per-change` to keep a QA Request per PR.
+- **Upgrading from 1.8.x.** Existing open auto-filed QA Requests are left as they are; nothing is mass-closed. The delivery-ops skill's cleanup sweep can propose closing old leftovers. Run *Setup Labels* (or `--with-labels`) to create the `qa-rollup` label.
+
+The phrase and emoji lists live in `.github/scripts/authorize-deployment-verdict.js`, a module shared with `authorize-deployment`. The release gate uses the same matching rules but keeps its own shorter vocabulary.
+
 #### Tuning `auto-qa-request` for direct-push repos
 
-Repos that push straight to `main` (common for solo-maintained prototypes) get a QA Request — and, if nothing is linked, a backing Task — on every push. To keep that accurate and quiet:
+These apply in both modes. In rolling mode they decide what goes on the rolling issue's list; in per-change mode they decide what gets its own QA Request (plus a Task if nothing is linked):
 
-- **Link the push to an issue in its commit message.** `Closes #27`, `Refs #27`, or a bare `#27` in any commit of the push links the QA Request to #27, and no new Task is filed. (References to pull requests, other repos, or issues that don't exist are ignored.)
+- **Link the push to an issue in its commit message.** `Closes #27`, `Refs #27`, or a bare `#27` in any commit of the push links the change to #27 (on its rolling line, or as the per-change QA Request's related issue), and no new Task is filed. (References to pull requests, other repos, or issues that don't exist are ignored.)
 - **Skip a trivial push** by putting `[skip qa-request]` in its commit message. It opts out that commit, not the whole push: a push is skipped only when every commit in it is marked, so a marked typo fix can't hide real changes pushed with it. Only this workflow honors it — `[skip ci]` would skip every workflow.
 - **Docs- and settings-only changes file nothing.** A push or PR that only touches paths matching `DELIVERY_OS_AUTO_QA_QUIET_PATHS` (README edits, `docs/`, editor config…) is skipped. Anything else — code, workflows, `package.json` — still files.
-- **Turn it down repo-wide** with `DELIVERY_OS_AUTO_QA` / `DELIVERY_OS_AUTO_TASK` above. These are repo variables, not workflow edits, so `install --update` keeps them.
+- **Turn it down repo-wide** with `DELIVERY_OS_AUTO_QA_MODE` / `DELIVERY_OS_AUTO_QA` / `DELIVERY_OS_AUTO_TASK` above. These are repo variables, not workflow edits, so `install --update` keeps them.
 
 #### Plain-English changelog on every QA Request
 
-Every QA Request, whether filed by hand or by `auto-qa-request`, has a **What Changed (plain English)** section and a **Changelog Review** checkbox. The workflow seeds a draft from the PR's or push's commit subjects, marked as a draft. The developer who made the change rewrites it in plain English (what a user will notice, and what could break) and ticks the box, so QA knows what to test and that the description is trustworthy. The `delivery-ops` skill can write the plain-English version from the diff and flags unreviewed changelogs in its status check and cleanup sweep, but it never ticks the box itself.
+In rolling mode, each change's line carries its plain-English draft as indented bullets. Devs edit those in place, and the QA approver's approval covers the whole list; there's no per-change review box. The rest of this section is about per-change QA Requests.
+
+Every per-change QA Request, whether filed by hand or by `auto-qa-request`, has a **What Changed (plain English)** section and a **Changelog Review** checkbox. The workflow seeds a draft from the PR's or push's commit subjects, marked as a draft. The developer who made the change rewrites it in plain English (what a user will notice, and what could break) and ticks the box, so QA knows what to test and that the description is trustworthy. The `delivery-ops` skill can write the plain-English version from the diff and flags unreviewed changelogs in its status check and cleanup sweep, but it never ticks the box itself.
 
 Those notes are collected again when a release is requested: the Production Release issue gets a **What's in this release** roll-up comment listing each QA Request's notes and whether they're dev-reviewed, so approvers see what they're signing off. See [governance.md](governance.md#production-release).
 
@@ -249,6 +274,7 @@ This removes the eight workflow files, optionally the issue templates and the Cl
 - `authorize-deployment.yml`
 - `auto-assign-qa.yml`
 - `auto-qa-request.yml`
+- `qa-rollup-approval.yml`
 - `telegram-issues.yml`
 - `setup-labels.yml`
 

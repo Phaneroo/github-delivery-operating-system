@@ -1,0 +1,123 @@
+name: Rolling QA Approval
+
+# Approves or declines the rolling QA issue ("QA REQUEST - Changes awaiting
+# QA", label `qa-rollup`) that auto-qa-request keeps. Only QA_APPROVER counts:
+#   approve  a comment starting with an approval phrase or ✅ 👍 ✔️,
+#            or ticking the "Approved" box in the issue body
+#   decline  a comment starting with a decline phrase or ❌ 👎 🚫
+# The phrase lists live in .github/scripts/authorize-deployment-verdict.js
+# (shared, unit-tested). GitHub Actions can't trigger on emoji reactions, so
+# an emoji has to be in a comment.
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [edited]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  verdict:
+    if: >-
+      contains(github.event.issue.labels.*.name || fromJSON('[]'), 'qa-rollup') &&
+      !github.event.issue.pull_request &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read # needed for actions/checkout, so this workflow's scripts can be required from the repo
+    # One verdict at a time per rolling issue, in arrival order.
+    concurrency:
+      group: qa-rollup-approval-${{ github.event.issue.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Apply the QA approver's verdict
+        uses: actions/github-script@v9
+        env:
+          QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
+        with:
+          script: |
+            const { matchRollingQaVerdict, nextRollingQaAction } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const {
+              ROLLING_LABELS,
+              parseChanges,
+              approvalBoxJustTicked,
+              markRollingApproved,
+              markRollingDeclined,
+              untickApprovalBox,
+            } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/auto-qa-request.js`);
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issueNumber = context.payload.issue.number;
+            const approver = process.env.QA_APPROVER;
+            const isApprover = (login) => (login || '').toLowerCase() === (approver || '').toLowerCase();
+            const comment = (body) => github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+
+            let actor, verdict, how;
+            if (context.eventName === 'issues') {
+              // Only the edit that ticks the Approved box matters here.
+              const oldBody = context.payload.changes && context.payload.changes.body && context.payload.changes.body.from;
+              if (!approvalBoxJustTicked(oldBody, context.payload.issue.body)) return;
+              actor = context.payload.sender.login;
+              verdict = 'approved';
+              how = 'ticked the Approved box';
+              if (!isApprover(actor)) {
+                const { data: live } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+                await github.rest.issues.update({ owner, repo, issue_number: issueNumber, body: untickApprovalBox(live.body) });
+                await comment(`@${actor} only the QA approver (@${approver}) can approve this. I've unticked the Approved box.`);
+                return;
+              }
+            } else {
+              actor = context.payload.comment.user.login;
+              verdict = matchRollingQaVerdict(context.payload.comment.body);
+              if (!verdict) return; // ordinary discussion
+              how = `commented "${context.payload.comment.body.trim().split('\n')[0].slice(0, 60)}"`;
+              if (!isApprover(actor)) {
+                await comment(`@${actor} thanks — only the QA approver (@${approver}) can ${verdict === 'approved' ? 'approve' : 'decline'} this, so I've left it as it is.`);
+                return;
+              }
+            }
+
+            // Act on live state, not the event snapshot.
+            const { data: live } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            let anotherRollingOpen = false;
+            if (live.state === 'closed' && verdict === 'declined') {
+              const open = (await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo, state: 'open', labels: ROLLING_LABELS.join(','), per_page: 100
+              })).filter((i) => !i.pull_request && i.number !== issueNumber);
+              anotherRollingOpen = open.length > 0 ? open[0].number : false;
+            }
+
+            const action = nextRollingQaAction({ state: live.state, verdict, anotherRollingOpen: Boolean(anotherRollingOpen) });
+            const changes = parseChanges(live.body);
+
+            if (action === 'close') {
+              await github.rest.issues.update({
+                owner, repo, issue_number: issueNumber,
+                body: markRollingApproved(live.body), state: 'closed', state_reason: 'completed'
+              });
+              const list = changes.map((c) => `- ${c.text}`).join('\n') || '_No changes listed._';
+              await comment(`✅ **QA approved** by @${actor} (${how}).\n\nCovered ${changes.length} change(s):\n${list}\n\nThe next change to reach \`main\` opens a fresh rolling QA issue.`);
+              console.log(`Rolling QA issue #${issueNumber} approved by ${actor}.`);
+            } else if (action === 'ack-decline' || action === 'reopen-declined') {
+              await github.rest.issues.update({
+                owner, repo, issue_number: issueNumber,
+                body: markRollingDeclined(live.body),
+                ...(action === 'reopen-declined' ? { state: 'open' } : {})
+              });
+              const reopened = action === 'reopen-declined' ? ' Reopened, since this comes after the earlier approval.' : '';
+              await comment(`🔴 **QA declined** by @${actor} (${how}).${reopened}\n\nThis stays open: fixes pushed to \`main\` are added to the list above, and a later approval closes it.`);
+              console.log(`Rolling QA issue #${issueNumber} declined by ${actor} (${action}).`);
+            } else if (action === 'redirect') {
+              await comment(`@${actor} this list was already approved and closed, and a newer rolling QA issue is open: #${anotherRollingOpen}. Please decline there if the problem is still present.`);
+            } else {
+              console.log(`#${issueNumber} is already approved and closed — nothing to do.`);
+            }

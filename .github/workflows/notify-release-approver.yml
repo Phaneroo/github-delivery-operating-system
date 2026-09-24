@@ -86,6 +86,7 @@ jobs:
               ROLLUP_MARKER,
               findPreviousAuthorizedRelease,
               selectQaRequestsInWindow,
+              selectRollingIssues,
               parseOriginPrNumber,
               buildRollupComment,
             } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-rollup.js`);
@@ -144,7 +145,11 @@ jobs:
               qaRequests.push(qa);
             }
 
-            const body = buildRollupComment({ qaRequests, unmerged, previousRelease });
+            // The rolling QA issue(s): the open one plus any approved since
+            // the previous release (closed ones come from closedQa above).
+            const rolling = selectRollingIssues(qaIssues, previousRelease && previousRelease.created_at, release.created_at);
+
+            const body = buildRollupComment({ qaRequests, unmerged, previousRelease, rolling, releaseCreatedAt: release.created_at });
 
             // One roll-up per release: update it in place on a refresh.
             const comments = await github.paginate(github.rest.issues.listComments, {

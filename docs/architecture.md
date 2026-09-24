@@ -24,7 +24,8 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | `notify-release-approver` | `issues.opened` (label `production`), `workflow_dispatch` | Ping release approver; post the release roll-up (plain-English What Changed notes from the QA Requests the release likely covers) |
 | `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested (skipping ones whose PR hasn't merged) |
 | `auto-assign-qa` | `issues.opened/labeled` (label `qa` or `qa-request`) | Assign QA team |
-| `auto-qa-request` | `pull_request.opened/ready_for_review/reopened/synchronize/closed`, `push` to `main` | File a QA Request (and a backing Task, if none is linked) for every PR or direct push that isn't docs/settings-only — safety net, not a gate. Closes those filings if the PR is closed unmerged |
+| `auto-qa-request` | `pull_request.opened/ready_for_review/reopened/synchronize/closed`, `push` to `main` | QA reminder for every change that reaches `main` and isn't docs/settings-only — safety net, not a gate. Default **rolling**: adds a line to the one open rolling QA issue, from the push to `main` (direct pushes, and PRs merged into `main`, including from forks). **per-change**: files a QA Request (+ Task if none is linked) per PR/push, and closes them if the PR is closed unmerged |
+| `qa-rollup-approval` | `issue_comment.created`, `issues.edited` (label `qa-rollup`) | `QA_APPROVER` approves (phrase/emoji comment or the Approved box) → closes the rolling issue; declines → keeps it open |
 | `telegram-issues` | `issues`, `issue_comment`, `pull_request` | Send Telegram alerts |
 | `setup-labels` | `workflow_dispatch` | Create required labels |
 
@@ -57,8 +58,9 @@ Approvers and assignees are configured via **repo variables** (Settings → Secr
 | `QA_APPROVER` | Username for dual approval |
 | `QA_ASSIGNEES` | Comma-separated usernames for auto-assign-qa |
 | `PROJECT_NAME` | Optional; shown in release notifications |
-| `DELIVERY_OS_AUTO_QA` | Optional; `auto-qa-request` mode: `all` (default), `pr-only`, or `off` |
-| `DELIVERY_OS_AUTO_TASK` | Optional; `false` → direct pushes with no linked issue file only a QA Request, no Task |
+| `DELIVERY_OS_AUTO_QA_MODE` | Optional; `rolling` (default), `per-change`, or `off` |
+| `DELIVERY_OS_AUTO_QA` | Optional; 1.8.0 setting, still honored: `all` → per-change, `pr-only` → direct pushes add nothing, `off` |
+| `DELIVERY_OS_AUTO_TASK` | Optional, per-change mode; `false` → direct pushes with no linked issue file only a QA Request, no Task |
 | `DELIVERY_OS_AUTO_QA_QUIET_PATHS` | Optional; globs whose changes alone file nothing (default: docs/settings; `none` disables) |
 | `DELIVERY_OS_AUTO_CLOSE` | Optional; `false` stops `authorize-deployment` closing auto-filed issues on release |
 

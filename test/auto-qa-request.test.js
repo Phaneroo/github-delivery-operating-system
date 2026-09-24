@@ -11,8 +11,6 @@ const {
   allCommitsSkipped,
   pushLinkText,
   pushTitle,
-  resolveAutoQaMode,
-  shouldFileForEvent,
   autoTaskEnabledForDirectPush,
   DEFAULT_QUIET_PATHS,
   resolveQuietPaths,
@@ -126,39 +124,6 @@ test('pushTitle names the push after its newest unmarked commit', () => {
   assert.equal(pushTitle('', []), '');
 });
 
-// resolveAutoQaMode / shouldFileForEvent
-
-test('resolveAutoQaMode defaults to all when unset', () => {
-  assert.equal(resolveAutoQaMode(undefined), 'all');
-  assert.equal(resolveAutoQaMode(''), 'all');
-});
-
-test('resolveAutoQaMode normalizes case and whitespace', () => {
-  assert.equal(resolveAutoQaMode(' PR-Only '), 'pr-only');
-  assert.equal(resolveAutoQaMode('OFF'), 'off');
-  assert.equal(resolveAutoQaMode('all'), 'all');
-});
-
-test('resolveAutoQaMode falls back to all for unrecognized values', () => {
-  assert.equal(resolveAutoQaMode('none'), 'all');
-  assert.equal(resolveAutoQaMode('pronly'), 'all');
-});
-
-test('shouldFileForEvent: all files for PRs and pushes', () => {
-  assert.equal(shouldFileForEvent('all', 'pull_request'), true);
-  assert.equal(shouldFileForEvent('all', 'push'), true);
-});
-
-test('shouldFileForEvent: pr-only files for PRs but not direct pushes', () => {
-  assert.equal(shouldFileForEvent('pr-only', 'pull_request'), true);
-  assert.equal(shouldFileForEvent('pr-only', 'push'), false);
-});
-
-test('shouldFileForEvent: off files nothing', () => {
-  assert.equal(shouldFileForEvent('off', 'pull_request'), false);
-  assert.equal(shouldFileForEvent('off', 'push'), false);
-});
-
 // autoTaskEnabledForDirectPush
 
 test('autoTaskEnabledForDirectPush is on unless explicitly false', () => {
@@ -240,11 +205,20 @@ test('seedChangeSummary turns commit subjects into clean bullets', () => {
     title: 'ignored',
     commitMessages: [
       'Add dark mode toggle (#12)\n\nLong body',
-      'Fix login redirect, closes #4 [skip qa-request]',
+      'Fix login redirect, closes #4 [skip ci]',
       'Refs #9: tidy settings page',
     ],
   });
   assert.equal(summary, '- Add dark mode toggle\n- Fix login redirect\n- tidy settings page');
+});
+
+test('seedChangeSummary leaves out commits marked [skip qa-request]', () => {
+  // Found on a real repo: a marked "Update Delivery OS" commit showed up in the draft.
+  const summary = seedChangeSummary({
+    title: 'ignored',
+    commitMessages: ['Update Delivery OS [skip qa-request]', 'Add a wave helper', 'Fix README typo [skip qa-request]'],
+  });
+  assert.equal(summary, '- Add a wave helper');
 });
 
 test('seedChangeSummary drops merge/fixup commits and case-insensitive duplicates', () => {

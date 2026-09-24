@@ -38,7 +38,8 @@ Settings → Secrets and variables → Actions → Variables:
 | `RELEASE_APPROVER` | GitHub username of release approver |
 | `QA_APPROVER` | GitHub username of QA approver |
 | `QA_ASSIGNEES` | Comma-separated usernames (e.g. `user1,user2`) |
-| `DELIVERY_OS_AUTO_QA` | Optional: `all` (default), `pr-only`, or `off` — when `auto-qa-request` files (see [consumer-setup.md](consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos)) |
+| `DELIVERY_OS_AUTO_QA_MODE` | Optional: `rolling` (default — one open rolling QA issue), `per-change`, or `off` (see [consumer-setup.md](consumer-setup.md#rolling-qa-issue-default)) |
+| `DELIVERY_OS_AUTO_QA` | Optional, 1.8.0 setting still honored: `all` → per-change, `pr-only`, `off` |
 | `DELIVERY_OS_AUTO_TASK` | Optional: `false` to stop direct pushes filing a synthetic Task |
 | `DELIVERY_OS_AUTO_QA_QUIET_PATHS` | Optional: globs whose changes alone file nothing (default: docs/settings; `none` disables) |
 | `DELIVERY_OS_AUTO_CLOSE` | Optional: `false` to stop auto-closing filed issues when a release is authorized |
@@ -125,6 +126,17 @@ Once both approve, the issue receives `ready-for-deploy`. To decline, release ap
 
 ---
 
+## Approve or Decline the Rolling QA Issue
+
+By default, changes that reach `main` collect on one open issue, **QA REQUEST - Changes awaiting QA** (label `qa-rollup`). Test the listed changes, then, as the `QA_APPROVER`:
+
+- **Approve:** comment starting with `approved`, `lgtm`, `looks good`, `ship it`, ✅, 👍, or just `ok` / `tested` / `passed` as the whole comment (or any phrase from [the full list](consumer-setup.md#rolling-qa-issue-default)), or tick **Approved: all changes above have been tested**. The issue closes with a summary, and the next change opens a fresh one.
+- **Decline:** comment starting with `declined`, `needs work`, `not ok`, `failed`, ❌, 👎 (or any phrase from the full list). The issue stays open, and fixes pushed afterwards are added to it. Approve once they're tested.
+
+A comment from anyone else is ignored with a short reply. Emoji *reactions* don't count; put the emoji in a comment.
+
+---
+
 ## Enable Telegram Alerts
 
 1. Create a bot via [@BotFather](https://t.me/BotFather)
@@ -154,6 +166,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
    - `authorize-deployment.yml`
    - `auto-assign-qa.yml`
    - `auto-qa-request.yml`
+   - `qa-rollup-approval.yml`
    - `telegram-issues.yml`
    - `setup-labels.yml`
 2. Optionally remove templates from `.github/ISSUE_TEMPLATE/`

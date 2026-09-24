@@ -7,13 +7,14 @@ const {
   REVIEW_BOX,
   findPreviousAuthorizedRelease,
   selectQaRequestsInWindow,
+  selectRollingIssues,
   parseOriginPrNumber,
   extractWhatChanged,
   isReviewed,
   extractQaOutcome,
   buildRollupComment,
 } = require('../.github/scripts/release-rollup');
-const { buildQaRequestBody, CHANGELOG_REVIEW_BOX } = require('../.github/scripts/auto-qa-request');
+const { buildQaRequestBody, CHANGELOG_REVIEW_BOX, buildRollingQaBody, buildChangeLine, appendChange, markRollingApproved, markRollingDeclined } = require('../.github/scripts/auto-qa-request');
 
 const qaBody = (overrides = {}) =>
   buildQaRequestBody({
@@ -201,4 +202,74 @@ test('buildRollupComment caps the list and names the rest', () => {
   const comment = buildRollupComment({ qaRequests, unmerged: [], previousRelease: null });
   assert.match(comment, /…and 3 more: #31, #32, #33/);
   assert.match(comment, /\*\*All 30 changelogs dev-reviewed\.\*\*/);
+});
+
+// Rolling QA issue in the roll-up
+
+const rollingLabels = [{ name: 'qa-request' }, { name: 'delivery-ops-filed' }, { name: 'qa-rollup' }];
+const rollingBody = () =>
+  appendChange(
+    buildRollingQaBody(buildChangeLine({ title: 'Add wave', ref: 'a1', author: 'dev', linkedIssue: 1, originMarker: 'Direct push #a1', summary: '- Add wave\n- Waves hello\n- Could affect: greeting' })),
+    buildChangeLine({ title: 'Export button', ref: '#7', author: 'dev2', linkedIssue: null, originMarker: 'PR #7' })
+  );
+
+test('selectRollingIssues: the open rolling issue plus ones approved since the last release', () => {
+  const issues = [
+    { number: 1, state: 'closed', state_reason: 'completed', created_at: '2026-09-01T00:00:00Z', closed_at: '2026-09-05T00:00:00Z', labels: rollingLabels },
+    { number: 2, state: 'closed', state_reason: 'completed', created_at: '2026-09-06T00:00:00Z', closed_at: '2026-09-12T00:00:00Z', labels: rollingLabels },
+    { number: 3, state: 'closed', state_reason: 'not_planned', created_at: '2026-09-13T00:00:00Z', closed_at: '2026-09-13T00:00:00Z', labels: rollingLabels },
+    { number: 4, state: 'open', created_at: '2026-09-14T00:00:00Z', labels: rollingLabels },
+    { number: 5, state: 'open', created_at: '2026-09-14T00:00:00Z', labels: [{ name: 'qa-request' }] },
+  ];
+  assert.deepEqual(selectRollingIssues(issues, '2026-09-10T00:00:00Z', '2026-09-20T00:00:00Z').map((i) => i.number), [2, 4]);
+});
+
+test('selectQaRequestsInWindow leaves rolling issues to selectRollingIssues', () => {
+  const issues = [{ number: 4, state: 'open', created_at: '2026-09-14T00:00:00Z', labels: rollingLabels }];
+  assert.deepEqual(selectQaRequestsInWindow(issues, null, '2026-09-20T00:00:00Z'), []);
+});
+
+test('buildRollupComment lists each rolling change with its QA status and merges Could affect areas', () => {
+  const comment = buildRollupComment({
+    qaRequests: [],
+    unmerged: [],
+    previousRelease: null,
+    rolling: [
+      { number: 50, state: 'closed', state_reason: 'completed', body: markRollingApproved(rollingBody()) },
+      { number: 60, state: 'open', body: rollingBody() },
+      { number: 70, state: 'open', body: markRollingDeclined(rollingBody()) },
+    ],
+  });
+  assert.match(comment, /### 🔄 Rolling QA #50: ✅ QA approved\n\n- ✅ Add wave \(a1\) by @dev — for #1\n {2}- Waves hello\n- ✅ Export button \(#7\) by @dev2/);
+  assert.match(comment, /### 🔄 Rolling QA #60: ⚠️ awaiting QA approval\n\n- ⏳ Add wave/);
+  assert.match(comment, /### 🔄 Rolling QA #70: ❌ QA declined, fixes awaiting re-test/);
+  assert.match(comment, /\*\*Could affect:\*\* greeting/);
+  assert.doesNotMatch(comment, /- Could affect/);
+  assert.match(comment, /\*\*Rolling QA:\*\* 2 of 6 change\(s\) QA-approved\./);
+  assert.doesNotMatch(comment, /No QA Requests found/);
+});
+
+test('buildRollupComment leaves out rolling lines added after the release was requested, and approved lines from before the previous one', () => {
+  // Regression (code review): a refresh listed changes pushed after the release request.
+  const line = (n, addedAt) => buildChangeLine({ title: `Change ${n}`, ref: `s${n}`, author: 'dev', linkedIssue: null, originMarker: `Direct push #s${n}`, addedAt });
+  let open = buildRollingQaBody(line(1, '2026-09-08T00:00:00Z'));
+  open = appendChange(open, line(2, '2026-09-15T00:00:00Z'));
+  open = appendChange(open, line(3, '2026-09-25T00:00:00Z'));
+  let closed = buildRollingQaBody(line(4, '2026-09-05T00:00:00Z'));
+  closed = markRollingApproved(appendChange(closed, line(5, '2026-09-12T00:00:00Z')));
+  const comment = buildRollupComment({
+    qaRequests: [], unmerged: [],
+    previousRelease: { number: 9, created_at: '2026-09-10T00:00:00Z' },
+    releaseCreatedAt: '2026-09-20T00:00:00Z',
+    rolling: [
+      { number: 60, state: 'closed', state_reason: 'completed', body: closed },
+      { number: 61, state: 'open', body: open },
+    ],
+  });
+  assert.doesNotMatch(comment, /Change 4/, 'approved before the previous release: shipped there');
+  assert.match(comment, /Change 5/);
+  assert.match(comment, /Change 1/, 'older but still awaiting QA');
+  assert.match(comment, /Change 2/);
+  assert.doesNotMatch(comment, /Change 3/);
+  assert.match(comment, /_1 change\(s\) added after this release was requested aren't included\._/);
 });

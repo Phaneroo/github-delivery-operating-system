@@ -19,6 +19,7 @@ const WORKFLOWS = [
   'telegram-issues',
   'setup-labels',
   'auto-qa-request',
+  'qa-rollup-approval',
 ];
 
 // Pure logic some of the workflows above require() at runtime from
@@ -58,6 +59,9 @@ const REQUIRED_SCRIPT_BY_WORKFLOW = {
   'auto-close-sprint': 'auto-close-sprint',
   'sprint-child-creator': 'sprint-child-creator',
   'auto-qa-request': 'auto-qa-request',
+  // Shares the verdict matcher with authorize-deployment and the rolling
+  // issue body helpers with auto-qa-request — required since it was added.
+  'qa-rollup-approval': ['authorize-deployment-verdict', 'auto-qa-request'],
 };
 
 // Workflows that only started require()-ing a script in a later release, so
@@ -66,22 +70,26 @@ const REQUIRED_SCRIPT_BY_WORKFLOW = {
 // mapping these unconditionally would flag every pre-upgrade install as
 // broken. notify-release-approver gained release-rollup.js with the release
 // roll-up job.
+// Value: the scripts required once the gate is met; the FIRST one is the
+// marker looked for in the workflow's content. release-rollup.js itself
+// requires auto-qa-request.js (1.9.0, for the rolling QA checklist parser).
 const CONTENT_GATED_SCRIPT_BY_WORKFLOW = {
-  'notify-release-approver': 'release-rollup',
+  'notify-release-approver': ['release-rollup', 'auto-qa-request'],
 };
 
-// The script an installed workflow requires, or null — unconditional ones
-// from REQUIRED_SCRIPT_BY_WORKFLOW, content-gated ones only when the file on
-// disk actually references the script.
-function requiredScriptFor(targetAbs, wf) {
-  if (REQUIRED_SCRIPT_BY_WORKFLOW[wf]) return REQUIRED_SCRIPT_BY_WORKFLOW[wf];
-  const gated = CONTENT_GATED_SCRIPT_BY_WORKFLOW[wf];
-  if (!gated) return null;
+// The scripts an installed workflow requires ([] if none) — unconditional
+// ones from REQUIRED_SCRIPT_BY_WORKFLOW (a name or a list of names),
+// content-gated ones only when the file on disk actually references them.
+function requiredScriptsFor(targetAbs, wf) {
+  const required = REQUIRED_SCRIPT_BY_WORKFLOW[wf];
+  if (required) return [].concat(required);
+  const gated = [].concat(CONTENT_GATED_SCRIPT_BY_WORKFLOW[wf] || []);
+  if (!gated.length) return [];
   try {
     const content = fs.readFileSync(path.join(targetAbs, '.github', 'workflows', `${wf}.yml`), 'utf8');
-    return content.includes(`${gated}.js`) ? gated : null;
+    return content.includes(`${gated[0]}.js`) ? gated : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -143,6 +151,38 @@ function manifestPath(targetAbs) {
 
 function skillPath(targetAbs) {
   return path.join(targetAbs, SKILL_REL_PATH);
+}
+
+// Numeric x.y.z comparison: true when `version` is older than `than`.
+function isOlderVersion(version, than) {
+  const a = String(version).split('.').map((n) => parseInt(n, 10) || 0);
+  const b = String(than).split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) < (b[i] || 0);
+  }
+  return false;
+}
+
+// 1.9.0 changed auto-qa-request's default from one QA Request per change to
+// one rolling QA issue. Worth a note when an --update brings that change to
+// a repo that already had the old behavior (a pre-1.9.0 manifest, or no
+// manifest at all next to an existing auto-qa-request.yml).
+function rollingQaMigrationNote(priorVersion, hadAutoQaWorkflow) {
+  if (!hadAutoQaWorkflow) return null;
+  if (priorVersion && !isOlderVersion(priorVersion, '1.9.0')) return null;
+  return [
+    '  Note: auto-qa-request now keeps ONE rolling QA issue ("QA REQUEST - Changes',
+    '  awaiting QA") instead of filing a QA Request (+ Task) per change. Each push',
+    '  or merged PR adds a line; QA_APPROVER approves it with a comment (e.g.',
+    '  "approved", "lgtm", ✅) or by ticking its Approved box.',
+    '  - Existing open auto-filed QA Requests were left as they are. The delivery-ops',
+    '    skill\'s cleanup sweep can propose closing old leftovers.',
+    '  - To keep the old behavior, set the repo variable DELIVERY_OS_AUTO_QA_MODE=per-change',
+    '    (DELIVERY_OS_AUTO_QA=all already keeps it). A repo with DELIVERY_OS_AUTO_QA=pr-only',
+    '    moves to the rolling issue, PRs only; add DELIVERY_OS_AUTO_QA_MODE=per-change to keep',
+    '    a QA Request per PR.',
+    '  - Run Setup Labels (or --with-labels) to create the new `qa-rollup` label.',
+  ].join('\n');
 }
 
 function readManifest(targetAbs) {
@@ -297,6 +337,13 @@ function runInstall(options) {
 
   // Ensure target structure
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
+  const priorManifest = readManifest(targetAbs);
+  const migrationNote = overwrite
+    ? rollingQaMigrationNote(
+        priorManifest && priorManifest.version,
+        fs.existsSync(path.join(workflowsDest, 'auto-qa-request.yml'))
+      )
+    : null;
   const templatesDest = path.join(targetAbs, '.github', 'ISSUE_TEMPLATE');
   const scriptsDest = path.join(targetAbs, '.github', 'scripts');
 
@@ -550,6 +597,10 @@ function runInstall(options) {
       console.log('To update: use --update (run with --dry-run first to preview).');
     }
   }
+  if (migrationNote) {
+    console.log('');
+    console.log(migrationNote);
+  }
   console.log('');
   console.log('=== Installation complete ===');
 }
@@ -627,10 +678,9 @@ async function runStatus(options) {
       if (wf === 'setup-labels') {
         return { wf, missing: setupLabelsMissingFiles(targetAbs, setupLabelsOnCurrentFormat) };
       }
-      const requiredScript = requiredScriptFor(targetAbs, wf);
-      if (!requiredScript) return { wf, missing: [] };
-      const scriptFile = `${requiredScript}.js`;
-      const missing = fs.existsSync(path.join(targetAbs, '.github', 'scripts', scriptFile)) ? [] : [scriptFile];
+      const missing = requiredScriptsFor(targetAbs, wf)
+        .map((name) => `${name}.js`)
+        .filter((file) => !fs.existsSync(path.join(targetAbs, '.github', 'scripts', file)));
       return { wf, missing };
     })
     .filter((d) => d.missing.length > 0);
@@ -645,7 +695,7 @@ async function runStatus(options) {
   // condition is hit, not an immediate break.
   const scriptsRequiringPkgJson = installedWorkflows.some((wf) => {
     if (wf === 'setup-labels') return setupLabelsOnCurrentFormat;
-    return Boolean(requiredScriptFor(targetAbs, wf));
+    return requiredScriptsFor(targetAbs, wf).length > 0;
   });
   const scriptsPkgJsonMissing =
     scriptsRequiringPkgJson &&
@@ -899,6 +949,8 @@ module.exports = {
   __test__: {
     manifestPath,
     readManifest,
+    isOlderVersion,
+    rollingQaMigrationNote,
     writeManifest,
     fetchLatestVersion,
     buildUpdateCommand,

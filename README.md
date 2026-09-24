@@ -20,6 +20,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI, `--with-
 |---|---|
 | **Sprint child creation** | One issue per feature line, automatic burn-down, auto-close at 100% |
 | **Dual approval gates** | Release approver + QA sign-off required before deploy |
+| **Rolling QA reminder** | Every change that reaches `main` is added to one open *"QA REQUEST - Changes awaiting QA"* issue; the QA approver approves or declines it with a comment or a checkbox |
 | **Auto-assign QA & Telegram alerts** | QA-labeled issues get assigned automatically; optional alerts for bugs, QA, sprints, releases |
 | **Claude Code skill** (`--with-skill`) | Operate it all in plain language — see below |
 
@@ -32,6 +33,16 @@ The Claude Code skill (`.claude/skills/delivery-ops/SKILL.md`) can:
 - **Run a cleanup sweep** — finds stale/orphaned/inconsistent issues and roadmap drift, always confirmed before anything is touched
 
 Full workflow table, quick start, and Claude Code walkthroughs are on the [landing page](https://phaneroo.github.io/github-delivery-operating-system/).
+
+### Rolling QA issue
+
+Each direct push to `main` and each PR merged into `main` adds a checklist line to a single open issue, *QA REQUEST - Changes awaiting QA*. Docs-only changes and `[skip qa-request]` commits are left off. A repo never has more than one of these open.
+
+Only the QA approver (`QA_APPROVER`) can decide:
+- **Approve:** comment starting with `qa approved`, `approved`, `qa ok`, `looks good`, `lgtm`, `all good`, `good to go`, `ship it` (anything may follow), or just `ok`, `approve`, `tested` or `passed` as the whole comment ("Tested!" counts; "Ok, I'll test tomorrow" doesn't), or with ✅ 👍 ✔️. Or tick the issue's **Approved** box. This closes the issue, and the next change opens a fresh one.
+- **Decline:** comment starting with `not approved`, `declined`, `decline`, `rejected`, `reject`, `failed`, `changes needed`, `needs work`, `not ok`, `blocked`, or with ❌ 👎 🚫. The issue stays open, and fixes are added to it.
+
+Emoji *reactions* don't count, because GitHub Actions can't see them; put the emoji in a comment. To go back to one QA Request per change, set the repo variable `DELIVERY_OS_AUTO_QA_MODE=per-change`. Details are in [Consumer Setup](docs/consumer-setup.md#rolling-qa-issue-default).
 
 ## Documentation
 

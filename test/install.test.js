@@ -699,7 +699,7 @@ test('status DOES flag a genuinely broken 1.5.1+ install (workflow content requi
   }
 });
 
-async function statusOutputWithNotifyWorkflow(content, withScript) {
+async function statusOutputWithNotifyWorkflow(content, withScript, withAutoQa = withScript) {
   const dir = mkTmpRepo();
   const lines = [];
   const origLog = console.log;
@@ -709,6 +709,7 @@ async function statusOutputWithNotifyWorkflow(content, withScript) {
     fs.mkdirSync(path.join(dir, '.github', 'scripts'), { recursive: true });
     fs.writeFileSync(path.join(dir, '.github', 'scripts', 'package.json'), '{"type":"commonjs"}');
     if (withScript) fs.writeFileSync(path.join(dir, '.github', 'scripts', 'release-rollup.js'), '');
+    if (withAutoQa) fs.writeFileSync(path.join(dir, '.github', 'scripts', 'auto-qa-request.js'), '');
 
     console.log = (...args) => lines.push(args.join(' '));
     const origCwd = process.cwd();
@@ -732,6 +733,12 @@ test('status flags a notify-release-approver.yml that requires release-rollup.js
   const output = await statusOutputWithNotifyWorkflow("require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-rollup.js`)", false);
   assert.match(output, /Broken install detected/);
   assert.match(output, /release-rollup\.js/);
+});
+
+test('status flags a roll-up notify-release-approver.yml whose auto-qa-request.js (rolling checklist parser) is missing', async () => {
+  const output = await statusOutputWithNotifyWorkflow("require('.github/scripts/release-rollup.js')", true, false);
+  assert.match(output, /Broken install detected/);
+  assert.match(output, /auto-qa-request\.js/);
 });
 
 test('status is happy with a notify-release-approver.yml whose release-rollup.js is present', async () => {
@@ -1040,6 +1047,38 @@ test('status on an empty repo reports not installed, without throwing', async ()
     assert.match(lines.join('\n'), /not installed/);
   } finally {
     console.log = origLog;
+    rm(dir);
+  }
+});
+
+// Rolling QA migration note (1.9.0)
+
+test('rollingQaMigrationNote shows for pre-1.9.0 installs (or no manifest) that had auto-qa-request', () => {
+  const { rollingQaMigrationNote } = __test__;
+  assert.match(rollingQaMigrationNote('1.8.0', true), /ONE rolling QA issue/);
+  assert.match(rollingQaMigrationNote('1.8.0', true), /DELIVERY_OS_AUTO_QA_MODE=per-change/);
+  assert.match(rollingQaMigrationNote(undefined, true), /left as they are/);
+  assert.equal(rollingQaMigrationNote('1.9.0', true), null);
+  assert.equal(rollingQaMigrationNote('1.10.2', true), null);
+  assert.equal(rollingQaMigrationNote('1.8.0', false), null);
+});
+
+test('install --update prints the rolling QA note when upgrading a 1.8.0 install', () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.github', 'workflows', 'auto-qa-request.yml'), '# 1.8.0 per-change workflow');
+    fs.writeFileSync(path.join(dir, '.github', 'delivery-os.json'), JSON.stringify({ version: '1.8.0' }));
+    console.log = (...args) => lines.push(args.join(' '));
+    runInstall({ targetDir: dir, overwrite: true });
+  } finally {
+    console.log = origLog;
+  }
+  try {
+    assert.match(lines.join('\n'), /ONE rolling QA issue/);
+  } finally {
     rm(dir);
   }
 });

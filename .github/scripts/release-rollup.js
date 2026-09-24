@@ -6,6 +6,10 @@
 // approvers can see what they're signing off. Informational only: nothing
 // here blocks authorization. Unit tested in test/release-rollup.test.js.
 
+// The rolling QA issue's checklist format is owned by auto-qa-request.js;
+// read it through the same parser rather than a copy.
+const { parseChanges } = require('./auto-qa-request');
+
 const ROLLUP_MARKER = '<!-- delivery-os:release-rollup -->';
 const MAX_ITEMS = 30;
 
@@ -55,11 +59,34 @@ function selectQaRequestsInWindow(qaIssues, since, until) {
   const hi = Date.parse(until);
   return (qaIssues || [])
     .filter((i) => !i.pull_request)
+    .filter((i) => !labelNames(i).includes('qa-rollup')) // rolling issues: see selectRollingIssues
     .filter((i) => i.state_reason !== 'not_planned')
     .filter((i) => {
       const t = Date.parse(i.created_at);
       return t <= hi && (t > lo || i.state === 'open');
     })
+    .sort((a, b) => a.number - b.number);
+}
+
+/**
+ * Rolling QA issues a release covers: the open one (changes still awaiting
+ * QA), plus any approved and closed since the previous release. Duplicates
+ * folded into another (closed not planned) are skipped.
+ *
+ * @param {Array<{ number: number, state: string, state_reason?: string | null,
+ *   created_at: string, closed_at?: string | null, labels: Array }>} issues
+ * @param {string | null} since - previous authorized release's created_at
+ * @param {string} until - this release's created_at
+ * @returns {Array} oldest first
+ */
+function selectRollingIssues(issues, since, until) {
+  const lo = since ? Date.parse(since) : -Infinity;
+  const hi = Date.parse(until);
+  return (issues || [])
+    .filter((i) => !i.pull_request && labelNames(i).includes('qa-rollup'))
+    .filter((i) => i.state_reason !== 'not_planned')
+    .filter((i) => Date.parse(i.created_at) <= hi)
+    .filter((i) => i.state === 'open' || (i.closed_at && Date.parse(i.closed_at) > lo))
     .sort((a, b) => a.number - b.number);
 }
 
@@ -139,7 +166,7 @@ function extractQaOutcome(body) {
  * }} params - qaRequests already exclude `unmerged`
  * @returns {string} the roll-up comment body (starts with ROLLUP_MARKER)
  */
-function buildRollupComment({ qaRequests, unmerged, previousRelease }) {
+function buildRollupComment({ qaRequests, unmerged, previousRelease, rolling = [], releaseCreatedAt = null }) {
   const scope = previousRelease
     ? `QA Requests filed since the last authorized release (#${previousRelease.number}, opened ${previousRelease.created_at.slice(0, 10)}), plus older ones still open`
     : 'all QA Requests filed before this release (no earlier authorized release found)';
@@ -152,11 +179,63 @@ function buildRollupComment({ qaRequests, unmerged, previousRelease }) {
     '',
   ];
 
-  if (!qaRequests.length) {
+  const couldAffect = [];
+  const addAffects = (areas) => {
+    for (const a of areas) {
+      if (!couldAffect.some((c) => c.toLowerCase() === a.toLowerCase())) couldAffect.push(a);
+    }
+  };
+
+  // Rolling QA issues: one section each, one line per change.
+  // Which of a rolling issue's lines belong to this release: added before it
+  // was requested, and either added since the previous release or still
+  // awaiting QA (an approved line from before then shipped in that one).
+  // Lines without a timestamp (pre-1.9.0 test data) are always included.
+  const lo = previousRelease ? Date.parse(previousRelease.created_at) : -Infinity;
+  const hi = releaseCreatedAt ? Date.parse(releaseCreatedAt) : Infinity;
+  let rollingChanges = 0;
+  let rollingApproved = 0;
+  for (const issue of rolling) {
+    const outcome = extractQaOutcome(issue.body);
+    const approved = issue.state === 'closed' && issue.state_reason === 'completed';
+    const all = parseChanges(issue.body);
+    const later = all.filter((c) => c.addedAt && Date.parse(c.addedAt) > hi).length;
+    const changes = all.filter((c) => {
+      if (!c.addedAt) return true;
+      const t = Date.parse(c.addedAt);
+      return t <= hi && (t > lo || !approved);
+    });
+    if (!changes.length && !later) continue;
+    const status = approved
+      ? '✅ QA approved'
+      : outcome.toLowerCase() === 'fail'
+        ? '❌ QA declined, fixes awaiting re-test'
+        : '⚠️ awaiting QA approval';
+    out.push(`### 🔄 Rolling QA #${issue.number}: ${status}`);
+    out.push('');
+    for (const change of changes) {
+      const mark = approved || change.checked ? '✅' : '⏳';
+      out.push(`- ${mark} ${change.text}`);
+      for (const bullet of change.bullets) {
+        const affect = bullet.match(/^[-*]\s*could affect:\s*(.*)$/i);
+        if (affect) {
+          addAffects(affect[1].split(/[,;]/).map((a) => a.trim().replace(/\.$/, '')).filter(Boolean));
+        } else {
+          out.push(`  ${bullet}`);
+        }
+      }
+    }
+    if (!changes.length) out.push('_No changes from before this release was requested._');
+    if (later) out.push(`_${later} change(s) added after this release was requested aren't included._`);
+    out.push('');
+    rollingChanges += changes.length;
+    if (approved) rollingApproved += changes.length;
+  }
+
+  if (!qaRequests.length && !rolling.length) {
     out.push('No QA Requests found in that window. If this release does contain changes, their QA Requests may be missing.');
   }
 
-  const couldAffect = [];
   const unreviewed = [];
   for (const qa of qaRequests.slice(0, MAX_ITEMS)) {
     const wc = extractWhatChanged(qa.body);
@@ -179,9 +258,7 @@ function buildRollupComment({ qaRequests, unmerged, previousRelease }) {
     out.push(`_QA: ${outcome}${qa.state === 'closed' ? ' · closed' : ''}_`);
     out.push('');
     if (wc.bullets.length) out.push(...wc.bullets, '');
-    for (const a of wc.couldAffect) {
-      if (!couldAffect.some((c) => c.toLowerCase() === a.toLowerCase())) couldAffect.push(a);
-    }
+    addAffects(wc.couldAffect);
   }
   if (qaRequests.length > MAX_ITEMS) {
     const rest = qaRequests.slice(MAX_ITEMS).map((q) => `#${q.number}`);
@@ -200,6 +277,10 @@ function buildRollupComment({ qaRequests, unmerged, previousRelease }) {
     );
   }
 
+  if (rollingChanges) {
+    out.push(`**Rolling QA:** ${rollingApproved} of ${rollingChanges} change(s) QA-approved.`);
+  }
+
   if ((unmerged || []).length) {
     out.push('', `Not included, PR not merged yet: ${unmerged.map((u) => `#${u.number} (PR #${u.prNumber})`).join(', ')}`);
   }
@@ -213,6 +294,7 @@ module.exports = {
   DRAFT_NOTE_PREFIX,
   findPreviousAuthorizedRelease,
   selectQaRequestsInWindow,
+  selectRollingIssues,
   parseOriginPrNumber,
   extractWhatChanged,
   isReviewed,

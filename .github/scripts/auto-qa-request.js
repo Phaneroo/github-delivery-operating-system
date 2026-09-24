@@ -4,6 +4,15 @@
 // can be unit tested directly (see test/auto-qa-request.test.js) instead of
 // only verified by hand.
 
+/** Escapes a string for literal use inside a RegExp. */
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Issue bodies edited in GitHub's web UI can come back with CRLF line
+// endings; every body parser/rewriter below normalizes first.
+const lf = (text) => (text || '').replace(/\r\n/g, '\n');
+
 const CLOSING_KEYWORD_RE = /\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s*:?\s*#(\d+)/gi;
 
 /**
@@ -99,30 +108,6 @@ function pushTitle(headMessage, messages) {
   return ((source || '').split('\n')[0] || '')
     .replace(/\s*\[skip qa-request\]\s*/gi, ' ')
     .trim();
-}
-
-const AUTO_QA_MODES = ['all', 'pr-only', 'off'];
-
-/**
- * @param {string | undefined} value - the `DELIVERY_OS_AUTO_QA` repo variable
- * @returns {'all' | 'pr-only' | 'off'} the normalized mode; unset or
- *   unrecognized values fall back to `all` (the pre-variable behavior), so a
- *   typo never silently turns the safety net off.
- */
-function resolveAutoQaMode(value) {
-  const mode = (value || '').trim().toLowerCase();
-  return AUTO_QA_MODES.includes(mode) ? mode : 'all';
-}
-
-/**
- * @param {'all' | 'pr-only' | 'off'} mode - from resolveAutoQaMode
- * @param {string} eventName - `pull_request` or `push`
- * @returns {boolean} whether this event should file anything at all
- */
-function shouldFileForEvent(mode, eventName) {
-  if (mode === 'off') return false;
-  if (mode === 'pr-only') return eventName === 'pull_request';
-  return true;
 }
 
 /**
@@ -248,6 +233,245 @@ function findFilingsForPr(openIssues, prNumber) {
     .map((issue) => issue.number);
 }
 
+// ---------------------------------------------------------------------------
+// Settings: DELIVERY_OS_AUTO_QA_MODE (new) + DELIVERY_OS_AUTO_QA (1.8.0)
+// ---------------------------------------------------------------------------
+
+const QA_STYLES = ['rolling', 'per-change', 'off'];
+
+/**
+ * @param {string | undefined} modeVar - DELIVERY_OS_AUTO_QA_MODE
+ * @param {string | undefined} legacyVar - DELIVERY_OS_AUTO_QA (1.8.0)
+ * @returns {{ style: 'rolling' | 'per-change' | 'off', prOnly: boolean }}
+ *   An explicit, valid MODE wins. Otherwise the 1.8.0 variable decides:
+ *   `all` → per-change (the behavior that repo chose), `off` → off, and
+ *   `pr-only` → rolling with direct pushes adding nothing (a deliberate
+ *   choice: pr-only repos move to the rolling issue, PRs only; set
+ *   MODE=per-change alongside it to keep a QA Request per PR). Unset or
+ *   unrecognized → `rolling`, the new default; a typo never turns the
+ *   reminder off. `pr-only` means "direct pushes add nothing" in any style.
+ */
+function resolveQaSettings(modeVar, legacyVar) {
+  const mode = (modeVar || '').trim().toLowerCase();
+  const legacy = (legacyVar || '').trim().toLowerCase();
+  let style = 'rolling';
+  if (QA_STYLES.includes(mode)) style = mode;
+  else if (legacy === 'off') style = 'off';
+  else if (legacy === 'all') style = 'per-change';
+  return { style, prOnly: legacy === 'pr-only' };
+}
+
+// ---------------------------------------------------------------------------
+// Rolling QA issue: one open auto-filed QA issue per repo, one checklist line
+// per change that reaches main. Approved/declined by QA_APPROVER via
+// qa-rollup-approval.yml.
+// ---------------------------------------------------------------------------
+
+const ROLLING_TITLE = 'QA REQUEST - Changes awaiting QA';
+const ROLLING_LABELS = ['qa-request', 'delivery-ops-filed', 'qa-rollup'];
+const CHANGES_START = '<!-- delivery-os:changes:start -->';
+const CHANGES_END = '<!-- delivery-os:changes:end -->';
+const APPROVAL_BOX = 'Approved: all changes above have been tested';
+// Deliberately NOT the per-change "— origin: " footer, so release-time
+// auto-close and per-change lookups never mistake this issue for one of theirs.
+const ROLLING_FOOTER = '*Auto-filed by Delivery OS — rolling QA issue (one list of changes awaiting QA)*';
+
+const originTag = (originMarker) => `<!-- delivery-os:origin=${originMarker} -->`;
+
+/**
+ * One checklist entry: the change's title and reference, plus its
+ * plain-English draft bullets indented underneath for the dev to edit.
+ *
+ * @param {{ title: string, ref: string, author?: string | null,
+ *   authorName?: string | null, linkedIssue: number | null,
+ *   originMarker: string, summary?: string, addedAt?: string }} change
+ *   - ref: short sha or `#PR`; author: a GitHub login (gets an @-mention);
+ *   authorName: a plain git display name, used only when there's no login
+ *   (an @ on a display name would ping an unrelated account); summary:
+ *   seedChangeSummary output; addedAt: ISO time, so a release roll-up can
+ *   leave out changes added after the release was requested
+ * @returns {string}
+ */
+function buildChangeLine({ title, ref, author, authorName, linkedIssue, originMarker, summary, addedAt }) {
+  const by = author ? ` by @${author}` : authorName ? ` by ${authorName}` : '';
+  const forIssue = linkedIssue ? ` — for #${linkedIssue}` : '';
+  const added = addedAt ? ` <!-- delivery-os:added=${addedAt} -->` : '';
+  const head = `- [ ] ${title} (${ref})${by}${forIssue}${added} ${originTag(originMarker)}`;
+  const cleanTitle = (title || '').trim().toLowerCase();
+  const bullets = (summary || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('- ') && l.slice(2).trim().toLowerCase() !== cleanTitle);
+  return [head, ...bullets.map((b) => `  ${b}`)].join('\n');
+}
+
+/**
+ * @param {string} firstChange - a buildChangeLine block
+ * @returns {string} the rolling issue body, qa_request.yml field headings included
+ */
+function buildRollingQaBody(firstChange) {
+  return [
+    '### Related Sprint Task Issue (#)',
+    '',
+    '_Rolling QA issue — each change below names its own issue, if it has one._',
+    '',
+    '### What Changed (plain English)',
+    '',
+    'One line per change that reached `main` since the last QA approval. The bullets under each line are a draft built from commit messages: devs, edit them into plain English (what a user will notice, and what could break).',
+    '',
+    '### Changes',
+    '',
+    CHANGES_START,
+    firstChange,
+    CHANGES_END,
+    '',
+    '### What to Test',
+    '',
+    'Each change above. Tick a line once it has been tested.',
+    '',
+    '### Environment + Build Link',
+    '',
+    'Branch: `main`',
+    '',
+    '### Acceptance Criteria',
+    '',
+    "_Per change — see each line's linked issue._",
+    '',
+    '### QA Outcome',
+    '',
+    'Pending',
+    '',
+    '### QA Approval',
+    '',
+    `- [ ] ${APPROVAL_BOX}`,
+    '',
+    '_Only the QA approver can approve or decline: tick the box above, or comment starting with e.g. `approved`, `lgtm`, `looks good` or ✅ to approve, or `declined`, `needs work`, `not ok` or ❌ to decline._',
+    '',
+    '---',
+    ROLLING_FOOTER,
+  ].join('\n');
+}
+
+/**
+ * @param {string} body - a rolling issue body
+ * @param {string} originMarker - e.g. `PR #12` or `Direct push #<sha>`
+ * @returns {boolean} whether that change is already on the list
+ */
+function hasChange(body, originMarker) {
+  return lf(body).includes(originTag(originMarker));
+}
+
+/**
+ * @param {string} body
+ * @param {string} block - a buildChangeLine block
+ * @returns {string} body with the block added at the end of the checklist
+ */
+function appendChange(body, block) {
+  const b = lf(body);
+  const end = b.indexOf(CHANGES_END);
+  if (end !== -1) return `${b.slice(0, end)}${block}\n${b.slice(end)}`;
+  // Markers edited away: keep the change rather than drop it.
+  const footer = b.lastIndexOf('\n---\n');
+  return footer !== -1 ? `${b.slice(0, footer)}\n${block}\n${b.slice(footer)}` : `${b}\n${block}`;
+}
+
+/**
+ * @param {string} body
+ * @param {string} originMarker
+ * @returns {string} body without that change's entry (head line + bullets) —
+ *   used to take back a change written into an issue that got closed under us
+ */
+function removeChange(body, originMarker) {
+  const entry = parseChanges(body).find((c) => c.originMarker === originMarker);
+  if (!entry) return lf(body);
+  return lf(body).replace(`${entry.block}\n`, '').replace(entry.block, '');
+}
+
+/**
+ * @param {string} body
+ * @returns {Array<{ originMarker: string, checked: boolean, text: string,
+ *   bullets: string[], block: string, addedAt: string | null }>} every change
+ *   on the list, in order
+ */
+function parseChanges(body) {
+  const changes = [];
+  let current = null; // the entry whose indented bullets we're collecting
+  for (const line of lf(body).split('\n')) {
+    const head = line.match(/^- \[([ xX])\] (.*?)\s*(?:<!-- delivery-os:added=(.*?) -->\s*)?<!-- delivery-os:origin=(.*?) -->\s*$/);
+    if (head) {
+      current = { originMarker: head[4], checked: head[1] !== ' ', text: head[2], bullets: [], block: line, addedAt: head[3] || null };
+      changes.push(current);
+    } else if (current && /^\s+- /.test(line)) {
+      current.bullets.push(line.trim());
+      current.block += `\n${line}`;
+    } else {
+      current = null;
+    }
+  }
+  return changes;
+}
+
+const APPROVAL_LINE_RE = new RegExp(`^- \\[([ xX])\\] ${escapeRegExp(APPROVAL_BOX)}\\s*$`, 'm');
+
+/**
+ * @param {string} body
+ * @returns {boolean} whether the Approved box is ticked
+ */
+function approvalBoxTicked(body) {
+  const m = lf(body).match(APPROVAL_LINE_RE);
+  return Boolean(m && m[1] !== ' ');
+}
+
+/**
+ * @param {string | undefined} oldBody - `changes.body.from` of an issues.edited event
+ * @param {string} newBody
+ * @returns {boolean} whether this edit is the one that ticked the Approved box
+ */
+function approvalBoxJustTicked(oldBody, newBody) {
+  return typeof oldBody === 'string' && !approvalBoxTicked(oldBody) && approvalBoxTicked(newBody);
+}
+
+const setApprovalBox = (body, ticked) =>
+  lf(body).replace(APPROVAL_LINE_RE, `- [${ticked ? 'x' : ' '}] ${APPROVAL_BOX}`);
+
+/**
+ * @param {string} body
+ * @param {string} outcome - Pass / Fail / Pending
+ * @returns {string}
+ */
+function setQaOutcome(body, outcome) {
+  return lf(body).replace(/(### QA Outcome\n\n)[^\n]*/, `$1${outcome}`);
+}
+
+/**
+ * @param {string} body
+ * @returns {string} body as approved: every change ticked, Approved box
+ *   ticked, QA Outcome Pass
+ */
+function markRollingApproved(body) {
+  const ticked = lf(body)
+    .split('\n')
+    .map((l) => (/^- \[ \] .*<!-- delivery-os:origin=/.test(l) ? l.replace('- [ ] ', '- [x] ') : l))
+    .join('\n');
+  return setQaOutcome(setApprovalBox(ticked, true), 'Pass');
+}
+
+/**
+ * @param {string} body
+ * @returns {string} body as declined: Approved box cleared, QA Outcome Fail
+ */
+function markRollingDeclined(body) {
+  return setQaOutcome(setApprovalBox(body, false), 'Fail');
+}
+
+/**
+ * @param {string} body
+ * @returns {string} body with the Approved box cleared (a non-approver ticked it)
+ */
+function untickApprovalBox(body) {
+  return setApprovalBox(body, false);
+}
+
 /**
  * @param {string} body - an issue body (typically a Task issue)
  * @returns {string | null} the text under "### Acceptance Criteria", or null
@@ -338,7 +562,8 @@ const CHANGELOG_DRAFT_NOTE =
  * Seeds the QA Request's plain-English changelog with the closest thing
  * the workflow has to a human description, the commit subjects, as a
  * clearly marked draft for a dev (or the delivery-ops skill) to rewrite.
- * Drops merge commits, fixup/squash noise, `[skip …]` markers and trailing
+ * Drops merge commits, fixup/squash noise, `[skip qa-request]` commits, other
+ * `[skip …]` markers and trailing
  * `(#N)` / closing-keyword clutter so the draft reads as change notes.
  *
  * @param {{ title: string, commitMessages?: string[] }} params
@@ -356,6 +581,9 @@ function seedChangeSummary({ title, commitMessages }) {
 
   const bullets = [];
   for (const message of commitMessages || []) {
+    // A commit marked [skip qa-request] is trivial by its author's own
+    // account, so it doesn't belong in the change's summary either.
+    if (hasSkipMarker(message)) continue;
     const subject = clean((message || '').split('\n')[0]);
     if (!subject || /^(merge\b|fixup!|squash!)/i.test(subject)) continue;
     if (!bullets.some((b) => b.toLowerCase() === subject.toLowerCase())) bullets.push(subject);
@@ -451,8 +679,7 @@ function buildQaRequestBody({
 function qaRequestAlreadyExists(openQaRequests, originMarker) {
   // Anchored on the footer and a non-digit after the marker, so `PR #2`
   // doesn't match a request filed for PR #21.
-  const escaped = originMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`origin: ${escaped}(?![\\w])`);
+  const re = new RegExp(`origin: ${escapeRegExp(originMarker)}(?![\\w])`);
   return (openQaRequests || []).some((issue) => re.test(issue.body || ''));
 }
 
@@ -463,14 +690,30 @@ module.exports = {
   allCommitsSkipped,
   pushLinkText,
   pushTitle,
-  resolveAutoQaMode,
-  shouldFileForEvent,
   autoTaskEnabledForDirectPush,
   DEFAULT_QUIET_PATHS,
   resolveQuietPaths,
   globToRegExp,
   isQuietChange,
   touchedPathsFromApiFiles,
+  resolveQaSettings,
+  ROLLING_TITLE,
+  ROLLING_LABELS,
+  ROLLING_FOOTER,
+  APPROVAL_BOX,
+  buildChangeLine,
+  buildRollingQaBody,
+  hasChange,
+  appendChange,
+  removeChange,
+  parseChanges,
+  escapeRegExp,
+  approvalBoxTicked,
+  approvalBoxJustTicked,
+  setQaOutcome,
+  markRollingApproved,
+  markRollingDeclined,
+  untickApprovalBox,
   findFilingsForPr,
   CHANGELOG_REVIEW_BOX,
   seedChangeSummary,

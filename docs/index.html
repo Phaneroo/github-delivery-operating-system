@@ -86,6 +86,7 @@
               <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>
               <tr><td><code>install --update …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
               <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>
+              <tr><td><code>shell-hook --install</code></td><td>Get a reminder in your terminal when you <code>cd</code> into an out-of-date repo</td></tr>
               <tr><td><code>uninstall --with-templates --with-skill .</code></td><td>Remove everything, including templates and the skill</td></tr>
             </tbody>
           </table>
@@ -101,6 +102,11 @@
         <div class="install-block">
           <div class="install-label">Update to latest</div>
           <code>npx github-delivery-os@latest install --with-templates --with-labels --with-skill --update .</code>
+        </div>
+        <p>You don't have to remember to check. A repo installed with <code>--with-skill</code> also gets an update check: when a Claude Code session starts there and the install is behind, Claude offers to run the update (only after you confirm). For the same reminder in any terminal whenever you <code>cd</code> into an out-of-date repo:</p>
+        <div class="install-block">
+          <div class="install-label">Terminal reminder (zsh or bash)</div>
+          <code>npx github-delivery-os@latest shell-hook --install</code>
         </div>
       </section>
 

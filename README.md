@@ -32,6 +32,8 @@ The Claude Code skill (`.claude/skills/delivery-ops/SKILL.md`) can:
 - **Turn a spec into a full breakdown** — an SRS/PRD or a plain-language feature description becomes real phase (sprint) and task issues, not just a document
 - **Run a cleanup sweep** — finds stale/orphaned/inconsistent issues and roadmap drift, always confirmed before anything is touched
 
+It also comes with an update check: when a Claude Code session starts in a repo whose install is behind the latest release, Claude offers to update it (only after you confirm). For the same reminder in any terminal when you `cd` into a repo, run `npx github-delivery-os@latest shell-hook --install`. See [Consumer Setup](docs/consumer-setup.md#getting-told-when-an-update-is-out).
+
 Full workflow table, quick start, and Claude Code walkthroughs are on the [landing page](https://phaneroo.github.io/github-delivery-operating-system/).
 
 ### Rolling QA issue

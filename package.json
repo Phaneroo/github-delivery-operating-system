@@ -56,7 +56,8 @@
     ".github/scripts/labels.tsv",
     ".github/scripts/package.json",
     ".github/ISSUE_TEMPLATE",
-    ".claude/skills/delivery-ops"
+    ".claude/skills/delivery-ops",
+    ".claude/hooks/delivery-os-update-check.js"
   ],
   "engines": {
     "node": ">=14.0.0"

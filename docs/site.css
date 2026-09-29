@@ -98,8 +98,8 @@ body {
 .site-brand-mark {
   width: 1.5rem;
   height: 1.5rem;
-  border-radius: 4px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-warm) 100%);
+  border-radius: 0;
+  background: url("favicon.png") center / contain no-repeat;
   flex-shrink: 0;
 }
 

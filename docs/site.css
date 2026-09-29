@@ -96,10 +96,10 @@ body {
 }
 
 .site-brand-mark {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: 0;
-  background: url("favicon.png") center / contain no-repeat;
+  background: url("favicon.png") center / 135% no-repeat;
   flex-shrink: 0;
 }
 

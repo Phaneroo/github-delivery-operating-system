@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="GitHub Delivery OS logo" width="140">
+</p>
+
 # GitHub Delivery Operating System
 
 > A GitHub-native Delivery Governance Framework for structured sprint execution, QA review, and collaborative production release control.

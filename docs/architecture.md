@@ -20,12 +20,12 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `sprint-child-creator` | `issues.opened` (title contains `SPRINT -`) | Parse Sprint Features, create child issues |
-| `auto-close-sprint` | `issues.closed` (body contains `Parent Sprint`) | Update burn-down, auto-close at 100% |
+| `auto-close-sprint` | `issues.closed/reopened` (body contains `Parent Sprint`) | Update burn-down (not-planned tasks leave the count), auto-close at 100%; a reopened task reopens a sprint that closed itself |
 | `notify-release-approver` | `issues.opened` (label `production`), `workflow_dispatch` | Ping release approver; post the release roll-up (plain-English What Changed notes from the QA Requests the release likely covers) |
-| `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested (skipping ones whose PR hasn't merged) |
+| `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; a decline from any release or QA approver → `declined`, lifted only by that same person approving; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested (skipping ones whose PR hasn't merged) |
 | `auto-assign-qa` | `issues.opened/labeled` (label `qa` or `qa-request`) | Assign QA team |
 | `auto-qa-request` | `pull_request.opened/ready_for_review/reopened/synchronize/closed`, `push` to `main` | QA reminder for every change that reaches `main` and isn't docs/settings-only — safety net, not a gate. Default **rolling**: adds a line to the one open rolling QA issue, from the push to `main` (direct pushes, and PRs merged into `main`, including from forks). **per-change**: files a QA Request (+ Task if none is linked) per PR/push, and closes them if the PR is closed unmerged |
-| `qa-rollup-approval` | `issue_comment.created`, `issues.edited` (label `qa-rollup`) | `QA_APPROVER` approves (phrase/emoji comment or the Approved box) → closes the rolling issue; declines → keeps it open |
+| `qa-rollup-approval` | `issue_comment.created`, `issues.edited` (label `qa-rollup`) | `QA_APPROVER` approves (phrase/emoji comment or the Approved box) → closes the rolling issue; declines → keeps it open; with several QA approvers a decline stands until that same person approves |
 | `telegram-issues` | `issues`, `issue_comment`, `pull_request` | Send Telegram alerts |
 | `setup-labels` | `workflow_dispatch` | Create required labels |
 

@@ -64,16 +64,8 @@
       </div>
 
       <section id="install">
-        <h2>One command to install</h2>
-        <p>Add Delivery OS to any repository. No clone, no config — just run:</p>
-        <div class="install-block">
-          <div class="install-label">From your repo root</div>
-          <code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code>
-        </div>
-        <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status, autonomous task tracking (identify, file, update, and close issues as work progresses), and turning a spec or feature description into a full phase-and-task breakdown — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
-
-        <h3 id="install-with-claude-code">Or have Claude Code install it</h3>
-        <p>Already working in <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a>? Open it in the repo you want to set up and paste this prompt. Claude previews the install first and only writes files after you confirm:</p>
+        <h2 id="install-with-claude-code">Install with Claude Code</h2>
+        <p>Open <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> in the repo you want to set up and paste this prompt. Claude previews the install first and only writes files after you confirm:</p>
         <div class="install-block install-block--prompt">
           <div class="install-label">Paste into Claude Code, from your repo root</div>
           <code>Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.</code>
@@ -84,6 +76,14 @@
           <code>Then set the repo variables RELEASE_APPROVER to alice, QA_APPROVER to bob,carol and QA_ASSIGNEES to bob,carol.</code>
         </div>
         <p>With several approvers, a decline from any one of them stands until that same person approves. Once it finishes, the <code>delivery-ops</code> skill is in place, so you can keep going in the same session: ask Claude to create a sprint, open a release, or check status. Skipped the approvers? Set <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> afterwards (see <a href="#claude-code">Delivery Ops</a>).</p>
+
+        <h3 id="install-one-command">Or run one command yourself</h3>
+        <p>No clone, no config. From your repo root, just run:</p>
+        <div class="install-block">
+          <div class="install-label">From your repo root</div>
+          <code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code>
+        </div>
+        <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status, autonomous task tracking (identify, file, update, and close issues as work progresses), and turning a spec or feature description into a full phase-and-task breakdown — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
 
         <div class="table-wrap">
           <table class="workflows-table">

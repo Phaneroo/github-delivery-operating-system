@@ -18,7 +18,15 @@ Open Claude Code in the repo you want to set up and paste:
 Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.
 ```
 
-Claude previews the install, writes files only after you confirm, and checks the result. The `delivery-ops` skill lands in `.claude/skills/delivery-ops/`, so you can carry on in the same session. Afterwards, set the `RELEASE_APPROVER`, `QA_APPROVER` and `QA_ASSIGNEES` repo variables (usernames, no `@`; `RELEASE_APPROVER` and `QA_APPROVER` also take comma-separated lists, and a decline from any release approver blocks the release until that same person approves). All three accept comma-separated lists, e.g. `RELEASE_APPROVER=userA,userB`.
+Claude previews the install, writes files only after you confirm, and checks the result. The `delivery-ops` skill lands in `.claude/skills/delivery-ops/`, so you can carry on in the same session.
+
+**Tip: name your approvers in the same prompt.** Claude only sets repo variables when you ask, because they name real people. Add a line like this (GitHub usernames, no `@`; comma-separated for several people; needs repo admin access):
+
+```text
+Then set the repo variables RELEASE_APPROVER to alice, QA_APPROVER to bob,carol and QA_ASSIGNEES to bob,carol.
+```
+
+With several approvers, a decline from any one of them stands until that same person approves. Skipped this? Set `RELEASE_APPROVER`, `QA_APPROVER` and `QA_ASSIGNEES` afterwards. All three accept comma-separated lists, e.g. `RELEASE_APPROVER=userA,userB`.
 
 <details>
 <summary>Or run the command yourself</summary>

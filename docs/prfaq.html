@@ -134,8 +134,8 @@
         <h2>6. What configuration is required after install?</h2>
         <p>Set GitHub Actions variables (Repository → Settings → Secrets and variables → Actions → Variables) as described in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md">Consumer Setup</a>, for example:</p>
         <ul>
-          <li><code>RELEASE_APPROVER</code> — GitHub username for release approval flows.</li>
-          <li><code>QA_APPROVER</code> — GitHub username for QA approval in dual-approval scenarios.</li>
+          <li><code>RELEASE_APPROVER</code> — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.</li>
+          <li><code>QA_APPROVER</code> — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios. QA can decline too, and a decline stands until that same person approves.</li>
           <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment.</li>
           <li><code>PROJECT_NAME</code> — Optional display name in notifications.</li>
         </ul>

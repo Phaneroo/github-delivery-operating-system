@@ -71,7 +71,7 @@ git push
      ```
 4. Submit
 
-**What happens:** Child issues are created automatically. Each feature line becomes an issue with `Parent Sprint: #N`. Closing child issues updates burn-down; sprint auto-closes at 100%.
+**What happens:** Child issues are created automatically. Each feature line becomes an issue with `Parent Sprint: #N`. Closing child issues updates burn-down; sprint auto-closes at 100%. A child closed as *not planned* leaves the count, and reopening a child updates the burn-down and reopens the sprint if it had closed itself.
 
 ---
 
@@ -180,7 +180,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Approver | Approve | Decline |
 |----------|---------|---------|
 | Release | `approved`, `approve`, `ok`, `go ahead` | `declined`, `reject`, `not approved` |
-| QA | `qa approved`, `approved`, `qa ok`, `looks good` | — |
+| QA | `qa approved`, `approved`, `qa ok`, `looks good` | `qa declined`, `qa rejected`, `declined`, `reject`, `not approved` |
 
 ---
 

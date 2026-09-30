@@ -149,8 +149,8 @@ Each line under "Sprint Features" becomes a child issue with `Parent Sprint: #N`
 
 | Variable | Description |
 |----------|-------------|
-| `RELEASE_APPROVER` | GitHub username of release approver, or a comma-separated list (for notify + authorize) |
-| `QA_APPROVER` | GitHub username of QA approver, or a comma-separated list (for dual approval) |
+| `RELEASE_APPROVER` | GitHub username of release approver, or a comma-separated list (for notify + authorize). A decline from any of them blocks the release until that same person approves |
+| `QA_APPROVER` | GitHub username of QA approver, or a comma-separated list (for dual approval and the rolling QA issue). QA can decline too; a decline stands until that same person approves |
 | `QA_ASSIGNEES` | Comma-separated usernames for QA auto-assignment (e.g. `user1,user2`) |
 | `PROJECT_NAME` | Optional; shown in release approval notifications |
 | `DELIVERY_OS_AUTO_QA_MODE` | Optional; how `auto-qa-request` reminds QA: `rolling` (default, one open rolling QA issue), `per-change` (the pre-1.9.0 behavior: one QA Request + Task per change), or `off` |

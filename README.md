@@ -18,7 +18,15 @@ Open Claude Code in the repo you want to set up and paste:
 Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.
 ```
 
-Claude previews the install, writes files only after you confirm, and checks the result. The `delivery-ops` skill lands in `.claude/skills/delivery-ops/`, so you can carry on in the same session. Afterwards, set the `RELEASE_APPROVER`, `QA_APPROVER` and `QA_ASSIGNEES` repo variables (usernames, no `@`). All three accept comma-separated lists, e.g. `RELEASE_APPROVER=userA,userB`.
+Claude previews the install, writes files only after you confirm, and checks the result. The `delivery-ops` skill lands in `.claude/skills/delivery-ops/`, so you can carry on in the same session.
+
+**Tip: name your approvers in the same prompt.** Claude only sets repo variables when you ask, because they name real people. Add a line like this (GitHub usernames, no `@`; comma-separated for several people; needs repo admin access):
+
+```text
+Then set the repo variables RELEASE_APPROVER to alice, QA_APPROVER to bob,carol and QA_ASSIGNEES to bob,carol.
+```
+
+With several approvers, a decline from any one of them stands until that same person approves. Skipped this? Set `RELEASE_APPROVER`, `QA_APPROVER` and `QA_ASSIGNEES` afterwards. All three accept comma-separated lists, e.g. `RELEASE_APPROVER=userA,userB`.
 
 <details>
 <summary>Or run the command yourself</summary>
@@ -100,7 +108,7 @@ Only the QA approver (`QA_APPROVER`) can decide:
 - **Approve:** comment starting with `qa approved`, `approved`, `qa ok`, `looks good`, `lgtm`, `all good`, `good to go`, `ship it` (anything may follow), or just `ok`, `approve`, `tested` or `passed` as the whole comment ("Tested!" counts; "Ok, I'll test tomorrow" doesn't), or with ✅ 👍 ✔️. Or tick the issue's **Approved** box. This closes the issue, and the next change opens a fresh one.
 - **Decline:** comment starting with `not approved`, `declined`, `decline`, `rejected`, `reject`, `failed`, `changes needed`, `needs work`, `not ok`, `blocked`, or with ❌ 👎 🚫. The issue stays open, and fixes are added to it.
 
-Emoji *reactions* don't count, because GitHub Actions can't see them; put the emoji in a comment. To go back to one QA Request per change, set the repo variable `DELIVERY_OS_AUTO_QA_MODE=per-change`. Details are in [Consumer Setup](docs/consumer-setup.md#rolling-qa-issue-default).
+With several QA approvers, a decline stands until that same person approves. Emoji *reactions* don't count, because GitHub Actions can't see them; put the emoji in a comment. To go back to one QA Request per change, set the repo variable `DELIVERY_OS_AUTO_QA_MODE=per-change`. Details are in [Consumer Setup](docs/consumer-setup.md#rolling-qa-issue-default).
 
 ## Documentation
 

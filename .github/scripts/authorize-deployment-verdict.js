@@ -69,7 +69,11 @@ function matchVerdict(text, vocab) {
 const RELEASE_DECLINE_PHRASES = ['declined', 'rejected', 'reject', 'not approved'];
 const RELEASE_APPROVE_PHRASES = ['approved', 'approve', 'ok', 'go ahead'];
 const RELEASE_QA_APPROVE_PHRASES = ['qa approved', 'approved', 'qa ok', 'looks good'];
+// The release gate's QA approver can decline too (added 1.12.0): the same
+// words as the release approver, plus the "qa"-prefixed forms.
+const RELEASE_QA_DECLINE_PHRASES = ['qa declined', 'qa rejected', ...RELEASE_DECLINE_PHRASES];
 const DECLINE_RE = phraseRegex(RELEASE_DECLINE_PHRASES);
+const QA_DECLINE_RE = phraseRegex(RELEASE_QA_DECLINE_PHRASES);
 const APPROVE_RE = phraseRegex(RELEASE_APPROVE_PHRASES);
 const QA_APPROVE_RE = phraseRegex(RELEASE_QA_APPROVE_PHRASES);
 
@@ -105,20 +109,63 @@ function matchRollingQaVerdict(text) {
 }
 
 /**
- * What the rolling QA issue should do in response to the approver's latest
- * verdict. Every approver action is handled as it arrives, so "the latest
- * verdict wins" falls out of applying these in order.
+ * What the rolling QA issue should do in response to a QA approver's verdict.
+ * Every verdict is handled as it arrives.
+ *
+ * Per-approver rule (same as the release gate): a decline is never overridden
+ * by a different approver. `blockedBy` lists the OTHER QA approvers whose
+ * latest verdict on this issue is a decline; while any exist, an approval is
+ * refused ('blocked'). Only the person who declined lifts it, by approving.
  *
  * @param {{ state: 'open' | 'closed', verdict: 'approved' | 'declined',
- *   anotherRollingOpen: boolean }} params
- * @returns {'close' | 'already-closed' | 'ack-decline' | 'reopen-declined' | 'redirect'}
+ *   anotherRollingOpen: boolean, blockedBy?: string[] }} params
+ * @returns {'close' | 'already-closed' | 'blocked' | 'ack-decline' | 'reopen-declined' | 'redirect'}
  */
-function nextRollingQaAction({ state, verdict, anotherRollingOpen }) {
-  if (verdict === 'approved') return state === 'open' ? 'close' : 'already-closed';
+function nextRollingQaAction({ state, verdict, anotherRollingOpen, blockedBy = [] }) {
+  if (verdict === 'approved') {
+    if (state !== 'open') return 'already-closed';
+    return blockedBy.length ? 'blocked' : 'close';
+  }
   if (state === 'open') return 'ack-decline';
   // Declined after it was approved: reopen it — unless a newer rolling issue
   // has already started, in which case the decline belongs over there.
   return anotherRollingOpen ? 'redirect' : 'reopen-declined';
+}
+
+// The rolling QA workflow announces every verdict it applies as
+// "✅ **QA approved** by @login (...)" / "🔴 **QA declined** by @login (...)".
+// Those bot comments are the log of who decided what, and they also cover the
+// approver who ticked the Approved box (which leaves no comment of their own).
+const ROLLING_QA_LOG_RE = /^(?:✅|🔴) \*\*QA (approved|declined)\*\* by @([A-Za-z0-9-]+)/;
+
+/**
+ * Each QA approver's latest recorded verdict on a rolling QA issue.
+ *
+ * @param {Array<{ user?: { login?: string | null, type?: string } | null, body?: string | null }>} comments
+ *   Chronological (oldest first).
+ * @returns {Map<string, 'approved' | 'declined'>} keyed by lowercased login
+ */
+function rollingQaVerdictLog(comments) {
+  const latest = new Map();
+  for (const c of comments || []) {
+    const login = c.user && c.user.login;
+    if (!login || !/\[bot\]$/.test(login)) continue; // only the workflow's own announcements
+    const m = ROLLING_QA_LOG_RE.exec((c.body || '').trim());
+    if (m) latest.set(m[2].toLowerCase(), m[1]);
+  }
+  return latest;
+}
+
+/**
+ * The QA approvers, other than `actor`, whose latest verdict is a decline.
+ *
+ * @param {Map<string, string>} log - from rollingQaVerdictLog
+ * @param {string} actor
+ * @returns {string[]} lowercased logins
+ */
+function otherQaDecliners(log, actor) {
+  const me = (actor || '').toLowerCase();
+  return [...log].filter(([login, v]) => v === 'declined' && login !== me).map(([login]) => login);
 }
 
 const normalize = (s) => (s || '').toLowerCase();
@@ -139,37 +186,77 @@ function parseLogins(value) {
 
 /**
  * Walks comments in chronological order and keeps the LATEST verdict from
- * each approver, rather than stopping at the first decline seen. This lets a
- * release approver re-approve after an earlier decline (e.g. once fixes
- * land) instead of being permanently stuck as declined.
+ * EACH approver (keyed by lowercased login), separately for the release
+ * approvers and the QA approvers, not one shared verdict. An approver can
+ * change their own mind: their later verdict replaces their earlier one, so a
+ * decline followed by that same person's approval (e.g. once fixes land) is
+ * an approval.
+ *
+ * A decline is never overridden by a different approver, on either side:
+ *   - 'declined' if ANY approver's latest verdict is 'declined'
+ *   - otherwise 'approved' if at least one approver's latest verdict is 'approved'
+ *   - otherwise null
+ *
+ * `qaApproved` is `qaVerdict === 'approved'`: a QA approver's approval counts
+ * only while no QA approver's latest verdict is a decline.
  *
  * @param {Array<{ user?: { login?: string | null } | null, body?: string | null }>} comments
  *   Chronological (oldest first), matching the order github.paginate(listComments) returns.
  * @param {string} releaseApprover - one login or a comma-separated list
  * @param {string} qaApprover - one login or a comma-separated list
- * @returns {{ releaseVerdict: 'approved' | 'declined' | null, qaApproved: boolean }}
+ * @returns {{ releaseVerdict: 'approved' | 'declined' | null,
+ *   qaVerdict: 'approved' | 'declined' | null, qaApproved: boolean }}
  */
 function computeVerdict(comments, releaseApprover, qaApprover) {
   const releaseLogins = parseLogins(releaseApprover);
   const qaLogins = parseLogins(qaApprover);
-  let releaseVerdict = null;
-  let qaApproved = false;
+  const latestRelease = new Map();
+  const latestQa = new Map();
 
   for (const comment of comments) {
-    const login = comment.user && comment.user.login;
+    const login = normalize(comment.user && comment.user.login);
     const body = (comment.body || '').trim();
 
-    if (releaseLogins.includes(normalize(login))) {
+    if (releaseLogins.includes(login)) {
       const verdict = matchVerdict(body, { approve: APPROVE_RE, decline: DECLINE_RE });
-      if (verdict) releaseVerdict = verdict;
+      if (verdict) latestRelease.set(login, verdict);
     }
 
-    if (qaLogins.includes(normalize(login)) && QA_APPROVE_RE.test(body)) {
-      qaApproved = true;
+    if (qaLogins.includes(login)) {
+      const verdict = matchVerdict(body, { approve: QA_APPROVE_RE, decline: QA_DECLINE_RE });
+      if (verdict) latestQa.set(login, verdict);
     }
   }
 
-  return { releaseVerdict, qaApproved };
+  const combine = (map) => {
+    const verdicts = [...map.values()];
+    if (verdicts.includes('declined')) return 'declined';
+    if (verdicts.includes('approved')) return 'approved';
+    return null;
+  };
+  const releaseVerdict = combine(latestRelease);
+  const qaVerdict = combine(latestQa);
+
+  return { releaseVerdict, qaVerdict, qaApproved: qaVerdict === 'approved' };
+}
+
+/**
+ * What authorize-deployment should do for the current verdicts and the
+ * release issue's live labels. Keeps the `declined` label truthful: a decline
+ * from either the release approver or the QA approver applies it, and it is
+ * lifted as soon as nobody's latest verdict is a decline, not only once the
+ * release is fully authorized.
+ *
+ * @param {{ releaseVerdict: 'approved' | 'declined' | null,
+ *   qaVerdict: 'approved' | 'declined' | null, declined: boolean, ready: boolean }} params
+ *   declined/ready: the labels currently on the issue
+ * @returns {'decline' | 'authorize' | 'clear-declined' | 'none'}
+ */
+function nextReleaseAction({ releaseVerdict, qaVerdict, declined, ready }) {
+  if (releaseVerdict === 'declined' || qaVerdict === 'declined') return declined ? 'none' : 'decline';
+  if (releaseVerdict === 'approved' && qaVerdict === 'approved' && !ready) return 'authorize';
+  if (declined && (releaseVerdict || qaVerdict)) return 'clear-declined';
+  return 'none';
 }
 
 // Footers auto-qa-request.js writes on what it files (buildAutoTaskBody /
@@ -219,12 +306,15 @@ module.exports = {
   matchVerdict,
   matchRollingQaVerdict,
   nextRollingQaAction,
+  rollingQaVerdictLog,
+  otherQaDecliners,
   RELEASE_DECLINE_PHRASES,
   RELEASE_APPROVE_PHRASES,
   RELEASE_QA_APPROVE_PHRASES,
+  RELEASE_QA_DECLINE_PHRASES,
   ROLLING_QA_APPROVE_PHRASES,
   ROLLING_QA_APPROVE_WHOLE_COMMENT,
   ROLLING_QA_DECLINE_PHRASES,
   ROLLING_QA_APPROVE_EMOJI,
   ROLLING_QA_DECLINE_EMOJI,
-  computeVerdict, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };
+  nextReleaseAction, computeVerdict, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE, QA_DECLINE_RE };

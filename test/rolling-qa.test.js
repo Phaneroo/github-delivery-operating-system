@@ -526,3 +526,68 @@ test('latest verdict wins end to end: approve, then decline reopens it, then app
   await runScript(APPROVAL_SCRIPT, { github, context: commentContext('QaLead', 'ship it'), env: APPROVER_ENV });
   assert.equal(store.issues[0].state, 'closed');
 });
+
+// ---------------------------------------------------------------------------
+// several QA approvers: a decline is never overridden by a different approver
+// ---------------------------------------------------------------------------
+
+const TWO_QA_ENV = { QA_APPROVER: 'QaLead, QaTwo' };
+const run = async (repoFx, context) => runScript(APPROVAL_SCRIPT, { github: repoFx.github, context, env: TWO_QA_ENV });
+
+test('two QA approvers: A declines, B approves -> it stays open and says who has to lift the decline', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', 'needs work: logout broke'));
+  await run(fx, commentContext('QaTwo', 'lgtm'));
+  assert.equal(fx.store.issues[0].state, 'open');
+  assert.match(fx.store.comments[1].body, /@QaTwo @qalead declined this, and only they can lift it by approving/);
+});
+
+test('two QA approvers: the approver who declined lifts it by approving, and that closes it', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', 'needs work'));
+  await run(fx, commentContext('QaTwo', 'lgtm'));
+  await run(fx, commentContext('QaLead', 'approved'));
+  assert.equal(fx.store.issues[0].state, 'closed');
+  assert.match(fx.store.comments[2].body, /QA approved\*\* by @QaLead/);
+});
+
+test('two QA approvers: B ticking the Approved box is refused and unticked while A\'s decline stands', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', '❌'));
+  const before = fx.store.issues[0].body;
+  const after = before.replace(`- [ ] ${APPROVAL_BOX}`, `- [x] ${APPROVAL_BOX}`);
+  fx.store.issues[0].body = after;
+  await run(fx, editContext('QaTwo', before, after));
+  assert.equal(fx.store.issues[0].state, 'open');
+  assert.equal(approvalBoxTicked(fx.store.issues[0].body), false);
+  assert.match(fx.store.comments[1].body, /unticked the Approved box/);
+});
+
+test('two QA approvers: an approver who declines and then approves with the box lifts their own decline', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', 'needs work'));
+  const before = fx.store.issues[0].body;
+  const after = before.replace(`- [ ] ${APPROVAL_BOX}`, `- [x] ${APPROVAL_BOX}`);
+  fx.store.issues[0].body = after;
+  await run(fx, editContext('QaLead', before, after));
+  assert.equal(fx.store.issues[0].state, 'closed');
+});
+
+test('two QA approvers: once approved and closed, a later approval by the other is just "already closed"', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', 'approved'));
+  await run(fx, commentContext('QaTwo', 'approved'));
+  assert.equal(fx.store.issues[0].state, 'closed');
+  assert.equal(fx.store.comments.length, 1);
+});
+
+test('two QA approvers: B declining after A approved reopens it, and then A alone cannot close it again', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', 'approved'));
+  await run(fx, commentContext('QaTwo', 'not approved: found a bug'));
+  assert.equal(fx.store.issues[0].state, 'open');
+  await run(fx, commentContext('QaLead', 'approved'));
+  assert.equal(fx.store.issues[0].state, 'open');
+  await run(fx, commentContext('QaTwo', 'approved'));
+  assert.equal(fx.store.issues[0].state, 'closed');
+});

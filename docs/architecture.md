@@ -54,7 +54,7 @@ Approvers and assignees are configured via **repo variables** (Settings → Secr
 
 | Variable | Purpose |
 |----------|---------|
-| `RELEASE_APPROVER` | Username for notify + authorize workflows |
+| `RELEASE_APPROVER` | Username (or comma-separated list) for notify + authorize workflows; any approver's decline blocks until they re-approve |
 | `QA_APPROVER` | Username for dual approval |
 | `QA_ASSIGNEES` | Comma-separated usernames for auto-assign-qa |
 | `PROJECT_NAME` | Optional; shown in release notifications |

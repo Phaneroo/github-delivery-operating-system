@@ -103,6 +103,9 @@ jobs:
             URL="${ISSUE_URL}"
             COMMENT=$(echo "$COMMENT_BODY" | head -c 300)
 
+            # The decline/approve alerts are for Production Release issues only:
+            # the release approver saying "ok" on a bug or a sprint task is not
+            # a release approval.
             # Case-insensitive actor comparison: GitHub logins are case-insensitive,
             # but a plain bash == is not, so a RELEASE_APPROVER var with different
             # casing than the actual login would otherwise never match here.
@@ -112,14 +115,14 @@ jobs:
             # workflow wouldn't actually treat as a decline/approval (e.g. "not
             # approved" mid-sentence, or "okay, I'll look at this tomorrow" —
             # "ok" without \b would otherwise match as a false approval).
-            if [[ ",$(echo "${RELEASE_APPROVER,,}" | tr -d ' @')," == *",${ACTOR,,},"* ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)\b"; then
+            if [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production') }}" == "true" ]] && [[ ",$(echo "${RELEASE_APPROVER,,}" | tr -d ' @')," == *",${ACTOR,,},"* ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)\b"; then
               MESSAGE="🔴🛑 RELEASE DECLINED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             # Matches authorize-deployment.yml's full APPROVE_RE keyword set
             # (approved|approve|ok|go ahead), not just "approved" — it used to
             # miss "ok"/"go ahead"/"approve", so a release could be approved
             # for real with no Telegram alert sent for it.
-            elif [[ ",$(echo "${RELEASE_APPROVER,,}" | tr -d ' @')," == *",${ACTOR,,},"* ]] && echo "$COMMENT_BODY" | grep -iqE "^(approved|approve|ok|go ahead)\b"; then
+            elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production') }}" == "true" ]] && [[ ",$(echo "${RELEASE_APPROVER,,}" | tr -d ' @')," == *",${ACTOR,,},"* ]] && echo "$COMMENT_BODY" | grep -iqE "^(approved|approve|ok|go ahead)\b"; then
               MESSAGE="🟢🛡️ RELEASE APPROVED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'bug') }}" == "true" ]]; then

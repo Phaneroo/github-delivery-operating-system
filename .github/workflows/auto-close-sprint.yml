@@ -2,7 +2,9 @@ name: Update Sprint Progress + Intelligence + Auto Close
 
 on:
   issues:
-    types: [closed]
+    # reopened: bringing a child back lowers the burn-down and, if the sprint
+    # had closed itself, reopens it.
+    types: [closed, reopened]
 
 permissions:
   issues: write
@@ -38,6 +40,9 @@ jobs:
             // it isn't only verified by hand whenever it changes.
             const {
               parseParentSprintNumber,
+              isSprintChild,
+              AUTO_CLOSE_COMMENT,
+              wasAutoClosed,
               parseSprintDates,
               computeTimePercent,
               computeProgress,
@@ -90,9 +95,9 @@ jobs:
               per_page: 100
             });
 
-            const children = allIssues.filter(i =>
-              i.body && i.body.includes(`Parent Sprint: #${sprintNumber}`)
-            );
+            // Exact-number match (not a substring): "Parent Sprint: #57" is not
+            // a child of sprint #5. Pull requests never count.
+            const children = allIssues.filter(i => isSprintChild(i, sprintNumber));
 
             const { progressPercent } = computeProgress(children);
             const healthEmoji = computeHealthEmoji(progressPercent, timePercent);
@@ -106,7 +111,39 @@ jobs:
               body: updatedBody
             });
 
-            if (progressPercent === 100) {
+            const sprintClosed = sprintIssue.data.state === "closed";
+
+            // A child came back: if the sprint had closed itself, it isn't
+            // finished any more. A sprint somebody closed by hand is left alone.
+            if (context.payload.action === "reopened") {
+              if (sprintClosed && progressPercent < 100) {
+                const sprintComments = await github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: sprintNumber,
+                  per_page: 100
+                });
+                if (wasAutoClosed(sprintComments)) {
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: sprintNumber,
+                    state: "open"
+                  });
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: sprintNumber,
+                    body: `♻️ Sprint reopened: #${issue.number} was reopened, so the sprint is at ${progressPercent}% again.`
+                  });
+                }
+              }
+              return;
+            }
+
+            // Close the sprint once, when the last child closes (not again for
+            // a later child closing on a sprint that is already closed).
+            if (progressPercent === 100 && !sprintClosed) {
 
               await github.rest.issues.update({
                 owner: context.repo.owner,
@@ -119,7 +156,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: sprintNumber,
-                body: "🎉 All sprint tasks complete. Sprint automatically closed."
+                body: AUTO_CLOSE_COMMENT
               });
 
               if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {

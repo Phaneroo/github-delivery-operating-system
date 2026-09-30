@@ -15,6 +15,20 @@ function parseParentSprintNumber(body) {
 }
 
 /**
+ * Whether an issue is a child of sprint `sprintNumber`. Compares the parsed
+ * number, not a substring: "Parent Sprint: #57" must not count as a child of
+ * sprint #5. Pull requests are never children.
+ *
+ * @param {{ body?: string | null, pull_request?: object }} issue
+ * @param {number} sprintNumber
+ * @returns {boolean}
+ */
+function isSprintChild(issue, sprintNumber) {
+  if (!issue || issue.pull_request) return false;
+  return parseParentSprintNumber(issue.body) === sprintNumber;
+}
+
+/**
  * Parses sprint dates out of a sprint issue's body, supporting both the
  * combined "Sprint Dates: X to Y" format and the separate "Sprint Start" /
  * "Sprint End" field format (the sprint_planning.yml template).
@@ -65,10 +79,16 @@ function computeTimePercent(startDate, endDate, now) {
 }
 
 /**
- * @param {Array<{ state: string }>} children
+ * Work that was dropped (closed as "not planned") leaves the sprint's count
+ * entirely, so abandoning a task neither inflates progress nor blocks the
+ * sprint from finishing. If everything was dropped there is nothing left to
+ * complete, so progress stays 0 and the sprint is not auto-closed.
+ *
+ * @param {Array<{ state: string, state_reason?: string | null }>} children
  * @returns {{ progressPercent: number, closedCount: number, totalCount: number }}
  */
-function computeProgress(children) {
+function computeProgress(allChildren) {
+  const children = allChildren.filter((i) => !(i.state === 'closed' && i.state_reason === 'not_planned'));
   const totalCount = children.length;
   const closedCount = children.filter((i) => i.state === 'closed').length;
   const progressPercent = totalCount === 0 ? 0 : Math.round((closedCount / totalCount) * 100);
@@ -95,6 +115,19 @@ function renderBurnDown(progressPercent, totalBars = 20) {
   return '█'.repeat(filledBars) + '░'.repeat(totalBars - filledBars);
 }
 
+// Posted when the last child closes and the sprint closes itself. It also
+// marks a sprint as auto-closed, so a reopened child can reopen it (a sprint
+// somebody closed by hand is left alone).
+const AUTO_CLOSE_COMMENT = '🎉 All sprint tasks complete. Sprint automatically closed.';
+
+/**
+ * @param {Array<{ body?: string | null }>} comments - the sprint issue's comments
+ * @returns {boolean} whether the sprint was closed by auto-close-sprint
+ */
+function wasAutoClosed(comments) {
+  return (comments || []).some((c) => (c.body || '').trim() === AUTO_CLOSE_COMMENT);
+}
+
 /**
  * Replaces any previous "## 🚦 Sprint Status" block in the sprint body with
  * a freshly rendered one (appended at the end).
@@ -115,6 +148,9 @@ function updateSprintBody(sprintBody, { progressPercent, timePercent, healthEmoj
 
 module.exports = {
   parseParentSprintNumber,
+  isSprintChild,
+  AUTO_CLOSE_COMMENT,
+  wasAutoClosed,
   parseSprintDates,
   computeTimePercent,
   computeProgress,

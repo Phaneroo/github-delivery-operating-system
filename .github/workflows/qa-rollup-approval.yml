@@ -43,7 +43,7 @@ jobs:
           QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
         with:
           script: |
-            const { matchRollingQaVerdict, nextRollingQaAction } =
+            const { matchRollingQaVerdict, nextRollingQaAction, rollingQaVerdictLog, otherQaDecliners } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
             const {
               ROLLING_LABELS,
@@ -99,7 +99,19 @@ jobs:
               anotherRollingOpen = open.length > 0 ? open[0].number : false;
             }
 
-            const action = nextRollingQaAction({ state: live.state, verdict, anotherRollingOpen: Boolean(anotherRollingOpen) });
+            // A decline from one QA approver is never overridden by another: an
+            // approval is refused while any other approver's latest verdict here
+            // is a decline. The workflow's own "QA approved/declined by @x"
+            // comments are the log of who decided what.
+            let blockedBy = [];
+            if (verdict === 'approved') {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: issueNumber, per_page: 100
+              });
+              blockedBy = otherQaDecliners(rollingQaVerdictLog(comments), actor);
+            }
+
+            const action = nextRollingQaAction({ state: live.state, verdict, anotherRollingOpen: Boolean(anotherRollingOpen), blockedBy });
             const changes = parseChanges(live.body);
 
             if (action === 'close') {
@@ -119,6 +131,13 @@ jobs:
               const reopened = action === 'reopen-declined' ? ' Reopened, since this comes after the earlier approval.' : '';
               await comment(`🔴 **QA declined** by @${actor} (${how}).${reopened}\n\nThis stays open: fixes pushed to \`main\` are added to the list above, and a later approval closes it.`);
               console.log(`Rolling QA issue #${issueNumber} declined by ${actor} (${action}).`);
+            } else if (action === 'blocked') {
+              if (context.eventName === 'issues') {
+                await github.rest.issues.update({ owner, repo, issue_number: issueNumber, body: untickApprovalBox(live.body) });
+              }
+              const who = blockedBy.map((b) => '@' + b).join(', ');
+              await comment(`@${actor} ${who} declined this, and only they can lift it by approving, so I've left it open${context.eventName === 'issues' ? " and unticked the Approved box" : ''}.`);
+              console.log(`Rolling QA issue #${issueNumber}: approval by ${actor} refused, ${who} declined.`);
             } else if (action === 'redirect') {
               await comment(`@${actor} this list was already approved and closed, and a newer rolling QA issue is open: #${anotherRollingOpen}. Please decline there if the problem is still present.`);
             } else {

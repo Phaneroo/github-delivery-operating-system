@@ -8,15 +8,45 @@
 
 [![Socket Badge](https://badge.socket.dev/npm/package/github-delivery-os)](https://socket.dev/npm/package/github-delivery-os)
 
-Delivery OS embeds structured intake, sprint orchestration, QA governance, and collaborative release gates directly into your GitHub repos — replacing informal coordination (manual approvals, inconsistent sprint tracking, socially enforced releases) without replacing your CI/CD or disrupting how you already work.
+Delivery OS embeds structured intake, sprint orchestration, QA governance, and collaborative release gates directly into your GitHub repos — replacing informal coordination (manual approvals, inconsistent sprint tracking, socially enforced releases) without replacing your CI/CD or disrupting how you already work. Install it with [Claude Code](https://claude.com/claude-code), then run it by asking: the **`delivery-ops` skill** turns "create Sprint 14" or "approve release #12" into correctly shaped issues and comments.
 
-## Install
+## Install with Claude Code
 
-```bash
-npx github-delivery-os install --with-templates .
+Open Claude Code in the repo you want to set up and paste:
+
+```text
+Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.
 ```
 
-From your repo root. Add `--with-labels` to create labels via `gh` CLI, `--with-skill` for the [Claude Code](https://claude.com/claude-code) skill, `--dry-run` to preview first. See the [landing page](https://phaneroo.github.io/github-delivery-operating-system/#install) for every flag combination and when to use it, or [Consumer Setup](docs/consumer-setup.md) for the clone-and-run alternative, configuration, and troubleshooting.
+Claude previews the install, writes files only after you confirm, and checks the result. The `delivery-ops` skill lands in `.claude/skills/delivery-ops/`, so you can carry on in the same session. Afterwards, set the `RELEASE_APPROVER`, `QA_APPROVER` and `QA_ASSIGNEES` repo variables (usernames, no `@`).
+
+<details>
+<summary>Or run the command yourself</summary>
+
+```bash
+npx github-delivery-os install --with-templates --with-labels --with-skill .
+```
+
+From your repo root. `--with-labels` creates labels via the `gh` CLI, `--with-skill` adds the Claude Code skill, `--dry-run` previews first. Drop `--with-skill` if you don't use Claude Code. See the [landing page](https://phaneroo.github.io/github-delivery-operating-system/#install) for every flag combination and when to use it, or [Consumer Setup](docs/consumer-setup.md) for the clone-and-run alternative, configuration, and troubleshooting.
+
+</details>
+
+## Delivery Ops: run it by asking Claude
+
+The `delivery-ops` skill (`.claude/skills/delivery-ops/SKILL.md`) lets you drive every workflow in plain language. It checks the repo first, shows the exact issue or comment, and only posts after you confirm.
+
+- **Create issues that trigger real automation:** sprint planning, production release, QA request, and bug issues shaped exactly as the installed workflows expect, not just plain issues
+- **Comment as an approver:** release/QA sign-off in the phrasing `authorize-deployment` actually recognizes
+- **Check status:** labels, latest comments, sprint burn-down
+- **Run autonomous task tracking:** notice tasks/bugs while working in a session, file them, group them into phases via sprints, maintain a roadmap issue, and update/close them as work progresses
+- **Turn a spec into a full breakdown:** an SRS/PRD or a plain-language feature description becomes real phase (sprint) and task issues, not just a document
+- **Run a cleanup sweep:** finds stale/orphaned/inconsistent issues and roadmap drift, always confirmed before anything is touched
+
+Try: *"Create a sprint called Sprint 14 for checkout revamp, running Oct 1 to Oct 14, with features: …"*, *"Approve release #12"*, or *"How's Sprint 14 doing?"*
+
+It also comes with an update check: when a Claude Code session starts in a repo whose install is behind the latest release, Claude offers to update it (only after you confirm). For the same reminder in any terminal when you `cd` into a repo, run `npx github-delivery-os@latest shell-hook --install`. See [Consumer Setup](docs/consumer-setup.md#getting-told-when-an-update-is-out).
+
+Full workflow table, quick start, and Claude Code walkthroughs are on the [landing page](https://phaneroo.github.io/github-delivery-operating-system/).
 
 ## What you get
 
@@ -26,19 +56,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI, `--with-
 | **Dual approval gates** | Release approver + QA sign-off required before deploy |
 | **Rolling QA reminder** | Every change that reaches `main` is added to one open *"QA REQUEST - Changes awaiting QA"* issue; the QA approver approves or declines it with a comment or a checkbox |
 | **Auto-assign QA & Telegram alerts** | QA-labeled issues get assigned automatically; optional alerts for bugs, QA, sprints, releases |
-| **Claude Code skill** (`--with-skill`) | Operate it all in plain language — see below |
-
-The Claude Code skill (`.claude/skills/delivery-ops/SKILL.md`) can:
-- **Create issues that trigger real automation** — sprint planning, production release, QA request, and bug issues shaped exactly as the installed workflows expect, not just plain issues
-- **Comment as an approver** — release/QA sign-off in the phrasing `authorize-deployment` actually recognizes
-- **Check status** — labels, latest comments, sprint burn-down
-- **Run autonomous task tracking** — notice tasks/bugs while working in a session, file them, group them into phases via sprints, maintain a roadmap issue, and update/close them as work progresses
-- **Turn a spec into a full breakdown** — an SRS/PRD or a plain-language feature description becomes real phase (sprint) and task issues, not just a document
-- **Run a cleanup sweep** — finds stale/orphaned/inconsistent issues and roadmap drift, always confirmed before anything is touched
-
-It also comes with an update check: when a Claude Code session starts in a repo whose install is behind the latest release, Claude offers to update it (only after you confirm). For the same reminder in any terminal when you `cd` into a repo, run `npx github-delivery-os@latest shell-hook --install`. See [Consumer Setup](docs/consumer-setup.md#getting-told-when-an-update-is-out).
-
-Full workflow table, quick start, and Claude Code walkthroughs are on the [landing page](https://phaneroo.github.io/github-delivery-operating-system/).
+| **Claude Code skill** (`--with-skill`) | Operate it all in plain language — see [Delivery Ops](#delivery-ops-run-it-by-asking-claude) |
 
 ### Rolling QA issue
 

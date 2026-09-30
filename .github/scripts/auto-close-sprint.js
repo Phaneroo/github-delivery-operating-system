@@ -120,12 +120,26 @@ function renderBurnDown(progressPercent, totalBars = 20) {
 // somebody closed by hand is left alone).
 const AUTO_CLOSE_COMMENT = '🎉 All sprint tasks complete. Sprint automatically closed.';
 
+// The sprint is closed, then the comment is posted a moment later.
+const AUTO_CLOSE_WINDOW_MS = 2 * 60 * 1000;
+
 /**
- * @param {Array<{ body?: string | null }>} comments - the sprint issue's comments
- * @returns {boolean} whether the sprint was closed by auto-close-sprint
+ * Whether the sprint's CURRENT close is the automatic one: the completion
+ * comment exists and was posted right when the sprint last closed. A sprint
+ * that auto-closed, was reopened, and was then closed by hand still has the
+ * old comment, but its latest close is not the automatic one.
+ *
+ * @param {Array<{ body?: string | null, created_at?: string }>} comments - the sprint issue's comments
+ * @param {string | null} [closedAt] - when the sprint was last closed
+ * @returns {boolean}
  */
-function wasAutoClosed(comments) {
-  return (comments || []).some((c) => (c.body || '').trim() === AUTO_CLOSE_COMMENT);
+function wasAutoClosed(comments, closedAt) {
+  const marks = (comments || []).filter((c) => (c.body || '').trim() === AUTO_CLOSE_COMMENT);
+  if (!marks.length) return false;
+  if (!closedAt) return true; // can't tell when it closed: trust the comment
+  const last = marks[marks.length - 1];
+  const gap = Math.abs(Date.parse(closedAt) - Date.parse(last.created_at));
+  return gap <= AUTO_CLOSE_WINDOW_MS;
 }
 
 /**

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.2] - 2026-09-30
+
+### Fixed
+
+Found by an independent review of 1.12.0.
+
+- **One login in both `RELEASE_APPROVER` and `QA_APPROVER` can lift their own QA decline with the release words too.** The usual single-maintainer setup: `declined` records a decline on both sides, and `ok` / `go ahead` / `approve` now approve both, instead of leaving the QA side declined (only `approved`, `qa approved`, `qa ok` and `looks good` used to lift it). QA-only logins keep the QA vocabulary.
+- **Rolling QA decline log handles logins with underscores** (Enterprise Managed User accounts such as `user_shortcode`). The login was cut at the underscore, so the approver could never lift their own decline.
+- **A decline from someone no longer in `QA_APPROVER` stops blocking the rolling QA issue.** They can't comment as an approver any more, so nobody could lift it. The release gate already ignored non-listed logins; the two now agree.
+- **A sprint someone closed by hand stays closed when a task is reopened later**, even if it had auto-closed once before. The sprint is only reopened when its latest close was the automatic one (the completion comment was posted right as it closed).
+- **A reopened task refreshes the burn-down, and tasks still auto-close the sprint, even when the sprint's dates can't be read.** Unreadable dates are treated like a broken range (time 100%, so health flags it) instead of skipping the run.
+- **Telegram now alerts when a QA approver declines a release** ("RELEASE DECLINED BY QA"), matching what `authorize-deployment` already did.
+
 ## [1.12.1] - 2026-09-30
 
 ### Fixed

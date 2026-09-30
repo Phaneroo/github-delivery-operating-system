@@ -23,6 +23,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
+          QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
           ACTOR: ${{ github.actor }}
@@ -117,6 +118,11 @@ jobs:
             # "ok" without \b would otherwise match as a false approval).
             if [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production') }}" == "true" ]] && [[ ",$(echo "${RELEASE_APPROVER,,}" | tr -d ' @')," == *",${ACTOR,,},"* ]] && echo "$COMMENT_BODY" | grep -iqE "^(declined|rejected|reject|not approved)\b"; then
               MESSAGE="🔴🛑 RELEASE DECLINED%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
+
+            # A QA approver can decline a release too (same words as
+            # authorize-deployment.yml's QA_DECLINE_RE), and that blocks it.
+            elif [[ "${{ contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production') }}" == "true" ]] && [[ ",$(echo "${QA_APPROVER,,}" | tr -d ' @')," == *",${ACTOR,,},"* ]] && echo "$COMMENT_BODY" | grep -iqE "^(qa declined|qa rejected|declined|rejected|reject|not approved)\b"; then
+              MESSAGE="🔴🧪 RELEASE DECLINED BY QA%0A$TITLE%0A$URL%0A---%0A👤 $ACTOR%0A🕒 $TIMESTAMP"
 
             # Matches authorize-deployment.yml's full APPROVE_RE keyword set
             # (approved|approve|ok|go ahead), not just "approved" — it used to

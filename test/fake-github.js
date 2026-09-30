@@ -86,7 +86,7 @@ function createFakeRepo({ issues = [], pulls = {}, commits = {}, comments = [] }
         return { data: view(issue) };
       },
       createComment: async ({ issue_number, body }) => {
-        store.comments.push({ issue_number, body, user: { login: 'github-actions[bot]' } });
+        store.comments.push({ issue_number, body, user: { login: 'github-actions[bot]' }, created_at: now() });
         return { data: {} };
       },
       // Comments seeded with `comments` keep their own author; the ones a

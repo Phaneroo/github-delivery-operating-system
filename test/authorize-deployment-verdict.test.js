@@ -392,3 +392,31 @@ test('otherQaDecliners excludes the actor themselves', () => {
   assert.deepEqual(otherQaDecliners(log, 'qa3'), ['qa1', 'qa2']);
   assert.deepEqual(otherQaDecliners(new Map(), 'qa1'), []);
 });
+
+// --- 1.12.2 review findings ---
+
+test('same login in both lists: the release words lift their own QA decline', () => {
+  for (const word of ['ok', 'go ahead', 'approve', 'approved']) {
+    const r = computeVerdict([comment('solo', 'declined'), comment('solo', word)], 'solo', 'solo');
+    assert.equal(r.releaseVerdict, 'approved', word);
+    assert.equal(r.qaVerdict, 'approved', word);
+  }
+});
+
+test('QA-only logins keep the QA vocabulary: "ok" does not approve QA', () => {
+  const r = computeVerdict([comment('qa1', 'ok')], 'rel1', 'qa1');
+  assert.equal(r.qaVerdict, null);
+});
+
+test('rollingQaVerdictLog keeps logins with underscores whole (Enterprise Managed Users)', () => {
+  const log = rollingQaVerdictLog([bot('🔴 **QA declined** by @alice_corp (commented "x").')]);
+  assert.deepEqual([...log], [['alice_corp', 'declined']]);
+  assert.deepEqual(otherQaDecliners(log, 'alice_corp'), []);
+  assert.deepEqual(otherQaDecliners(log, 'bob'), ['alice_corp']);
+});
+
+test('otherQaDecliners ignores decliners who are no longer QA approvers', () => {
+  const log = new Map([['gone', 'declined'], ['qa2', 'declined']]);
+  assert.deepEqual(otherQaDecliners(log, 'qa1', ['QA1', 'qa2']), ['qa2']);
+  assert.deepEqual(otherQaDecliners(log, 'qa1', ['qa1']), []);
+});

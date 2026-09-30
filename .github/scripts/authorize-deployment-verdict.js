@@ -74,6 +74,10 @@ const RELEASE_QA_APPROVE_PHRASES = ['qa approved', 'approved', 'qa ok', 'looks g
 const RELEASE_QA_DECLINE_PHRASES = ['qa declined', 'qa rejected', ...RELEASE_DECLINE_PHRASES];
 const DECLINE_RE = phraseRegex(RELEASE_DECLINE_PHRASES);
 const QA_DECLINE_RE = phraseRegex(RELEASE_QA_DECLINE_PHRASES);
+// One login in BOTH approver variables (the usual single-maintainer setup)
+// approves both sides with the same words, so the release words ("ok", "go
+// ahead") lift their own QA decline too.
+const QA_OR_RELEASE_APPROVE_RE = phraseRegex([...RELEASE_QA_APPROVE_PHRASES, ...RELEASE_APPROVE_PHRASES]);
 const APPROVE_RE = phraseRegex(RELEASE_APPROVE_PHRASES);
 const QA_APPROVE_RE = phraseRegex(RELEASE_QA_APPROVE_PHRASES);
 
@@ -136,7 +140,9 @@ function nextRollingQaAction({ state, verdict, anotherRollingOpen, blockedBy = [
 // "✅ **QA approved** by @login (...)" / "🔴 **QA declined** by @login (...)".
 // Those bot comments are the log of who decided what, and they also cover the
 // approver who ticked the Approved box (which leaves no comment of their own).
-const ROLLING_QA_LOG_RE = /^(?:✅|🔴) \*\*QA (approved|declined)\*\* by @([A-Za-z0-9-]+)/;
+// Logins are letters, digits and hyphens, plus underscores on Enterprise
+// Managed User accounts (user_shortcode).
+const ROLLING_QA_LOG_RE = /^(?:✅|🔴) \*\*QA (approved|declined)\*\* by @([A-Za-z0-9_-]+)/;
 
 /**
  * Each QA approver's latest recorded verdict on a rolling QA issue.
@@ -158,14 +164,21 @@ function rollingQaVerdictLog(comments) {
 
 /**
  * The QA approvers, other than `actor`, whose latest verdict is a decline.
+ * Only CURRENT approvers count: a decline from someone since removed from
+ * QA_APPROVER can't be lifted (they're no longer allowed to comment), so it
+ * must not block anyone.
  *
  * @param {Map<string, string>} log - from rollingQaVerdictLog
  * @param {string} actor
+ * @param {string[] | null} [approvers] - the current QA approver logins; omit to skip the filter
  * @returns {string[]} lowercased logins
  */
-function otherQaDecliners(log, actor) {
+function otherQaDecliners(log, actor, approvers = null) {
   const me = (actor || '').toLowerCase();
-  return [...log].filter(([login, v]) => v === 'declined' && login !== me).map(([login]) => login);
+  const current = approvers && approvers.map((a) => a.toLowerCase());
+  return [...log]
+    .filter(([login, v]) => v === 'declined' && login !== me && (!current || current.includes(login)))
+    .map(([login]) => login);
 }
 
 const normalize = (s) => (s || '').toLowerCase();
@@ -223,7 +236,8 @@ function computeVerdict(comments, releaseApprover, qaApprover) {
     }
 
     if (qaLogins.includes(login)) {
-      const verdict = matchVerdict(body, { approve: QA_APPROVE_RE, decline: QA_DECLINE_RE });
+      const approve = releaseLogins.includes(login) ? QA_OR_RELEASE_APPROVE_RE : QA_APPROVE_RE;
+      const verdict = matchVerdict(body, { approve, decline: QA_DECLINE_RE });
       if (verdict) latestQa.set(login, verdict);
     }
   }

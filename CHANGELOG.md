@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] - 2026-09-30
+
+### Fixed
+
+- **Docs match 1.12.0.** The pages 1.12.0 shipped with were out of date: the README and npm page now cover the per-approver decline rule for both sides, and `how-to`, `architecture`, `consumer-setup`, the PRFAQ and the landing page describe QA declining a release, approver lists, and the sprint burn-down changes (not-planned tasks leave the count, reopened tasks update it). No code changes.
+
 ## [1.12.0] - 2026-09-30
 
 ### Changed

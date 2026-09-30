@@ -81,7 +81,7 @@ GitHub’s built-in features focus on **code review** and **branch rules**. Deli
 
 Set **GitHub Actions variables** (Repository → Settings → Secrets and variables → Actions → Variables) as described in [Consumer Setup](consumer-setup.md), for example:
 
-- `RELEASE_APPROVER` — GitHub username for release approval flows.
+- `RELEASE_APPROVER` — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.
 - `QA_APPROVER` — GitHub username for QA approval in dual-approval scenarios.
 - `QA_ASSIGNEES` — Comma-separated handles for QA assignment.
 - `PROJECT_NAME` — Optional display name in notifications.

@@ -4,6 +4,9 @@ const assert = require('assert/strict');
 const { test } = require('./harness');
 const {
   parseParentSprintNumber,
+  isSprintChild,
+  wasAutoClosed,
+  AUTO_CLOSE_COMMENT,
   parseSprintDates,
   computeTimePercent,
   computeProgress,
@@ -171,4 +174,48 @@ test('updateSprintBody replaces a previous Sprint Status section instead of stac
   assert.equal(statusSectionCount, 1, 'must not accumulate multiple status sections across repeated updates');
   assert.match(withNewStatus, /Progress: \*\*80%\*\*/);
   assert.doesNotMatch(withNewStatus, /Progress: \*\*20%\*\*/, 'must not leave the stale progress figure behind');
+});
+
+// --- isSprintChild ---
+
+test('isSprintChild matches the exact sprint number, not a prefix of it', () => {
+  assert.equal(isSprintChild({ body: 'Parent Sprint: #5\n\n---' }, 5), true);
+  assert.equal(isSprintChild({ body: 'Parent Sprint: #57\n\n---' }, 5), false, '#57 is not a child of #5');
+  assert.equal(isSprintChild({ body: 'Parent Sprint: #5' }, 57), false);
+  assert.equal(isSprintChild({ body: 'Parent Sprint: #57' }, 57), true);
+});
+
+test('isSprintChild ignores pull requests and issues without a parent line', () => {
+  assert.equal(isSprintChild({ body: 'Parent Sprint: #5', pull_request: {} }, 5), false);
+  assert.equal(isSprintChild({ body: 'nothing here' }, 5), false);
+  assert.equal(isSprintChild({ body: null }, 5), false);
+  assert.equal(isSprintChild(null, 5), false);
+});
+
+// --- not-planned work leaves the count ---
+
+test('computeProgress leaves closed-as-not-planned issues out of both counts', () => {
+  const r = computeProgress([
+    { state: 'closed', state_reason: 'completed' },
+    { state: 'closed', state_reason: 'not_planned' },
+    { state: 'open' },
+  ]);
+  assert.deepEqual(r, { progressPercent: 50, closedCount: 1, totalCount: 2 });
+});
+
+test('computeProgress: a reopened issue that was once not planned counts again', () => {
+  assert.equal(computeProgress([{ state: 'open', state_reason: 'reopened' }, { state: 'closed', state_reason: 'completed' }]).progressPercent, 50);
+});
+
+test('computeProgress: a sprint with everything dropped stays at 0% (nothing to finish)', () => {
+  assert.equal(computeProgress([{ state: 'closed', state_reason: 'not_planned' }]).progressPercent, 0);
+});
+
+// --- wasAutoClosed ---
+
+test('wasAutoClosed recognizes the completion comment and nothing a person would write by accident', () => {
+  assert.equal(wasAutoClosed([{ body: 'hello' }, { body: AUTO_CLOSE_COMMENT }]), true);
+  assert.equal(wasAutoClosed([{ body: 'Closing this sprint by hand.' }]), false);
+  assert.equal(wasAutoClosed([]), false);
+  assert.equal(wasAutoClosed(undefined), false);
 });

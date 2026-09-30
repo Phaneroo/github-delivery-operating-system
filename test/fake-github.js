@@ -29,8 +29,8 @@ function extractScript(workflowFile, jobName) {
   return body.join('\n');
 }
 
-function createFakeRepo({ issues = [], pulls = {}, commits = {} } = {}) {
-  const store = { issues: issues.map((i) => ({ state: 'open', state_reason: null, labels: [], body: '', ...i })), comments: [], nextNumber: 100 };
+function createFakeRepo({ issues = [], pulls = {}, commits = {}, comments = [] } = {}) {
+  const store = { issues: issues.map((i) => ({ state: 'open', state_reason: null, labels: [], body: '', ...i })), comments: comments.map((c) => ({ ...c })), nextNumber: 100 };
   for (const i of store.issues) store.nextNumber = Math.max(store.nextNumber, i.number + 1);
   let clock = Date.parse('2026-09-24T00:00:00Z');
   const now = () => new Date((clock += 1000)).toISOString();
@@ -86,10 +86,27 @@ function createFakeRepo({ issues = [], pulls = {}, commits = {} } = {}) {
         return { data: view(issue) };
       },
       createComment: async ({ issue_number, body }) => {
-        store.comments.push({ issue_number, body });
+        store.comments.push({ issue_number, body, user: { login: 'github-actions[bot]' } });
         return { data: {} };
       },
-      listComments: async () => [],
+      // Comments seeded with `comments` keep their own author; the ones a
+      // workflow posts are from the Actions bot.
+      listComments: async ({ issue_number }) => store.comments.filter((c) => c.issue_number === issue_number),
+      addLabels: async ({ issue_number, labels }) => {
+        const issue = find(issue_number);
+        for (const l of labels) if (!labelNames(issue).includes(l)) issue.labels.push(l);
+        return { data: {} };
+      },
+      removeLabel: async ({ issue_number, name }) => {
+        const issue = find(issue_number);
+        if (!labelNames(issue).includes(name)) {
+          const err = new Error('Label does not exist');
+          err.status = 404;
+          throw err;
+        }
+        issue.labels = issue.labels.filter((l) => (typeof l === 'string' ? l : l.name) !== name);
+        return { data: {} };
+      },
     },
     pulls: {
       listFiles: async ({ pull_number }) => (pulls[pull_number] || {}).files || [],

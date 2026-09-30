@@ -43,7 +43,7 @@ jobs:
             // .github/scripts/authorize-deployment-verdict.js and
             // test/authorize-deployment-verdict.test.js) rather than inline here,
             // so it isn't only verified by hand whenever it changes.
-            const { computeVerdict, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const { computeVerdict, nextReleaseAction, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
@@ -58,15 +58,12 @@ jobs:
               per_page: 100
             });
 
-            const { releaseVerdict, qaApproved } = computeVerdict(comments, releaseApprover, qaApprover);
+            const { releaseVerdict, qaVerdict } = computeVerdict(comments, releaseApprover, qaApprover);
 
-            // Nothing to act on this run (most comments on a production issue
-            // are routine discussion, not a verdict-changing approval/decline)
-            // — return before the live label fetch below, which only matters
-            // once we actually have a verdict to check against current state.
-            const hasActionableVerdict =
-              releaseVerdict === "declined" || (releaseVerdict === "approved" && qaApproved);
-            if (!hasActionableVerdict) return;
+            // No verdict from a release or QA approver yet: routine discussion,
+            // nothing to act on. Return before the live label fetch below, which
+            // only matters once there is a verdict to check against current state.
+            if (!releaseVerdict && !qaVerdict) return;
 
             // Fetch labels live rather than trusting context.payload.issue.labels:
             // that's a snapshot fixed at the triggering event's delivery time.
@@ -81,9 +78,24 @@ jobs:
             const alreadyDeclined = currentLabels.includes("declined");
             const alreadyReady = currentLabels.includes("ready-for-deploy");
 
-            if (releaseVerdict === "declined") {
-              if (alreadyDeclined) return; // avoid re-posting on every later comment
+            const action = nextReleaseAction({
+              releaseVerdict,
+              qaVerdict,
+              declined: alreadyDeclined,
+              ready: alreadyReady
+            });
 
+            // Nobody's latest verdict is a decline any more (the decliner approved),
+            // but the release isn't fully signed off yet: just lift the stale
+            // `declined` label.
+            if (action === "clear-declined") {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name: "declined" });
+              } catch (e) {}
+              return;
+            }
+
+            if (action === "decline") {
               try {
                 await github.rest.issues.addLabels({
                   owner,
@@ -108,15 +120,15 @@ jobs:
                 owner,
                 repo,
                 issue_number: issueNumber,
-                body: "🔴 **Release Declined**\n\nThis release requires additional fixes before production deployment."
+                body: releaseVerdict === "declined"
+                  ? "🔴 **Release Declined**\n\nThis release requires additional fixes before production deployment. Only the release approver who declined it can lift the decline, by approving."
+                  : "🔴 **Release Declined by QA**\n\nQA has declined this release; it requires additional fixes before production deployment. Only the QA approver who declined it can lift the decline, by approving."
               });
 
               return;
             }
 
-            if (releaseVerdict === "approved" && qaApproved) {
-              if (alreadyReady) return; // avoid re-posting on every later comment
-
+            if (action === "authorize") {
               try {
                 await github.rest.issues.removeLabel({
                   owner,

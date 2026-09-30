@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-09-30
+
+### Changed
+
+- **A decline can no longer be overridden by a different approver.** `RELEASE_APPROVER` and `QA_APPROVER` accept comma-separated lists (1.11.0), but the gates kept one shared verdict, so with `RELEASE_APPROVER=userA,userB` a later `approved` from B silently lifted A's decline. Each approver's latest verdict is now tracked separately (matched by lowercased login), on the release gate for both sides and on the rolling QA issue:
+  - a side is `declined` if **any** approver's latest verdict is a decline, and stays blocked until **that same person** approves;
+  - otherwise it is `approved` once at least one approver's latest verdict is an approval;
+  - an approver can still change their own mind: their later verdict replaces their earlier one.
+
+  A single approver behaves as before.
+- **QA can now decline on a release issue.** Until now a QA "ok" on a release could never be taken back. A QA approver commenting `qa declined`, `qa rejected`, `declined`, `rejected`, `reject` or `not approved` on a Production Release blocks it (the `declined` label, and `ready-for-deploy` is removed if it was set) until that QA approver approves. `computeVerdict` still returns `releaseVerdict` and `qaApproved`, plus a new `qaVerdict`.
+- **On the rolling QA issue, one QA approver's approval no longer overrides another's decline.** It is refused with a short reply naming who declined (a ticked Approved box is unticked); the person who declined lifts it by approving. Who declined is read from the workflow's own "QA declined by @x" comments, so a decline made by ticking or commenting is remembered either way.
+- **Tasks closed as "not planned" leave a sprint's burn-down** instead of counting as done, so dropping work neither inflates progress nor stops the sprint finishing. A sprint whose tasks were all dropped stays at 0% and is not auto-closed.
+- **Reopening a sprint task updates the burn-down**, and reopens the sprint if it had closed itself (a sprint closed by hand is left alone). A later task closing on an already-closed sprint no longer posts a second completion comment.
+- **The delivery-ops skill checks that the install is current on every use, and always tells you.** Until now the version check only ran before creating something. It now runs first thing whether you ask for status, an approval, a bug or a plan, and reports one line either way: up to date, behind (with what's new), or couldn't be checked. When behind, Claude offers the update, previews it with `--dry-run` if you want, runs it only after you confirm, then runs `status` and says what changed. `--update` still needs your go-ahead because it replaces installed workflow, template and skill files.
+
+### Fixed
+
+- **A lifted decline now clears the `declined` label straight away.** If the person who declined a release later approved it before the other side had signed off, `authorize-deployment` did nothing and the `declined` label stayed. The label decision lives in a tested `nextReleaseAction` helper.
+- **A sprint no longer counts another sprint's tasks as its own.** `auto-close-sprint` matched children by substring, so `Parent Sprint: #57` was counted as a child of sprint #5 (and #50 to #59), skewing its burn-down and possibly closing it early. It now compares the exact number, and pull requests never count.
+- **Telegram release alerts only fire on Production Release issues.** The release approver saying "ok" on a bug or sprint task used to send a "RELEASE APPROVED" alert.
+
 ## [1.11.0] - 2026-09-30
 
 ### Added

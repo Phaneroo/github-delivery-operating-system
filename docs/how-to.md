@@ -99,7 +99,7 @@ git push
 - Release approver: `approved`, `approve`, `ok`, or `go ahead`
 - QA approver: `qa approved`, `approved`, `qa ok`, or `looks good`
 
-Once both approve, the issue receives `ready-for-deploy`. To decline, release approver comments `declined`, `reject`, or `not approved`.
+Once both approve, the issue receives `ready-for-deploy`. To decline, a release approver comments `declined`, `reject`, or `not approved`. With several release approvers, one approver's decline can only be lifted by that same person approving.
 
 ---
 

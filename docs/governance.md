@@ -58,11 +58,11 @@ The roll-up is a **best guess and informational only**: Delivery OS doesn't trac
 | Approver | Keywords to approve | Keywords to decline |
 |----------|---------------------|---------------------|
 | Release (`RELEASE_APPROVER`) | `approved`, `approve`, `ok`, `go ahead` | `declined`, `reject`, `not approved` |
-| QA (`QA_APPROVER`) | `qa approved`, `approved`, `qa ok`, `looks good` | — |
+| QA (`QA_APPROVER`) | `qa approved`, `approved`, `qa ok`, `looks good` | `qa declined`, `qa rejected`, `declined`, `rejected`, `reject`, `not approved` |
 
-Both must approve → `ready-for-deploy` label. Release approver can decline → `declined` label.
+Both must approve → `ready-for-deploy` label. Any release approver **or** QA approver can decline → `declined` label (and `ready-for-deploy` is removed if it was set). The `declined` label is lifted as soon as the person who declined approves, even if the other side hasn't signed off yet.
 
-Only the release approver's **latest** comment counts as their verdict — a later `approved` comment supersedes an earlier `declined` one (and vice versa), so a release can be re-approved after fixes land without editing or deleting history. Keywords must lead the comment (e.g. `Approved, ship it` matches; `ok, hold off, I have concerns` does not).
+Each approver's **latest** comment counts as their verdict — their own later `approved` supersedes their earlier `declined` (and vice versa), so a release can be re-approved after fixes land without editing or deleting history. With several release approvers (`RELEASE_APPROVER=userA,userB`), a decline from **any** of them blocks the release, and another approver's `approved` can't override it: only the person who declined can lift their decline by approving. The same holds for several QA approvers (`QA_APPROVER=qaA,qaB`) and for the rolling QA issue. A side is approved once no approver's latest verdict on it is a decline and at least one is an approval. Keywords must lead the comment (e.g. `Approved, ship it` matches; `ok, hold off, I have concerns` does not).
 
 ---
 
@@ -71,13 +71,13 @@ Only the release approver's **latest** comment counts as their verdict — a lat
 | Event | Workflow | Action |
 |-------|----------|--------|
 | Sprint issue opened (title "SPRINT -") | sprint-child-creator | Creates child issues with `sprint-child` |
-| Child issue closed (body has Parent Sprint) | auto-close-sprint | Updates burn-down; auto-closes at 100% |
+| Child issue closed (body has Parent Sprint) | auto-close-sprint | Updates burn-down; auto-closes at 100% (tasks closed as *not planned* leave the count) |
 | Production release opened | notify-release-approver | Pings RELEASE_APPROVER; posts the release roll-up |
 | Comment on production issue | authorize-deployment | Dual approval → ready-for-deploy; closes auto-filed Tasks/QA Requests the release covers (not ones whose PR is still unmerged) |
 | QA/qa-request issue opened | auto-assign-qa | Assigns QA_ASSIGNEES |
 | Commit pushed to `main` (a direct push, or a PR merged into `main`) | auto-qa-request | Rolling mode (default): adds a line to the open rolling QA issue, opening one if none — unless only docs/settings changed |
 | PR opened or updated, or commit pushed to `main` | auto-qa-request | Per-change mode: files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed |
-| QA approver comments or ticks the Approved box on the rolling QA issue | qa-rollup-approval | Approve → ticks every line and closes it; decline → keeps it open (Outcome *Fail*); anyone else → ignored with a reply |
+| QA approver comments or ticks the Approved box on the rolling QA issue | qa-rollup-approval | Approve → ticks every line and closes it; decline → keeps it open (Outcome *Fail*); anyone else → ignored with a reply; with several QA approvers, one's decline stands until that same person approves |
 | PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR (reopening the PR reopens them) |
 | Bugs, QA, sprints, releases, PR merged | telegram-issues | Sends alerts (if secrets set) |
 

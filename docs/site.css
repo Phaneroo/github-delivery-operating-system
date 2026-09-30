@@ -434,6 +434,10 @@ ol li {
   color: var(--accent);
 }
 
+.install-block--prompt code {
+  white-space: pre-wrap;
+}
+
 .install-label {
   font-size: 0.72rem;
   text-transform: uppercase;

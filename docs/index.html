@@ -72,6 +72,14 @@
         </div>
         <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status, autonomous task tracking (identify, file, update, and close issues as work progresses), and turning a spec or feature description into a full phase-and-task breakdown — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
 
+        <h3 id="install-with-claude-code">Or have Claude Code install it</h3>
+        <p>Already working in <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a>? Open it in the repo you want to set up and paste this prompt. Claude previews the install first and only writes files after you confirm:</p>
+        <div class="install-block install-block--prompt">
+          <div class="install-label">Paste into Claude Code, from your repo root</div>
+          <code>Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.</code>
+        </div>
+        <p>Once it finishes, the <code>delivery-ops</code> skill is in place, so you can keep going in the same session: ask Claude to create a sprint, open a release, or check status. Set the <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> repo variables afterwards (see <a href="#claude-code">Operating from Claude Code</a>).</p>
+
         <div class="table-wrap">
           <table class="workflows-table">
             <thead>

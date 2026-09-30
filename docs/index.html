@@ -44,11 +44,11 @@
         <li><a href="#overview">Overview</a></li>
         <li><a href="#install">Install</a></li>
         <li><a href="#update">Update</a></li>
+        <li><a href="#claude-code">Delivery Ops</a></li>
         <li><a href="#why">Why this exists</a></li>
         <li><a href="#features">What you get</a></li>
         <li><a href="#workflows">Workflows</a></li>
         <li><a href="#quick-start">Quick start</a></li>
-        <li><a href="#claude-code">Claude Code</a></li>
         <li><a href="#documentation">Resources</a></li>
       </ul>
     </aside>
@@ -60,7 +60,7 @@
 
       <div class="doc-hero" id="overview">
         <h1>GitHub Delivery Operating System</h1>
-        <p class="tagline">Structured sprint execution, QA governance, and production release control — embedded directly in your GitHub repos.</p>
+        <p class="tagline">Structured sprint execution, QA governance, and production release control — embedded in your GitHub repos, and run by asking Claude Code in plain language with the <strong>delivery-ops</strong> skill.</p>
       </div>
 
       <section id="install">
@@ -78,7 +78,7 @@
           <div class="install-label">Paste into Claude Code, from your repo root</div>
           <code>Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.</code>
         </div>
-        <p>Once it finishes, the <code>delivery-ops</code> skill is in place, so you can keep going in the same session: ask Claude to create a sprint, open a release, or check status. Set the <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> repo variables afterwards (see <a href="#claude-code">Operating from Claude Code</a>).</p>
+        <p>Once it finishes, the <code>delivery-ops</code> skill is in place, so you can keep going in the same session: ask Claude to create a sprint, open a release, or check status. Set the <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> repo variables afterwards (see <a href="#claude-code">Delivery Ops</a>).</p>
 
         <div class="table-wrap">
           <table class="workflows-table">
@@ -120,84 +120,8 @@
         </div>
       </section>
 
-      <section id="why">
-        <h2>Why this exists</h2>
-        <p>Engineering teams often rely on informal coordination in GitHub — manual approvals, inconsistent sprint tracking, reactive QA, and socially enforced releases. As teams scale, that creates:</p>
-        <ul>
-          <li>Delivery ambiguity</li>
-          <li>QA bottlenecks</li>
-          <li>Unclear accountability</li>
-          <li>Release risk</li>
-          <li>Cross-team misalignment</li>
-        </ul>
-        <p>Delivery OS embeds structured intake, sprint orchestration, QA governance, and release gates directly into your repos — without replacing CI/CD or disrupting workflows.</p>
-      </section>
-
-      <section id="features">
-        <h2>What you get</h2>
-        <div class="features">
-          <div class="feature">
-            <strong>Sprint child creation</strong>
-            <span>Create a sprint issue → each feature line becomes a child issue. Burn-down and auto-close at 100%.</span>
-          </div>
-          <div class="feature">
-            <strong>Dual approval gates</strong>
-            <span>Production releases require both release approver and QA sign-off before deploy.</span>
-          </div>
-          <div class="feature">
-            <strong>Auto-assign QA</strong>
-            <span>Issues with <code>qa</code> or <code>qa-request</code> labels get assigned to your QA team.</span>
-          </div>
-          <div class="feature">
-            <strong>Telegram alerts</strong>
-            <span>Optional notifications for bugs, QA requests, sprints, and releases.</span>
-          </div>
-          <div class="feature">
-            <strong>Claude Code skill</strong>
-            <span>Optional (<code>--with-skill</code>): operate the installed repo from Claude Code — create issues, comment as an approver, check status, track tasks autonomously — in plain language.</span>
-          </div>
-        </div>
-      </section>
-
-      <section id="workflows">
-        <h2>Workflows installed</h2>
-        <div class="table-wrap">
-          <table class="workflows-table">
-            <thead>
-              <tr>
-                <th>Workflow</th>
-                <th>Trigger</th>
-                <th>Purpose</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>sprint-child-creator</td><td>Issue opened, title contains <code>SPRINT -</code></td><td>Parses "Sprint Features (One Per Line)" and creates one child issue per line, each linked back with <code>Parent Sprint: #N</code></td></tr>
-              <tr><td>auto-close-sprint</td><td>Issue closed, body contains <code>Parent Sprint</code></td><td>Recomputes the parent sprint's burn-down/health and rewrites its status section; auto-closes the sprint at 100%</td></tr>
-              <tr><td>notify-release-approver</td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code>, and posts a <em>What's in this release</em> roll-up of the plain-English changelogs from QA Requests since the last authorized release (informational; refresh via <code>workflow_dispatch</code>)</td></tr>
-              <tr><td>authorize-deployment</td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code>; once both approve, adds <code>ready-for-deploy</code> and closes the Tasks/QA Requests <code>auto-qa-request</code> filed for work in the release (opt out: <code>DELIVERY_OS_AUTO_CLOSE=false</code>)</td></tr>
-              <tr><td>auto-assign-qa</td><td>Issue opened/labeled <code>qa</code> or <code>qa-request</code></td><td>Assigns the repo's configured <code>QA_ASSIGNEES</code></td></tr>
-              <tr><td>telegram-issues</td><td>Issue/comment/PR events</td><td>Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
-              <tr><td>auto-qa-request</td><td>Push to <code>main</code>, including PR merges (plus PR events in per-change mode)</td><td>QA reminder for every change that isn't docs/settings-only or <code>[skip qa-request]</code>. Default: adds a line (with a plain-English draft and any linked <code>#N</code>) to the <strong>one open rolling QA issue</strong>, opening it if needed. <code>DELIVERY_OS_AUTO_QA_MODE=per-change</code> files a QA Request (+ Task) per change instead; <code>off</code> files nothing</td></tr>
-              <tr><td>qa-rollup-approval</td><td>Comment on, or edit of, the rolling QA issue</td><td>The <code>QA_APPROVER</code> approves (a comment starting with e.g. <code>approved</code>, <code>lgtm</code>, ✅, or ticking the Approved box), which closes it, or declines (<code>needs work</code>, <code>not ok</code>, ❌), which keeps it open. Anyone else is ignored with a reply</td></tr>
-              <tr><td>setup-labels</td><td>Manual (<code>workflow_dispatch</code>)</td><td>One-time run that creates all labels Delivery OS needs</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="quick-start">
-        <h2>Quick start (after install)</h2>
-        <ol class="steps">
-          <li style="margin-bottom: 0.5rem;">Create labels: Actions → Setup Labels → Run workflow</li>
-          <li style="margin-bottom: 0.5rem;">Configure variables: Settings → Secrets and variables → Actions → Variables<br>
-            <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, <code>QA_ASSIGNEES</code></li>
-          <li style="margin-bottom: 0.5rem;">Optional: QA reminders default to one rolling QA issue — switch with <code>DELIVERY_OS_AUTO_QA_MODE</code> (<code>rolling</code>/<code>per-change</code>/<code>off</code>), and tune with <code>DELIVERY_OS_AUTO_QA_QUIET_PATHS</code>, <code>DELIVERY_OS_AUTO_TASK</code> and <code>DELIVERY_OS_AUTO_CLOSE</code> (see <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos">consumer setup</a>)</li>
-          <li style="margin-bottom: 0.5rem;">Optional: Add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> for alerts</li>
-        </ol>
-      </section>
-
       <section id="claude-code">
-        <h2>Operating from Claude Code</h2>
+        <h2>Delivery Ops: run it by asking Claude</h2>
         <p>Installing with <code>--with-skill</code> drops a <code>.claude/skills/delivery-ops/SKILL.md</code> skill into the repo, scoped to that repo's Delivery OS install. It lets anyone using <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> drive the workflows above by asking in plain language, instead of hand-building <code>gh issue create</code> calls and remembering each template's exact field names.</p>
         <p>Before doing anything, it checks the target repo — confirms Delivery OS is installed, labels exist, and approvers/QA assignees are configured — and always shows the exact issue or comment content for confirmation before creating or posting for real. It can also run a task's whole lifecycle on its own (notice, classify, file, keep in sync, close) — acting without asking when the outcome is clear and always posting a one-line notice so nothing happens invisibly — or turn a spec/feature description into a full phase-and-task breakdown, always shown for confirmation first since that creates many issues at once.</p>
 
@@ -391,6 +315,82 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
         </details>
       </section>
 
+      <section id="why">
+        <h2>Why this exists</h2>
+        <p>Engineering teams often rely on informal coordination in GitHub — manual approvals, inconsistent sprint tracking, reactive QA, and socially enforced releases. As teams scale, that creates:</p>
+        <ul>
+          <li>Delivery ambiguity</li>
+          <li>QA bottlenecks</li>
+          <li>Unclear accountability</li>
+          <li>Release risk</li>
+          <li>Cross-team misalignment</li>
+        </ul>
+        <p>Delivery OS embeds structured intake, sprint orchestration, QA governance, and release gates directly into your repos — without replacing CI/CD or disrupting workflows.</p>
+      </section>
+
+      <section id="features">
+        <h2>What you get</h2>
+        <div class="features">
+          <div class="feature">
+            <strong>Sprint child creation</strong>
+            <span>Create a sprint issue → each feature line becomes a child issue. Burn-down and auto-close at 100%.</span>
+          </div>
+          <div class="feature">
+            <strong>Dual approval gates</strong>
+            <span>Production releases require both release approver and QA sign-off before deploy.</span>
+          </div>
+          <div class="feature">
+            <strong>Auto-assign QA</strong>
+            <span>Issues with <code>qa</code> or <code>qa-request</code> labels get assigned to your QA team.</span>
+          </div>
+          <div class="feature">
+            <strong>Telegram alerts</strong>
+            <span>Optional notifications for bugs, QA requests, sprints, and releases.</span>
+          </div>
+          <div class="feature">
+            <strong>Claude Code skill</strong>
+            <span>Optional (<code>--with-skill</code>): operate the installed repo from Claude Code — create issues, comment as an approver, check status, track tasks autonomously — in plain language.</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflows">
+        <h2>Workflows installed</h2>
+        <div class="table-wrap">
+          <table class="workflows-table">
+            <thead>
+              <tr>
+                <th>Workflow</th>
+                <th>Trigger</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>sprint-child-creator</td><td>Issue opened, title contains <code>SPRINT -</code></td><td>Parses "Sprint Features (One Per Line)" and creates one child issue per line, each linked back with <code>Parent Sprint: #N</code></td></tr>
+              <tr><td>auto-close-sprint</td><td>Issue closed, body contains <code>Parent Sprint</code></td><td>Recomputes the parent sprint's burn-down/health and rewrites its status section; auto-closes the sprint at 100%</td></tr>
+              <tr><td>notify-release-approver</td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code>, and posts a <em>What's in this release</em> roll-up of the plain-English changelogs from QA Requests since the last authorized release (informational; refresh via <code>workflow_dispatch</code>)</td></tr>
+              <tr><td>authorize-deployment</td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code>; once both approve, adds <code>ready-for-deploy</code> and closes the Tasks/QA Requests <code>auto-qa-request</code> filed for work in the release (opt out: <code>DELIVERY_OS_AUTO_CLOSE=false</code>)</td></tr>
+              <tr><td>auto-assign-qa</td><td>Issue opened/labeled <code>qa</code> or <code>qa-request</code></td><td>Assigns the repo's configured <code>QA_ASSIGNEES</code></td></tr>
+              <tr><td>telegram-issues</td><td>Issue/comment/PR events</td><td>Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
+              <tr><td>auto-qa-request</td><td>Push to <code>main</code>, including PR merges (plus PR events in per-change mode)</td><td>QA reminder for every change that isn't docs/settings-only or <code>[skip qa-request]</code>. Default: adds a line (with a plain-English draft and any linked <code>#N</code>) to the <strong>one open rolling QA issue</strong>, opening it if needed. <code>DELIVERY_OS_AUTO_QA_MODE=per-change</code> files a QA Request (+ Task) per change instead; <code>off</code> files nothing</td></tr>
+              <tr><td>qa-rollup-approval</td><td>Comment on, or edit of, the rolling QA issue</td><td>The <code>QA_APPROVER</code> approves (a comment starting with e.g. <code>approved</code>, <code>lgtm</code>, ✅, or ticking the Approved box), which closes it, or declines (<code>needs work</code>, <code>not ok</code>, ❌), which keeps it open. Anyone else is ignored with a reply</td></tr>
+              <tr><td>setup-labels</td><td>Manual (<code>workflow_dispatch</code>)</td><td>One-time run that creates all labels Delivery OS needs</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="quick-start">
+        <h2>Quick start (after install)</h2>
+        <ol class="steps">
+          <li style="margin-bottom: 0.5rem;">Create labels: Actions → Setup Labels → Run workflow</li>
+          <li style="margin-bottom: 0.5rem;">Configure variables: Settings → Secrets and variables → Actions → Variables<br>
+            <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, <code>QA_ASSIGNEES</code></li>
+          <li style="margin-bottom: 0.5rem;">Optional: QA reminders default to one rolling QA issue — switch with <code>DELIVERY_OS_AUTO_QA_MODE</code> (<code>rolling</code>/<code>per-change</code>/<code>off</code>), and tune with <code>DELIVERY_OS_AUTO_QA_QUIET_PATHS</code>, <code>DELIVERY_OS_AUTO_TASK</code> and <code>DELIVERY_OS_AUTO_CLOSE</code> (see <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos">consumer setup</a>)</li>
+          <li style="margin-bottom: 0.5rem;">Optional: Add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> for alerts</li>
+        </ol>
+      </section>
+
       <section id="documentation">
         <h2>Documentation</h2>
         <div class="inline-links">
@@ -406,11 +406,11 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
         <li><a href="#overview">Overview</a></li>
         <li><a href="#install">Install</a></li>
         <li><a href="#update">Update</a></li>
+        <li><a href="#claude-code">Delivery Ops</a></li>
         <li><a href="#why">Why this exists</a></li>
         <li><a href="#features">What you get</a></li>
         <li><a href="#workflows">Workflows</a></li>
         <li><a href="#quick-start">Quick start</a></li>
-        <li><a href="#claude-code">Claude Code</a></li>
         <li><a href="#documentation">Resources</a></li>
       </ul>
     </aside>

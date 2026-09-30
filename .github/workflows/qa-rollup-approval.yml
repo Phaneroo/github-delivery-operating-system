@@ -58,7 +58,10 @@ jobs:
             const repo = context.repo.repo;
             const issueNumber = context.payload.issue.number;
             const approver = process.env.QA_APPROVER;
-            const isApprover = (login) => (login || '').toLowerCase() === (approver || '').toLowerCase();
+            // QA_APPROVER may be a comma-separated list of logins.
+            const approverNames = (approver || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
+            const isApprover = (login) => approverNames.some((a) => a.toLowerCase() === (login || '').toLowerCase());
+            const approverMentions = approverNames.map((a) => '@' + a).join(' or ');
             const comment = (body) => github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
 
             let actor, verdict, how;
@@ -72,7 +75,7 @@ jobs:
               if (!isApprover(actor)) {
                 const { data: live } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
                 await github.rest.issues.update({ owner, repo, issue_number: issueNumber, body: untickApprovalBox(live.body) });
-                await comment(`@${actor} only the QA approver (@${approver}) can approve this. I've unticked the Approved box.`);
+                await comment(`@${actor} only the QA approver (${approverMentions}) can approve this. I've unticked the Approved box.`);
                 return;
               }
             } else {
@@ -81,7 +84,7 @@ jobs:
               if (!verdict) return; // ordinary discussion
               how = `commented "${context.payload.comment.body.trim().split('\n')[0].slice(0, 60)}"`;
               if (!isApprover(actor)) {
-                await comment(`@${actor} thanks — only the QA approver (@${approver}) can ${verdict === 'approved' ? 'approve' : 'decline'} this, so I've left it as it is.`);
+                await comment(`@${actor} thanks — only the QA approver (${approverMentions}) can ${verdict === 'approved' ? 'approve' : 'decline'} this, so I've left it as it is.`);
                 return;
               }
             }

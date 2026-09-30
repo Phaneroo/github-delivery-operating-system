@@ -35,8 +35,8 @@ Settings → Secrets and variables → Actions → Variables:
 
 | Variable | Value |
 |----------|-------|
-| `RELEASE_APPROVER` | GitHub username of release approver |
-| `QA_APPROVER` | GitHub username of QA approver |
+| `RELEASE_APPROVER` | GitHub username of release approver (comma-separated list allowed) |
+| `QA_APPROVER` | GitHub username of QA approver (comma-separated list allowed) |
 | `QA_ASSIGNEES` | Comma-separated usernames (e.g. `user1,user2`) |
 | `DELIVERY_OS_AUTO_QA_MODE` | Optional: `rolling` (default — one open rolling QA issue), `per-change`, or `off` (see [consumer-setup.md](consumer-setup.md#rolling-qa-issue-default)) |
 | `DELIVERY_OS_AUTO_QA` | Optional, 1.8.0 setting still honored: `all` → per-change, `pr-only`, `off` |

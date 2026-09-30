@@ -124,6 +124,20 @@ function nextRollingQaAction({ state, verdict, anotherRollingOpen }) {
 const normalize = (s) => (s || '').toLowerCase();
 
 /**
+ * RELEASE_APPROVER / QA_APPROVER may hold one login or a comma-separated
+ * list. Trims, lowercases, drops empty entries and a leading "@".
+ *
+ * @param {string | null | undefined} value
+ * @returns {string[]}
+ */
+function parseLogins(value) {
+  return (value || '')
+    .split(',')
+    .map((s) => normalize(s.trim()).replace(/^@/, ''))
+    .filter(Boolean);
+}
+
+/**
  * Walks comments in chronological order and keeps the LATEST verdict from
  * each approver, rather than stopping at the first decline seen. This lets a
  * release approver re-approve after an earlier decline (e.g. once fixes
@@ -131,11 +145,13 @@ const normalize = (s) => (s || '').toLowerCase();
  *
  * @param {Array<{ user?: { login?: string | null } | null, body?: string | null }>} comments
  *   Chronological (oldest first), matching the order github.paginate(listComments) returns.
- * @param {string} releaseApprover
- * @param {string} qaApprover
+ * @param {string} releaseApprover - one login or a comma-separated list
+ * @param {string} qaApprover - one login or a comma-separated list
  * @returns {{ releaseVerdict: 'approved' | 'declined' | null, qaApproved: boolean }}
  */
 function computeVerdict(comments, releaseApprover, qaApprover) {
+  const releaseLogins = parseLogins(releaseApprover);
+  const qaLogins = parseLogins(qaApprover);
   let releaseVerdict = null;
   let qaApproved = false;
 
@@ -143,12 +159,12 @@ function computeVerdict(comments, releaseApprover, qaApprover) {
     const login = comment.user && comment.user.login;
     const body = (comment.body || '').trim();
 
-    if (normalize(login) === normalize(releaseApprover)) {
+    if (releaseLogins.includes(normalize(login))) {
       const verdict = matchVerdict(body, { approve: APPROVE_RE, decline: DECLINE_RE });
       if (verdict) releaseVerdict = verdict;
     }
 
-    if (normalize(login) === normalize(qaApprover) && QA_APPROVE_RE.test(body)) {
+    if (qaLogins.includes(normalize(login)) && QA_APPROVE_RE.test(body)) {
       qaApproved = true;
     }
   }
@@ -211,4 +227,4 @@ module.exports = {
   ROLLING_QA_DECLINE_PHRASES,
   ROLLING_QA_APPROVE_EMOJI,
   ROLLING_QA_DECLINE_EMOJI,
-  computeVerdict, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };
+  computeVerdict, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE };

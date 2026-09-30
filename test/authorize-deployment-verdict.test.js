@@ -2,7 +2,7 @@
 
 const assert = require('assert/strict');
 const { test } = require('./harness');
-const { computeVerdict, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
+const { computeVerdict, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
 const { buildAutoTaskBody, buildQaRequestBody } = require('../.github/scripts/auto-qa-request');
 
 const RELEASE = 'alice';
@@ -182,4 +182,24 @@ test('parseFilingPrNumber returns null for direct-push filings', () => {
   assert.equal(parseFilingPrNumber(autoQaBody), null);
   assert.equal(parseFilingPrNumber(autoTaskBody), null);
   assert.equal(parseFilingPrNumber(''), null);
+});
+
+test('approver variables accept comma-separated lists (trimmed, case-insensitive)', () => {
+  assert.deepEqual(parseLogins(' UserA, @userB ,,'), ['usera', 'userb']);
+  const r = computeVerdict(
+    [comment('USERB', 'approved'), comment('carol', 'qa ok')],
+    'userA, userB',
+    'bob,carol'
+  );
+  assert.equal(r.releaseVerdict, 'approved');
+  assert.equal(r.qaApproved, true);
+});
+
+test('any release approver in the list can decline; non-listed users are ignored', () => {
+  const r = computeVerdict(
+    [comment('userA', 'approved'), comment('userB', 'declined'), comment('mallory', 'approved')],
+    'userA,userB',
+    QA
+  );
+  assert.equal(r.releaseVerdict, 'declined');
 });

@@ -33,7 +33,10 @@ jobs:
           script: |
             const issueTitle = context.payload.issue.title;
             const issueBody = context.payload.issue.body || "";
-            const approver = process.env.RELEASE_APPROVER;
+            // RELEASE_APPROVER may be a comma-separated list: mention each login.
+            const approvers = (process.env.RELEASE_APPROVER || "")
+              .split(",").map((s) => s.trim().replace(/^@/, "")).filter(Boolean);
+            const mentions = approvers.map((a) => "@" + a).join(" ");
             const projectName = process.env.PROJECT_NAME;
 
             let sprintRef = "Not specified";
@@ -47,7 +50,7 @@ jobs:
 
             const projectLine = projectName ? "**Project:** " + projectName + "\n\n" : "";
             const commentBody =
-              "🚨 @" + approver + " Production Release requires approval.\n\n" +
+              "🚨 " + mentions + " Production Release requires approval.\n\n" +
               projectLine +
               "**Issue:** " + issueTitle + "\n\n" +
               "**Linked Sprint:** " + sprintRef + "\n\n" +

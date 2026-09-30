@@ -153,3 +153,29 @@ test('sprint flow: reopening a child of an open sprint just refreshes the burn-d
   assert.match(sprint.body, /Progress: \*\*50%\*\*/);
   assert.equal(fx.store.comments.length, 0);
 });
+
+test('sprint flow: a sprint auto-closed earlier but closed by hand since is not reopened by a reopened task', async () => {
+  const fx = sprintRepo([child(6, 5, { state: 'closed', state_reason: 'completed' })]);
+  await sprintEvent(fx, 'closed', 6); // auto-closes
+  const sprint = fx.store.issues.find((i) => i.number === 5);
+  sprint.state = 'open'; // a task was reopened earlier and the sprint reopened
+  fx.store.issues.find((i) => i.number === 6).state = 'open';
+  await sprintEvent(fx, 'reopened', 6);
+  sprint.state = 'closed'; // ...then someone closes the sprint by hand, much later
+  sprint.closed_at = '2027-01-01T00:00:00Z';
+  const kid = fx.store.issues.find((i) => i.number === 6);
+  kid.state = 'closed';
+  kid.state = 'open';
+  const after = await sprintEvent(fx, 'reopened', 6);
+  assert.equal(after.state, 'closed');
+});
+
+test('sprint flow: unreadable sprint dates do not stop the burn-down, auto-close or reopen', async () => {
+  const fx = sprintRepo([child(6, 5, { state: 'closed', state_reason: 'completed' })], { body: 'no dates here' });
+  const sprint = await sprintEvent(fx, 'closed', 6);
+  assert.equal(sprint.state, 'closed');
+  assert.match(sprint.body, /Progress: \*\*100%\*\*/);
+  fx.store.issues.find((i) => i.number === 6).state = 'open';
+  const reopened = await sprintEvent(fx, 'reopened', 6);
+  assert.equal(reopened.state, 'open');
+});

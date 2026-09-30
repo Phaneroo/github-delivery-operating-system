@@ -591,3 +591,10 @@ test('two QA approvers: B declining after A approved reopens it, and then A alon
   await run(fx, commentContext('QaTwo', 'approved'));
   assert.equal(fx.store.issues[0].state, 'closed');
 });
+
+test('two QA approvers: a decline from someone since removed from QA_APPROVER no longer blocks', async () => {
+  const fx = rollingRepo();
+  await run(fx, commentContext('QaLead', 'needs work'));
+  await runScript(APPROVAL_SCRIPT, { github: fx.github, context: commentContext('QaTwo', 'approved'), env: { QA_APPROVER: 'QaTwo' } });
+  assert.equal(fx.store.issues[0].state, 'closed');
+});

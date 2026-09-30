@@ -65,13 +65,12 @@ jobs:
 
             const sprintBody = sprintIssue.data.body || "";
 
+            // Unreadable dates are treated like a broken range (time 100%, so
+            // health flags it) rather than skipping the run, so the burn-down,
+            // auto-close and reopen still work.
             const dates = parseSprintDates(sprintBody);
-            if (!dates) {
-              console.log("Sprint dates not found.");
-              return;
-            }
-
-            const timePercent = computeTimePercent(dates.startDate, dates.endDate, new Date());
+            if (!dates) console.log("Sprint dates not found; treating time as fully elapsed.");
+            const timePercent = dates ? computeTimePercent(dates.startDate, dates.endDate, new Date()) : 100;
 
             // Paginate: a plain listForRepo call caps at one page (100 issues) and
             // would silently undercount children in repos with more open+closed
@@ -123,7 +122,7 @@ jobs:
                   issue_number: sprintNumber,
                   per_page: 100
                 });
-                if (wasAutoClosed(sprintComments)) {
+                if (wasAutoClosed(sprintComments, sprintIssue.data.closed_at)) {
                   await github.rest.issues.update({
                     owner: context.repo.owner,
                     repo: context.repo.repo,

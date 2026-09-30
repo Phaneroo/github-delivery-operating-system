@@ -108,7 +108,7 @@ jobs:
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: issueNumber, per_page: 100
               });
-              blockedBy = otherQaDecliners(rollingQaVerdictLog(comments), actor);
+              blockedBy = otherQaDecliners(rollingQaVerdictLog(comments), actor, approverNames);
             }
 
             const action = nextRollingQaAction({ state: live.state, verdict, anotherRollingOpen: Boolean(anotherRollingOpen), blockedBy });

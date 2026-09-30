@@ -219,3 +219,9 @@ test('wasAutoClosed recognizes the completion comment and nothing a person would
   assert.equal(wasAutoClosed([]), false);
   assert.equal(wasAutoClosed(undefined), false);
 });
+
+test('wasAutoClosed: only when the latest close was the automatic one', () => {
+  const comments = [{ body: AUTO_CLOSE_COMMENT, created_at: '2026-09-10T10:00:05Z' }];
+  assert.equal(wasAutoClosed(comments, '2026-09-10T10:00:01Z'), true, 'closed a moment before the comment');
+  assert.equal(wasAutoClosed(comments, '2026-09-20T09:00:00Z'), false, 'closed again later, by hand');
+});

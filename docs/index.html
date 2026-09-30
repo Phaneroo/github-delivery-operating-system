@@ -125,6 +125,40 @@
         <p>Installing with <code>--with-skill</code> drops a <code>.claude/skills/delivery-ops/SKILL.md</code> skill into the repo, scoped to that repo's Delivery OS install. It lets anyone using <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> drive the workflows above by asking in plain language, instead of hand-building <code>gh issue create</code> calls and remembering each template's exact field names.</p>
         <p>Before doing anything, it checks the target repo — confirms Delivery OS is installed, labels exist, and approvers/QA assignees are configured — and always shows the exact issue or comment content for confirmation before creating or posting for real. It can also run a task's whole lifecycle on its own (notice, classify, file, keep in sync, close) — acting without asking when the outcome is clear and always posting a one-line notice so nothing happens invisibly — or turn a spec/feature description into a full phase-and-task breakdown, always shown for confirmation first since that creates many issues at once.</p>
 
+        <h3 id="conversation">What a session looks like</h3>
+        <p>Illustrative, on a repo called <code>acme/storefront</code>. Claude checks the repo, shows exactly what it will create, and waits for your yes:</p>
+        <div class="install-block install-block--prompt">
+          <div class="install-label">Claude Code</div>
+          <code>You:    Create a sprint called Sprint 14 for the checkout revamp, running
+        Oct 1 to Oct 14, with features: guest checkout, saved cards,
+        order confirmation email.
+
+Claude: Checked acme/storefront: Delivery OS is installed and the sprint
+        and planning labels exist. I'm about to create:
+
+          Title:    SPRINT - Sprint 14
+          Labels:   sprint, planning
+          Goal:     Checkout revamp
+          Dates:    2026-10-01 to 2026-10-14
+          Features: guest checkout
+                    saved cards
+                    order confirmation email
+
+        Create it?
+
+You:    yes
+
+Claude: Created acme/storefront#57. sprint-child-creator has opened
+        #58 guest checkout, #59 saved cards and #60 order confirmation
+        email. Closing each one moves the sprint's burn-down.
+
+You:    Approve release #61
+
+Claude: You're logged in as jkaweesi22, which matches RELEASE_APPROVER.
+        Posting "approved" on #61. authorize-deployment will mark it
+        ready to deploy.</code>
+        </div>
+
         <div class="table-wrap">
           <table class="workflows-table">
             <thead>

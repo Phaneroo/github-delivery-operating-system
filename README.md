@@ -44,6 +44,40 @@ The `delivery-ops` skill (`.claude/skills/delivery-ops/SKILL.md`) lets you drive
 
 Try: *"Create a sprint called Sprint 14 for checkout revamp, running Oct 1 to Oct 14, with features: …"*, *"Approve release #12"*, or *"How's Sprint 14 doing?"*
 
+
+What a session looks like (illustrative, on a repo called `acme/storefront`):
+
+```text
+You:    Create a sprint called Sprint 14 for the checkout revamp, running
+        Oct 1 to Oct 14, with features: guest checkout, saved cards,
+        order confirmation email.
+
+Claude: Checked acme/storefront: Delivery OS is installed and the sprint
+        and planning labels exist. I'm about to create:
+
+          Title:    SPRINT - Sprint 14
+          Labels:   sprint, planning
+          Goal:     Checkout revamp
+          Dates:    2026-10-01 to 2026-10-14
+          Features: guest checkout
+                    saved cards
+                    order confirmation email
+
+        Create it?
+
+You:    yes
+
+Claude: Created acme/storefront#57. sprint-child-creator has opened
+        #58 guest checkout, #59 saved cards and #60 order confirmation
+        email. Closing each one moves the sprint's burn-down.
+
+You:    Approve release #61
+
+Claude: You're logged in as jkaweesi22, which matches RELEASE_APPROVER.
+        Posting "approved" on #61. authorize-deployment will mark it
+        ready to deploy.
+```
+
 It also comes with an update check: when a Claude Code session starts in a repo whose install is behind the latest release, Claude offers to update it (only after you confirm). For the same reminder in any terminal when you `cd` into a repo, run `npx github-delivery-os@latest shell-hook --install`. See [Consumer Setup](docs/consumer-setup.md#getting-told-when-an-update-is-out).
 
 Full workflow table, quick start, and Claude Code walkthroughs are on the [landing page](https://phaneroo.github.io/github-delivery-operating-system/).

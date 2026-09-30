@@ -1082,3 +1082,79 @@ test('install --update prints the rolling QA note when upgrading a 1.8.0 install
     rm(dir);
   }
 });
+
+test('isOlderVersion compares x.y.z numerically, not lexically', () => {
+  const { isOlderVersion } = __test__;
+  assert.equal(isOlderVersion('1.8.0', '1.9.0'), true);
+  assert.equal(isOlderVersion('1.9.0', '1.9.0'), false);
+  assert.equal(isOlderVersion('1.10.0', '1.9.0'), false, '1.10 is newer than 1.9');
+  assert.equal(isOlderVersion('1.9', '1.9.1'), true, 'missing patch counts as 0');
+  assert.equal(isOlderVersion('2.0.0', '1.99.99'), false);
+  assert.equal(isOlderVersion('garbage', '0.0.1'), true, 'unparseable parts count as 0');
+});
+
+test('a second plain install is a no-op: edited workflows are kept and the manifest is not rewritten', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    const wf = path.join(dir, '.github', 'workflows', `${WORKFLOWS[0]}.yml`);
+    fs.writeFileSync(wf, '# locally edited');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    assert.equal(fs.readFileSync(wf, 'utf8'), '# locally edited');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--overwrite replaces an edited Delivery OS workflow but leaves unrelated workflows alone', () => {
+  const dir = mkTmpRepo();
+  try {
+    const wfDir = path.join(dir, '.github', 'workflows');
+    fs.mkdirSync(wfDir, { recursive: true });
+    fs.writeFileSync(path.join(wfDir, 'my-own-ci.yml'), '# mine');
+    fs.writeFileSync(path.join(wfDir, `${WORKFLOWS[0]}.yml`), '# stale');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true }));
+    assert.notEqual(fs.readFileSync(path.join(wfDir, `${WORKFLOWS[0]}.yml`), 'utf8'), '# stale');
+    assert.equal(fs.readFileSync(path.join(wfDir, 'my-own-ci.yml'), 'utf8'), '# mine');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall leaves unrelated workflows in place', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    const other = path.join(dir, '.github', 'workflows', 'my-own-ci.yml');
+    fs.writeFileSync(other, '# mine');
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.' }));
+    assert.equal(fs.readFileSync(other, 'utf8'), '# mine');
+    assert.equal(fs.existsSync(path.join(dir, '.github', 'workflows', `${WORKFLOWS[0]}.yml`)), false);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('install creates a target directory that does not exist yet', () => {
+  const dir = mkTmpRepo();
+  try {
+    const nested = path.join(dir, 'a', 'b');
+    inRepoQuietly(dir, () => runInstall({ targetDir: nested }));
+    assert.ok(fs.existsSync(path.join(nested, '.github', 'workflows', `${WORKFLOWS[0]}.yml`)));
+    assert.equal(readManifest(nested).version, pkgVersion);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('templates are only installed with --with-templates', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    for (const t of TEMPLATES) {
+      assert.equal(fs.existsSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', t)), false, `${t} should not be installed`);
+    }
+  } finally {
+    rm(dir);
+  }
+});

@@ -39,6 +39,13 @@ const WORKFLOWS = [
   'qa-rollup-approval',
 ];
 
+// What a default (full) install puts in a repo: everything except the Telegram
+// alerts, which need a bot and two secrets to do anything, so they are opt-in
+// (`add telegram`). WORKFLOWS stays the list of every workflow we ship: status,
+// list and uninstall use it so an installed Telegram workflow is still known.
+const OPT_IN_WORKFLOWS = ['telegram-issues'];
+const DEFAULT_WORKFLOWS = WORKFLOWS.filter((wf) => !OPT_IN_WORKFLOWS.includes(wf));
+
 // Pure logic some of the workflows above require() at runtime from
 // .github/scripts/<name>.js (see .github/workflows/authorize-deployment.yml
 // etc.) — these are required dependencies of those workflows, not optional,
@@ -580,6 +587,13 @@ function runInstall(options) {
   } else {
     packs = priorPacks;
     current = priorEffective.workflows;
+    // A workflow that became opt-in after this repo installed it (Telegram) keeps
+    // being updated and checked while it is there, so it never goes stale unseen.
+    if (bundle === 'full' && !manifestWorkflows(priorManifest, bundle, priorPacks)) {
+      for (const wf of OPT_IN_WORKFLOWS) {
+        if (!current.includes(wf) && fs.existsSync(path.join(targetAbs, '.github', 'workflows', `${wf}.yml`))) current = current.concat(wf);
+      }
+    }
   }
   // add/remove: packs are named groups of workflows (and, on lite, one of them
   // is what makes releases need a QA approver); anything else is one workflow.
@@ -624,7 +638,7 @@ function runInstall(options) {
   console.log(`Target: ${targetAbs}`);
   if (bundle !== DEFAULT_BUNDLE) console.log(`Bundle: ${bundle}`);
   if (packs.length) console.log(`Packs: ${packs.join(', ')}`);
-  if (customWorkflows) console.log(`Workflows: ${workflowSet.join(', ')}`);
+  if (customWorkflows && isCustomSelection(workflowSet, bundle, packs)) console.log(`Workflows: ${workflowSet.join(', ')}`);
   for (const w of warnings) console.log(`Note: ${w}`);
 
   if (overwrite) {
@@ -1012,7 +1026,11 @@ function runInstall(options) {
       console.log('     - RELEASE_APPROVER: GitHub username of release approver');
       console.log('     - QA_APPROVER: GitHub username of QA approver');
       console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
-      console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
+      if (workflowSet.includes('telegram-issues')) {
+        console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
+      } else {
+        console.log('  3. Telegram alerts are optional: `npx github-delivery-os add telegram .`, then add the secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID');
+      }
       nextStep = 4;
     }
     if (!withTemplates) {
@@ -1085,7 +1103,7 @@ const TEMPLATES = [
 // rolling QA machinery (auto-qa-request, qa-rollup-approval, auto-assign-qa,
 // Telegram). A bundle must stay a subset of full.
 const BUNDLES = {
-  full: { workflows: WORKFLOWS, scripts: SCRIPTS, templates: TEMPLATES },
+  full: { workflows: DEFAULT_WORKFLOWS, scripts: SCRIPTS, templates: TEMPLATES },
   lite: {
     workflows: ['setup-labels', 'sprint-child-creator', 'auto-close-sprint', 'notify-release-approver', 'authorize-deployment'],
     scripts: ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'labels'],
@@ -1139,6 +1157,14 @@ function manifestWorkflows(manifest, bundle, packs = []) {
   return kept;
 }
 
+// Whether a set is a choice the person made, for display: opt-in workflows
+// (Telegram) being present or absent is not, since a default install leaves
+// them out and plenty of repos already have them.
+function isCustomSelection(workflows, bundle, packs = []) {
+  const strip = (list) => list.filter((wf) => !OPT_IN_WORKFLOWS.includes(wf));
+  return !sameSet(strip(workflows), strip(defaultSet(bundle, packs)));
+}
+
 function sameSet(a, b) {
   return a.length === b.length && a.every((x) => b.includes(x));
 }
@@ -1188,17 +1214,21 @@ function scriptsForWorkflows(flavor, workflows) {
 
 // --only (just these) or --skip (all but these), within the bundle's workflows.
 // Returns { workflows } or { error }; with neither flag it returns null workflows.
+// On full, the opt-in workflows (Telegram) are known names: --only can pick one,
+// and --skip of one is accepted (it's simply not in the default set), so a
+// command written before it became opt-in keeps working.
 function resolveSelection({ bundle, only, skip }) {
   const base = BUNDLES[bundle].workflows;
+  const known = bundle === DEFAULT_BUNDLE ? WORKFLOWS : base;
   if (only && skip) return { error: 'Use --only or --skip, not both.' };
   const named = only || skip;
   if (!named) return { workflows: null };
   if (named.length === 0) return { error: `${only ? '--only' : '--skip'} needs at least one workflow name.` };
-  const unknown = named.filter((n) => !base.includes(n));
+  const unknown = named.filter((n) => !known.includes(n));
   if (unknown.length) {
-    return { error: `Unknown workflow${unknown.length > 1 ? 's' : ''} for the ${bundle} bundle: ${unknown.join(', ')}. Available: ${base.join(', ')}.` };
+    return { error: `Unknown workflow${unknown.length > 1 ? 's' : ''} for the ${bundle} bundle: ${unknown.join(', ')}. Available: ${known.join(', ')}.` };
   }
-  const workflows = only ? base.filter((wf) => only.includes(wf)) : base.filter((wf) => !skip.includes(wf));
+  const workflows = only ? known.filter((wf) => only.includes(wf)) : base.filter((wf) => !skip.includes(wf));
   if (workflows.length === 0) return { error: 'That leaves nothing to install.' };
   return { workflows };
 }
@@ -1261,7 +1291,8 @@ function expectedFor(manifest) {
   const bundle = manifestBundle(manifest);
   const packs = manifestPacks(manifest, bundle);
   const custom = manifestWorkflows(manifest, bundle, packs);
-  return { bundle, packs, expected: effectiveFor(bundle, packs, custom), custom: Boolean(custom) };
+  const expected = effectiveFor(bundle, packs, custom);
+  return { bundle, packs, expected, custom: Boolean(custom) && isCustomSelection(expected.workflows, bundle, packs) };
 }
 
 // What can be installed: the bundles, packs and each workflow (what it does,
@@ -1309,7 +1340,7 @@ function runList({ json = false, targetDir = '.' } = {}) {
   console.log('Workflows (add or remove any one by name; or choose with --only a,b / --skip a,b at install):');
   for (const w of workflows) {
     const mark = installed ? (w.installed ? '✓ ' : '○ ') : '';
-    const where = w.bundles.join(', ');
+    const where = w.bundles.length ? w.bundles.join(', ') : 'opt-in: add it';
     const needs = w.needs.length ? ` (works with: ${w.needs.join(', ')})` : '';
     console.log(`  ${mark}${w.name.padEnd(24)} [${where}]  ${w.summary}${needs}`);
   }
@@ -1352,7 +1383,13 @@ async function runStatus(options) {
 
   // What this repo is meant to have: the bundle its manifest records (full if
   // none). Anything outside it isn't "missing" or "broken".
-  const { bundle, packs, expected, custom } = expectedFor(readManifest(targetAbs));
+  const { bundle, packs, expected: expectedFromManifest, custom } = expectedFor(readManifest(targetAbs));
+  // An opt-in workflow already installed on a plain full install counts as expected.
+  let expected = expectedFromManifest;
+  if (bundle === 'full' && !custom) {
+    const extra = OPT_IN_WORKFLOWS.filter((wf) => !expected.workflows.includes(wf) && fs.existsSync(path.join(workflowsDest, `${wf}.yml`)));
+    if (extra.length) expected = { ...expected, workflows: WORKFLOWS.filter((wf) => expected.workflows.includes(wf) || extra.includes(wf)) };
+  }
 
   const installedWorkflows = WORKFLOWS.filter((wf) =>
     fs.existsSync(path.join(workflowsDest, `${wf}.yml`))
@@ -1719,6 +1756,9 @@ module.exports = {
     defaultSet,
     sameSet,
     hasQaWorkflows,
+    isCustomSelection,
     needsWarnings,
+    DEFAULT_WORKFLOWS,
+    OPT_IN_WORKFLOWS,
   },
 };

@@ -131,8 +131,10 @@ Full workflow table, quick start, and Claude Code walkthroughs are on the [landi
 | **Sprint child creation** | One issue per feature line, automatic burn-down, auto-close at 100% |
 | **Dual approval gates** | Release approver + QA sign-off required before deploy; a decline from either side blocks it until that same person approves |
 | **Rolling QA reminder** | Every change that reaches `main` is added to one open *"QA REQUEST - Changes awaiting QA"* issue; the QA approver approves or declines it with a comment or a checkbox |
-| **Auto-assign QA & Telegram alerts** | QA-labeled issues get assigned automatically; optional alerts for bugs, QA, sprints, releases |
+| **Auto-assign QA** | QA-labeled issues get assigned automatically |
 | **Claude Code skill** (`--with-skill`) | Operate it all in plain language — see [Delivery Ops](#delivery-ops-run-it-by-asking-claude) |
+
+**Telegram alerts are opt-in.** Alerts for bugs, QA, sprints, releases and merges need a bot and two secrets to do anything, so a default install doesn't include them. Add them with `npx github-delivery-os add telegram .` (an install that already has them keeps them and keeps them updated).
 
 ### Rolling QA issue
 

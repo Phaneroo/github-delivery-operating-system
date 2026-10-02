@@ -122,7 +122,7 @@ mkdir -p "${TARGET_ABS}/.github/ISSUE_TEMPLATE"
 mkdir -p "${TARGET_ABS}/.github/scripts"
 
 # 2. Copy workflows
-WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa telegram-issues setup-labels auto-qa-request qa-rollup-approval"
+WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa setup-labels auto-qa-request qa-rollup-approval"
 copy_managed_files "$WORKFLOWS" ".yml" "$WORKFLOWS_SRC" "${TARGET_ABS}/.github/workflows" ".github/workflows"
 WORKFLOWS_COPIED=$COPIED
 
@@ -262,7 +262,7 @@ if [ $WORKFLOWS_COPIED -gt 0 ] || [ $TEMPLATES_COPIED -gt 0 ] || [ $SCRIPTS_COPI
   echo "     - RELEASE_APPROVER: GitHub username of release approver"
   echo "     - QA_APPROVER: GitHub username of QA approver"
   echo "     - QA_ASSIGNEES: Comma-separated usernames for QA assignment"
-  echo "  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID"
+  echo "  3. Telegram alerts are optional: run npx github-delivery-os add telegram, then add the secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"
   if [ "$WITH_TEMPLATES" = false ]; then
     echo "  4. Copy templates: re-run with --with-templates"
   fi

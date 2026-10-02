@@ -26,6 +26,9 @@ const {
   skillForBundle,
   SKILL_ANCHOR,
   needsWarnings,
+  isCustomSelection,
+  DEFAULT_WORKFLOWS,
+  OPT_IN_WORKFLOWS,
   PACKS,
   manifestPacks,
   flavorFor,
@@ -112,7 +115,7 @@ test('fresh install writes a manifest matching the current package version', () 
     const workflowsDest = path.join(dir, '.github', 'workflows');
     const templatesDest = path.join(dir, '.github', 'ISSUE_TEMPLATE');
     const scriptsDest = path.join(dir, '.github', 'scripts');
-    for (const wf of WORKFLOWS) {
+    for (const wf of DEFAULT_WORKFLOWS) {
       assert.ok(fs.existsSync(path.join(workflowsDest, `${wf}.yml`)), `missing ${wf}.yml`);
     }
     for (const t of TEMPLATES) {
@@ -320,7 +323,7 @@ test('status (checkUpdates: false) reports installed workflows without network a
 
     const output = lines.join('\n');
     assert.match(output, /Installed version:/);
-    assert.match(output, new RegExp(`${WORKFLOWS.length}\\/${WORKFLOWS.length} workflows`));
+    assert.match(output, new RegExp(`${DEFAULT_WORKFLOWS.length}\\/${DEFAULT_WORKFLOWS.length} workflows`));
     assert.doesNotMatch(output, /Update available|Up to date|Could not check npm/);
   } finally {
     console.log = origLog;
@@ -1196,8 +1199,10 @@ function statusOutput(dir) {
   })();
 }
 
-test('the lite bundle is a strict subset of full, and full is everything', () => {
-  assert.deepEqual(BUNDLES.full.workflows, WORKFLOWS);
+test('the lite bundle is a strict subset of full, and full is everything except the opt-in workflows', () => {
+  assert.deepEqual(BUNDLES.full.workflows, DEFAULT_WORKFLOWS);
+  assert.deepEqual([...BUNDLES.full.workflows, ...OPT_IN_WORKFLOWS].sort(), [...WORKFLOWS].sort());
+  assert.deepEqual(OPT_IN_WORKFLOWS, ['telegram-issues']);
   assert.deepEqual(BUNDLES.full.scripts, SCRIPTS);
   assert.deepEqual(BUNDLES.full.templates, TEMPLATES);
   for (const kind of ['workflows', 'scripts', 'templates']) {
@@ -1278,7 +1283,7 @@ test('a default install is unchanged: every workflow, and no bundle field in the
   const dir = mkTmpRepo();
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
-    for (const wf of WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
+    for (const wf of DEFAULT_WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
     assert.equal('bundle' in readManifest(dir), false);
     assert.equal(manifestBundle(readManifest(dir)), 'full');
     assert.equal(manifestBundle(null), 'full');
@@ -1337,7 +1342,7 @@ test('--bundle full on a lite install fills it out and drops the bundle field', 
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
-    for (const wf of WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
+    for (const wf of DEFAULT_WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
     assert.equal(manifestBundle(readManifest(dir)), 'full');
     assert.equal(readManifest(dir).version, pkgVersion, 'the recorded version is kept');
   } finally {
@@ -1505,9 +1510,13 @@ test('resolveSelection: only, skip, errors', () => {
   const only = resolveSelection({ bundle: 'full', only: ['auto-close-sprint', 'sprint-child-creator'] });
   assert.deepEqual(only.workflows, ['sprint-child-creator', 'auto-close-sprint'], 'keeps the bundle order');
 
-  const skip = resolveSelection({ bundle: 'full', skip: ['telegram-issues'] });
-  assert.equal(skip.workflows.length, WORKFLOWS.length - 1);
-  assert.ok(!skip.workflows.includes('telegram-issues'));
+  const skip = resolveSelection({ bundle: 'full', skip: ['auto-assign-qa'] });
+  assert.equal(skip.workflows.length, DEFAULT_WORKFLOWS.length - 1);
+  assert.ok(!skip.workflows.includes('auto-assign-qa'));
+
+  // Telegram is opt-in on full: --skip of it is accepted (a no-op, so older commands keep working) and --only can pick it.
+  assert.deepEqual(resolveSelection({ bundle: 'full', skip: ['telegram-issues'] }).workflows, DEFAULT_WORKFLOWS);
+  assert.deepEqual(resolveSelection({ bundle: 'full', only: ['telegram-issues', 'setup-labels'] }).workflows, ['telegram-issues', 'setup-labels'].sort((a, b) => WORKFLOWS.indexOf(a) - WORKFLOWS.indexOf(b)));
 
   assert.equal(resolveSelection({ bundle: 'full' }).workflows, null, 'neither flag: nothing chosen');
   assert.match(resolveSelection({ bundle: 'full', only: ['nope'] }).error, /Unknown workflow.*nope/);
@@ -1556,7 +1565,7 @@ test('install --skip leaves out just those, on full and on lite', () => {
   const dir = mkTmpRepo();
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', skip: 'telegram-issues,auto-assign-qa' }));
-    assert.deepEqual(wfFiles(dir), WORKFLOWS.filter((w) => !['telegram-issues', 'auto-assign-qa'].includes(w)).map((w) => `${w}.yml`).sort());
+    assert.deepEqual(wfFiles(dir), DEFAULT_WORKFLOWS.filter((w) => w !== 'auto-assign-qa').map((w) => `${w}.yml`).sort());
   } finally {
     rm(dir);
   }
@@ -1583,7 +1592,7 @@ test('a plain --update keeps a narrowed install; --bundle resets it; --only chan
     assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', 'authorize-deployment.yml')));
 
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
-    assert.deepEqual(wfFiles(dir), WORKFLOWS.map((w) => `${w}.yml`).sort());
+    assert.deepEqual(wfFiles(dir), DEFAULT_WORKFLOWS.map((w) => `${w}.yml`).sort());
     assert.equal('workflows' in readManifest(dir), false, 'back to following the bundle');
   } finally {
     rm(dir);
@@ -1625,7 +1634,8 @@ test('a default install records no workflows field, and manifestWorkflows ignore
   assert.equal(manifestWorkflows({ workflows: 'x' }, 'full'), null);
   assert.equal(manifestWorkflows({ workflows: [] }, 'full'), null);
   assert.equal(manifestWorkflows({ workflows: ['bogus'] }, 'full'), null);
-  assert.equal(manifestWorkflows({ workflows: WORKFLOWS }, 'full'), null, 'the whole bundle is not a narrowing');
+  assert.equal(manifestWorkflows({ workflows: DEFAULT_WORKFLOWS }, 'full'), null, 'the whole bundle is not a narrowing');
+  assert.deepEqual(manifestWorkflows({ workflows: WORKFLOWS }, 'full'), WORKFLOWS, 'with the opt-in workflow added it is a recorded set');
   assert.deepEqual(manifestWorkflows({ workflows: ['setup-labels', 'bogus'] }, 'full'), ['setup-labels']);
 });
 
@@ -1699,7 +1709,7 @@ test('lite next steps: with no labels created it still points at Setup Labels, t
   }
 });
 
-test('full next steps are unchanged: labels, QA variables, Telegram secrets', () => {
+test('full next steps: labels, QA variables, and Telegram as an opt-in', () => {
   const dir = mkTmpRepo();
   try {
     const out = installOutput(dir, { withTemplates: true, withSkill: true });
@@ -1713,7 +1723,7 @@ test('full next steps are unchanged: labels, QA variables, Telegram secrets', ()
         '     - RELEASE_APPROVER: GitHub username of release approver',
         '     - QA_APPROVER: GitHub username of QA approver',
         '     - QA_ASSIGNEES: Comma-separated usernames for QA assignment',
-        '  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID',
+        '  3. Telegram alerts are optional: `npx github-delivery-os add telegram .`, then add the secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID',
       ].join('\n')
     );
   } finally {
@@ -1871,7 +1881,7 @@ test('effectiveFor: lite alone is unchanged, telegram keeps lite\'s release flow
   assert.equal(qa.flavor, 'full');
   assert.ok(qa.scripts.includes('auto-qa-request') && qa.scripts.includes('release-rollup'), 'the full notify workflow runs the roll-up');
   assert.equal(flavorFor('full', []), 'full');
-  assert.deepEqual(effectiveFor('full', [], null).workflows, WORKFLOWS, 'full ignores packs entirely');
+  assert.deepEqual(effectiveFor('full', [], null).workflows, DEFAULT_WORKFLOWS, 'full ignores packs entirely');
   assert.deepEqual(manifestPacks({ bundle: 'lite', packs: ['qa', 'bogus'] }, 'lite'), ['qa']);
   assert.deepEqual(manifestPacks({ packs: ['qa'] }, 'full'), [], 'only lite has packs');
 });
@@ -2064,7 +2074,7 @@ test('a default install is still unchanged by packs: no packs field, every workf
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
     assert.equal('packs' in readManifest(dir), false);
-    for (const wf of WORKFLOWS) assert.ok(exists(dir, `workflows/${wf}.yml`));
+    for (const wf of DEFAULT_WORKFLOWS) assert.ok(exists(dir, `workflows/${wf}.yml`));
   } finally {
     rm(dir);
   }
@@ -2144,16 +2154,16 @@ test('add and remove work on a full install too, one workflow at a time', async 
   const dir = mkTmpRepo();
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
-    remove(dir, 'telegram-issues');
-    assert.equal(exists(dir, 'workflows/telegram-issues.yml'), false);
-    assert.equal(manifestSet(dir).length, WORKFLOWS.length - 1);
+    remove(dir, 'auto-assign-qa');
+    assert.equal(exists(dir, 'workflows/auto-assign-qa.yml'), false);
+    assert.equal(manifestSet(dir).length, DEFAULT_WORKFLOWS.length - 1);
     assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('workflows/authorize-deployment.yml'), 'still full\'s release flow');
     const out = await statusOutput(dir);
-    assert.match(out, /Summary: 8\/8 workflows/);
+    assert.match(out, new RegExp(`Summary: ${DEFAULT_WORKFLOWS.length - 1}\\/${DEFAULT_WORKFLOWS.length - 1} workflows`));
     assert.doesNotMatch(out, /Missing workflows|Broken install/);
-    add(dir, 'telegram-issues');
+    add(dir, 'auto-assign-qa');
     assert.equal('workflows' in readManifest(dir), false);
-    assert.ok(exists(dir, 'workflows/telegram-issues.yml'));
+    assert.ok(exists(dir, 'workflows/auto-assign-qa.yml'));
   } finally {
     rm(dir);
   }
@@ -2282,4 +2292,95 @@ test('list inside a repo marks what is installed, and --json carries it', () => 
   } finally {
     rm(bare);
   }
+});
+
+// ---- Telegram is opt-in on full ----
+
+test('a default (full) install no longer includes the Telegram workflow, and says how to add it', () => {
+  const dir = mkTmpRepo();
+  try {
+    const out = installOutput(dir, { withTemplates: true });
+    assert.equal(exists(dir, 'workflows/telegram-issues.yml'), false);
+    assert.equal(DEFAULT_WORKFLOWS.length, WORKFLOWS.length - 1);
+    assert.match(out, /add telegram/);
+    assert.equal('workflows' in readManifest(dir), false, 'the default set is not a recorded selection');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('add telegram on full installs it, records the set, and remove telegram returns to the default', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    add(dir, 'telegram');
+    assert.ok(exists(dir, 'workflows/telegram-issues.yml'));
+    assert.deepEqual(manifestSet(dir), WORKFLOWS);
+    const out = await statusOutput(dir);
+    assert.match(out, new RegExp(`Summary: ${WORKFLOWS.length}\\/${WORKFLOWS.length} workflows`));
+    assert.doesNotMatch(out, /custom selection/, 'having the opt-in workflow is not a custom selection');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true }));
+    assert.ok(exists(dir, 'workflows/telegram-issues.yml'), 'a plain --update keeps it');
+    remove(dir, 'telegram');
+    assert.equal(exists(dir, 'workflows/telegram-issues.yml'), false);
+    assert.equal('workflows' in readManifest(dir), false);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a repo that already has the Telegram workflow keeps it: --update refreshes it and status counts it', async () => {
+  const dir = mkTmpRepo();
+  try {
+    // Installed before Telegram became opt-in: all 9 workflows, a manifest with no recorded set.
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true, only: WORKFLOWS.join(',') }));
+    const manifest = readManifest(dir);
+    delete manifest.workflows;
+    fs.writeFileSync(manifestPath(dir), JSON.stringify(manifest));
+    const file = path.join(dir, '.github', 'workflows', 'telegram-issues.yml');
+    fs.writeFileSync(file, 'an older version');
+
+    const before = await statusOutput(dir);
+    assert.match(before, new RegExp(`Summary: ${WORKFLOWS.length}\\/${WORKFLOWS.length} workflows`), 'not 9/8');
+    assert.doesNotMatch(before, /Missing workflows|Broken install|custom selection/);
+
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true, withTemplates: true }));
+    assert.equal(fs.readFileSync(file, 'utf8'), fs.readFileSync(path.join(packageRoot, '.github', 'workflows', 'telegram-issues.yml'), 'utf8'), '--update refreshed it');
+    assert.deepEqual(manifestSet(dir), WORKFLOWS, 'and the install now records that it has it');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('uninstall still removes the Telegram workflow if it is there', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    add(dir, 'telegram');
+    inRepoQuietly(dir, () => runUninstall({ targetDir: '.' }));
+    assert.equal(exists(dir, 'workflows/telegram-issues.yml'), false);
+    assert.deepEqual(fs.readdirSync(path.join(dir, '.github', 'workflows')), []);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('the Telegram workflow still ships in the npm package, for `add telegram`', () => {
+  assert.ok(require('../package.json').files.includes('.github/workflows/telegram-issues.yml'));
+  assert.ok(fs.existsSync(path.join(packageRoot, '.github', 'workflows', 'telegram-issues.yml')));
+});
+
+test('scripts/install.sh installs the same default workflows as the JS installer', () => {
+  const sh = fs.readFileSync(path.join(packageRoot, 'scripts', 'install.sh'), 'utf8');
+  const listed = sh.match(/^WORKFLOWS="([^"]+)"/m)[1].split(/\s+/).sort();
+  assert.deepEqual(listed, [...DEFAULT_WORKFLOWS].sort());
+});
+
+test('isCustomSelection: opt-in workflows being present or absent is not a choice, anything else is', () => {
+  assert.equal(isCustomSelection(DEFAULT_WORKFLOWS, 'full'), false);
+  assert.equal(isCustomSelection(WORKFLOWS, 'full'), false, 'Telegram added');
+  assert.equal(isCustomSelection(DEFAULT_WORKFLOWS.filter((w) => w !== 'auto-assign-qa'), 'full'), true);
+  assert.equal(isCustomSelection([...DEFAULT_WORKFLOWS.filter((w) => w !== 'auto-assign-qa'), 'telegram-issues'], 'full'), true);
+  assert.equal(isCustomSelection(BUNDLES.lite.workflows, 'lite'), false);
+  assert.equal(isCustomSelection([...BUNDLES.lite.workflows, 'telegram-issues'], 'lite'), false);
 });

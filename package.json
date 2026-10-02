@@ -58,6 +58,7 @@
     ".github/ISSUE_TEMPLATE",
     ".github/lite",
     ".claude/skills/delivery-ops",
+    "skills/delivery-os-setup",
     ".claude/hooks/delivery-os-update-check.js"
   ],
   "engines": {

@@ -1639,6 +1639,7 @@ test('list --json describes every workflow and both bundles', () => {
   const qa = out.workflows.find((w) => w.name === 'auto-qa-request');
   assert.deepEqual(qa.bundles, ['full']);
   assert.ok(out.workflows.find((w) => w.name === 'setup-labels').bundles.includes('lite'));
+});
 
 function installOutput(dir, opts) {
   const lines = [];

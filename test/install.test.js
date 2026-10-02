@@ -23,6 +23,8 @@ const {
   loadLabels,
   BUNDLES,
   manifestBundle,
+  skillForBundle,
+  SKILL_ANCHOR,
   REQUIRED_SCRIPT_BY_WORKFLOW,
 } = __test__;
 
@@ -1538,6 +1540,117 @@ test('full next steps are unchanged: labels, QA variables, Telegram secrets', ()
         '  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID',
       ].join('\n')
     );
+  } finally {
+    rm(dir);
+  }
+});
+
+// ---- switching bundles swaps the files the bundles keep different versions of ----
+
+const VARIANT_FILES = [
+  ['workflows/authorize-deployment.yml', 'workflows/authorize-deployment.yml', 'lite/workflows/authorize-deployment.yml'],
+  ['workflows/notify-release-approver.yml', 'workflows/notify-release-approver.yml', 'lite/workflows/notify-release-approver.yml'],
+  ['ISSUE_TEMPLATE/production_release_qa_signoff.yml', 'ISSUE_TEMPLATE/production_release_qa_signoff.yml', 'lite/ISSUE_TEMPLATE/production_release_qa_signoff.yml'],
+];
+const pkgFile = (rel) => fs.readFileSync(path.join(packageRoot, '.github', rel), 'utf8');
+const repoFile = (dir, rel) => fs.readFileSync(path.join(dir, '.github', rel), 'utf8');
+
+test('lite to full replaces the lite release workflows and form with the full ones (no --update needed)', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    for (const [rel, , liteSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(liteSrc), `${rel} starts as lite's`);
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full', withTemplates: true }));
+    for (const [rel, fullSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(fullSrc), `${rel} is now the full version`);
+    assert.match(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m, 'the full label list is back');
+    assert.equal(manifestBundle(readManifest(dir)), 'full');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('full to lite swaps them the other way', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    for (const [rel, , liteSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(liteSrc), `${rel} is now lite's`);
+    assert.doesNotMatch(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m);
+    assert.equal(readManifest(dir).bundle, 'lite');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('re-running the same bundle does not replace a file you edited; only an explicit switch does', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    const file = path.join(dir, '.github', 'workflows', 'authorize-deployment.yml');
+    fs.writeFileSync(file, 'my own edit');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    assert.equal(fs.readFileSync(file, 'utf8'), 'my own edit');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+    assert.notEqual(fs.readFileSync(file, 'utf8'), 'my own edit');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('naming --bundle full on a repo with no install, or one already full, changes nothing about a default install', () => {
+  const a = mkTmpRepo();
+  const b = mkTmpRepo();
+  try {
+    inRepoQuietly(a, () => runInstall({ targetDir: '.', withTemplates: true }));
+    inRepoQuietly(b, () => runInstall({ targetDir: '.', bundle: 'full', withTemplates: true }));
+    for (const sub of ['workflows', 'scripts', 'ISSUE_TEMPLATE']) {
+      for (const f of fs.readdirSync(path.join(a, '.github', sub))) {
+        assert.equal(repoFile(b, `${sub}/${f}`), repoFile(a, `${sub}/${f}`), `${sub}/${f}`);
+      }
+    }
+    assert.equal('bundle' in readManifest(b), false);
+  } finally {
+    rm(a);
+    rm(b);
+  }
+});
+
+// ---- the delivery-ops skill per bundle ----
+
+const skillRepoFile = path.join(packageRoot, SKILL_REL_PATH);
+const addendumFile = path.join(packageRoot, '.github', 'lite', 'skill-addendum.md');
+
+test('the delivery-ops skill still has the anchor the lite addendum is spliced in at', () => {
+  assert.ok(fs.readFileSync(skillRepoFile, 'utf8').includes(SKILL_ANCHOR));
+  assert.match(fs.readFileSync(addendumFile, 'utf8'), /^## Which install is this\? \(full or lite\)/);
+});
+
+test('a full install gets the delivery-ops skill byte for byte; lite gets the same skill plus only the addendum', () => {
+  const full = mkTmpRepo();
+  const lite = mkTmpRepo();
+  try {
+    inRepoQuietly(full, () => runInstall({ targetDir: '.', withSkill: true }));
+    inRepoQuietly(lite, () => runInstall({ targetDir: '.', bundle: 'lite', withSkill: true }));
+    const base = fs.readFileSync(skillRepoFile, 'utf8');
+    const addendum = fs.readFileSync(addendumFile, 'utf8');
+    assert.equal(fs.readFileSync(skillPath(full), 'utf8'), base);
+    const liteSkill = fs.readFileSync(skillPath(lite), 'utf8');
+    assert.equal(liteSkill.replace(addendum, ''), base, 'removing the addendum gives the base skill back');
+    assert.ok(liteSkill.indexOf(addendum) < liteSkill.indexOf(SKILL_ANCHOR), 'ahead of the pre-flight check');
+    assert.ok(liteSkill.length > base.length);
+  } finally {
+    rm(full);
+    rm(lite);
+  }
+});
+
+test('skillForBundle never loses the addendum if the skill is reorganised', () => {
+  const dir = mkTmpRepo();
+  try {
+    const file = path.join(dir, 'a.md');
+    fs.writeFileSync(file, 'ADDENDUM\n');
+    assert.match(skillForBundle('no anchor here\n', file), /ADDENDUM/);
   } finally {
     rm(dir);
   }

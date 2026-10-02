@@ -400,6 +400,18 @@ function copySingleManagedFile(fullName, srcDir, destDir, opts) {
   return copyManagedFiles([name], ext, srcDir, destDir, opts);
 }
 
+// The delivery-ops skill for a bundle other than full: the same skill with the
+// bundle's short addendum (what to skip, how releases work) spliced in ahead of
+// the pre-flight check. Full gets the skill byte for byte, so there is one skill
+// to maintain, not two.
+const SKILL_ANCHOR = '## Pre-flight check\n';
+function skillForBundle(base, addendumPath) {
+  const addendum = fs.readFileSync(addendumPath, 'utf8');
+  const at = base.indexOf(SKILL_ANCHOR);
+  if (at === -1) return base + '\n' + addendum; // never lose the addendum if the skill is reorganised
+  return base.slice(0, at) + addendum + base.slice(at);
+}
+
 // labels.tsv for a bundle that leaves some labels out: the same file, minus
 // those lines. Same skip/overwrite/dry-run rules as copyManagedFiles.
 function writeFilteredLabels(srcDir, destDir, excluded, { overwrite, dryRun, relDir }) {
@@ -570,19 +582,32 @@ function runInstall(options) {
   let scriptsSkipped;
 
   // Copy workflows (always on — not optional)
-  const ownWorkflows = selected.workflows.filter((wf) => !(selected.liteWorkflows || []).includes(wf));
-  const workflowOpts = { overwrite, dryRun, relDir: '.github/workflows' };
-  ({ copied: workflowsCopied, skipped: workflowsSkipped } = copyManagedFiles(
-    ownWorkflows,
-    '.yml',
-    workflowsSrc,
-    workflowsDest,
-    workflowOpts
-  ));
-  if (selected.liteWorkflows) {
-    const lite = copyManagedFiles(selected.liteWorkflows, '.yml', path.join(pkgRoot, LITE_REL_DIR, 'workflows'), workflowsDest, workflowOpts);
-    workflowsCopied += lite.copied;
-    workflowsSkipped += lite.skipped;
+  //
+  // Naming a different --bundle than the repo is on swaps the files the two
+  // bundles keep different versions of (VARIANT_*: the release workflows, the
+  // release form, the label list) for the new bundle's, even without --update.
+  // They are Delivery OS's own files, and leaving the old bundle's copy in
+  // place would quietly keep the old behavior (a lite authorize-deployment
+  // ignoring the QA approver on a repo that now says it's full).
+  const switching = Boolean(options.bundle) && manifestBundle(priorManifest) !== bundle;
+  if (switching) {
+    console.log(`Switching to the ${bundle} bundle: its versions of the release workflows, release form and labels replace the current ones.`);
+    console.log('');
+  }
+  const variantWorkflows = BUNDLES.lite.liteWorkflows;
+  const variantSrc = bundle === 'lite' ? path.join(pkgRoot, LITE_REL_DIR, 'workflows') : workflowsSrc;
+  workflowsCopied = 0;
+  workflowsSkipped = 0;
+  // One at a time, in the bundle's order, so the log reads as it always has.
+  for (const wf of selected.workflows) {
+    const isVariant = variantWorkflows.includes(wf);
+    const result = copyManagedFiles([wf], '.yml', isVariant ? variantSrc : workflowsSrc, workflowsDest, {
+      overwrite: overwrite || (switching && isVariant),
+      dryRun,
+      relDir: '.github/workflows',
+    });
+    workflowsCopied += result.copied;
+    workflowsSkipped += result.skipped;
   }
 
   // Copy the scripts the workflows above require() at runtime — required,
@@ -602,7 +627,8 @@ function runInstall(options) {
   // scripts/install.sh reuses copy_managed_files for these exact files
   // rather than hand-rolling the copy).
   for (const extra of [SCRIPTS_PACKAGE_JSON, LABELS_TSV]) {
-    const opts = { overwrite, dryRun, relDir: '.github/scripts' };
+    // labels.tsv is one of the files the bundles keep different versions of.
+    const opts = { overwrite: overwrite || (switching && extra === LABELS_TSV), dryRun, relDir: '.github/scripts' };
     const result =
       extra === LABELS_TSV && selected.excludedLabels
         ? writeFilteredLabels(scriptsSrc, scriptsDest, selected.excludedLabels, opts)
@@ -628,8 +654,9 @@ function runInstall(options) {
         : path.join(templatesSrc, name);
       const dest = path.join(templatesDest, name);
       if (!fs.statSync(src).isFile()) continue;
+      const replaceThis = overwrite || (switching && BUNDLES.lite.liteTemplates.includes(name));
 
-      if (fs.existsSync(dest) && !overwrite) {
+      if (fs.existsSync(dest) && !replaceThis) {
         console.log(`  Skipped (exists): ${name}`);
         templatesSkipped++;
       } else if (dryRun) {
@@ -656,7 +683,11 @@ function runInstall(options) {
       skillCopied++;
     } else {
       fs.mkdirSync(path.dirname(skillDest), { recursive: true });
-      fs.copyFileSync(skillSrc, skillDest);
+      if (bundle === DEFAULT_BUNDLE) {
+        fs.copyFileSync(skillSrc, skillDest);
+      } else {
+        fs.writeFileSync(skillDest, skillForBundle(fs.readFileSync(skillSrc, 'utf8'), path.join(pkgRoot, LITE_REL_DIR, 'skill-addendum.md')));
+      }
       console.log(`  Created: ${SKILL_REL_PATH}`);
       skillCopied++;
     }
@@ -1321,5 +1352,7 @@ module.exports = {
     loadLabels,
     BUNDLES,
     manifestBundle,
+    skillForBundle,
+    SKILL_ANCHOR,
   },
 };

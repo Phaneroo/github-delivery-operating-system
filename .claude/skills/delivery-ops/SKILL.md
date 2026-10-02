@@ -1,6 +1,6 @@
 ---
 name: delivery-ops
-description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses), turn a spec (SRS/PRD) or a plain-language feature description into a full phase-and-task breakdown filed as real issues, and run a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything. Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, break a spec/SRS/feature into phases and tasks, clean up or audit stale/old issues, or demo/test Delivery OS against a given repo.
+description: Operate a repo that has GitHub Delivery OS installed — create sprint/production-release/QA-request/bug issues that actually trigger its automation, comment as an approver in phrasing its workflows recognize, check status (labels, latest comments, burn-down), run autonomous task tracking (identify tasks/bugs, group them into phases via sprints, maintain a roadmap issue, update status, comment, and close as work progresses), turn a spec (SRS/PRD) or a plain-language feature description into a full phase-and-task breakdown filed as real issues, and run a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything. Targets a specific repo via --repo; defaults to the current repo if this skill was installed into it and none is named. Use when asked to turn a piece on or off or see what is installed here (Telegram alerts, QA sign-off, a single workflow: add or remove it), to create a sprint, request a release, approve/decline a release, check release or sprint status, track/file a task or bug found during work, plan or check a roadmap/phase, break a spec/SRS/feature into phases and tasks, clean up or audit stale/old issues, or demo/test Delivery OS against a given repo.
 ---
 
 # Operate Delivery OS
@@ -29,6 +29,20 @@ Before doing anything with a repo, check it actually has Delivery OS installed a
   - **Couldn't check** (offline, no `gh`/`npm`): say the version couldn't be verified and continue; don't guess.
   - If the session opened with a "Delivery OS X installed, Y available" message, the repo's update-check hook already did this comparison — make the same offer once, rather than re-checking or asking twice.
   - A missing `delivery-os.json` (pre-manifest install, or one done via `scripts/install.sh`, which doesn't write one) isn't itself a problem — skip this check silently rather than treating "no manifest" as "not installed"; the "Installed?" check above already covers that.
+
+## Changing what's installed
+
+Delivery OS isn't all-or-nothing, and this is the place to come when someone wants a piece turned on or off ("enable Telegram alerts", "add QA sign-off", "we don't use auto-assign", "what do I have installed?"). Don't edit workflow files by hand: the CLI adds and removes a piece together with the scripts, forms and labels it needs, and records the result.
+
+- **See what's installed:** `npx github-delivery-os@latest list .` shows every workflow as ✓ installed or ○ not, and each pack (`qa`, `telegram`) as installed, partly installed or available.
+- **Add or remove:** `npx github-delivery-os@latest add <names> .` and `remove <names> .`, where a name is a pack (`qa`, `telegram`) or any single workflow from `list`. Preview first with `--dry-run`, tell them in a few plain lines what would be added or removed, and run it for real only after they confirm. `remove` deletes files, so say which.
+- **What to tell them after:**
+  - `add telegram`: they add the secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` themselves (Settings → Secrets and variables → Actions). Telegram isn't in a default install since 1.13.0; a repo that already had it keeps it.
+  - `add qa`: the rolling QA issue, QA approval, QA assignment, the QA Request form and the QA labels come in, and **a release then needs the QA approver as well**, so they set `QA_APPROVER` and `QA_ASSIGNEES`. (On a full install QA is already included. Adding single QA workflows without the `qa` pack doesn't change how releases work.)
+  - `remove`: only the files nothing else needs are deleted. Repo variables, secrets and labels already created stay, and `remove qa` puts a lite repo's single-approver release back.
+  - If the CLI prints a note (a workflow does little without another one, e.g. `auto-close-sprint` without `sprint-child-creator`), pass it on plainly.
+- **It sticks.** The change is recorded in `.github/delivery-os.json`, and a plain `install --update` keeps it. Don't use `--only` / `--skip` for this: they replace the whole set.
+- **No Delivery OS in the repo yet?** That's first-time setup, not a change: use the `delivery-os-setup` skill (or run `npx github-delivery-os@latest install ...` and show the dry run first). Everything after that comes back here.
 
 ## Creating issues
 

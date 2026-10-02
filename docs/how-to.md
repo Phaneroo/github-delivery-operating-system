@@ -55,6 +55,23 @@ git push
 
 ---
 
+## Start Small, Change It Later
+
+You don't have to install everything. Pick the small set now and add or remove pieces as your needs change.
+
+```bash
+npx github-delivery-os install --bundle lite --with-templates --with-labels --with-skill .   # one person / small project
+npx github-delivery-os list .                       # what exists, and what's installed here (✓ / ○)
+npx github-delivery-os add qa . --dry-run           # preview adding QA sign-off
+npx github-delivery-os add qa .                     # add it (releases then need a QA approver too)
+npx github-delivery-os remove qa .                  # take it away again
+npx github-delivery-os add auto-assign-qa .         # or one workflow at a time
+```
+
+Packs (`qa`, `telegram`) are named groups; any single workflow works by name too. See [Consumer Setup](consumer-setup.md#lite-install) for what lite includes and how releases work with one approver.
+
+---
+
 ## Create a Sprint
 
 1. Issues → New issue
@@ -205,6 +222,8 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 |------|--------|
 | Install | `./scripts/install.sh --with-templates /path/to/repo` |
 | Update install | Add `--update` |
+| Start small | `npx github-delivery-os install --bundle lite --with-templates .` (see [Consumer Setup](consumer-setup.md#lite-install)) |
+| Add or remove a piece | `npx github-delivery-os add qa .` / `remove qa .` / `list .` |
 | Get update reminders | Claude Code: install with `--with-skill`. Terminal: `npx github-delivery-os@latest shell-hook --install` |
 | Create sprint | New issue → SPRINT PLANNING |
 | Request release | New issue → PRODUCTION RELEASE & QA SIGN-OFF |

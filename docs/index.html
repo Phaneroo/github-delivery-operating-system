@@ -99,6 +99,11 @@
               <tr><td><code>install --with-templates --with-skill .</code></td><td>You'll operate this repo's Delivery OS from Claude Code</td></tr>
               <tr><td><code>install --with-templates --with-labels --with-skill .</code></td><td>Everything at once, in one command</td></tr>
               <tr><td><code>install --bundle lite --with-templates --with-labels --with-skill .</code></td><td>One person or a small project — sprints, tasks, bugs and a single-approver release, without the QA machinery. Sets you as the release approver</td></tr>
+              <tr><td><code>install --only a,b …</code> / <code>--skip a,b</code></td><td>Pick individual workflows (names from <code>list</code>) instead of a whole bundle</td></tr>
+              <tr><td><code>list .</code></td><td>See every bundle, pack and workflow, and which are installed in this repo (<code>--json</code> for tools)</td></tr>
+              <tr><td><code>add qa .</code> / <code>add telegram .</code> / <code>add &lt;workflow&gt; .</code></td><td>Add a pack or a single workflow later, without reinstalling (<code>--dry-run</code> to preview)</td></tr>
+              <tr><td><code>remove qa .</code> / <code>remove &lt;workflow&gt; .</code></td><td>Take a pack or workflow away again; deletes only the files nothing else needs</td></tr>
+              <tr><td><code>setup-skill</code></td><td>Add the Claude Code skill that helps you choose what to install, before anything is installed</td></tr>
               <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>
               <tr><td><code>install --update …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
               <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>

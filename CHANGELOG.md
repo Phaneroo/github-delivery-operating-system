@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-10-02
+
+Start small and grow: a lite install for one person or a small project, and commands to add and remove pieces as needs change. Existing installs are unaffected until you ask for something new (see **Updating** below).
+
+### Added
+
+- **A lite install: `install --bundle lite`.** Sprint planning with child tasks, burn-down and auto-close; task and bug forms; and a plain Production Release where one approval from `RELEASE_APPROVER` ships it (`approved` adds `ready-for-deploy`, `declined` blocks it, approving again lifts it). It leaves out QA Requests, the rolling QA issue, QA assignment and Telegram. Lite has its own `notify-release-approver` and `authorize-deployment` (no QA approver, no roll-up), release form and label list (no `qa-request` / `qa-rollup`), shipped in `.github/lite/` and installed under the same names, so they replace nothing in a full install.
+  - The choice is recorded in `.github/delivery-os.json` as `"bundle": "lite"`; no field means full. A plain `install --update` keeps a repo on its bundle. `install --bundle full` fills a lite repo out, and naming a different `--bundle` swaps the release workflows, release form and labels for the new bundle's even without `--update`. `status` checks only what the bundle should have.
+  - A lite install sets the `RELEASE_APPROVER` repo variable to the person running it, using `gh`, and says so. It never overwrites a value that is already set, skips with a message if `gh` isn't available, and does nothing in `--dry-run`. `--no-set-approvers` turns it off; `--set-approvers` asks for it on any bundle.
+- **`add` and `remove`: change what's installed, any time.** `add qa`, `add telegram`, `remove qa`, or a single workflow by name (`add auto-assign-qa`, `remove auto-close-sprint`), on a lite or full install, with `--dry-run`.
+  - Packs are named groups: `qa` (the rolling QA issue, QA approval, QA assignment, the QA Request form, QA labels, **and a release that needs a QA approver too**) and `telegram` (alerts). Releases need a QA approver only with the `qa` pack or on a full install; adding a single QA workflow doesn't change that.
+  - A workflow's scripts come with it and are removed only when nothing else installed needs them. The QA Request form and QA labels follow the QA workflows. Removing a workflow another one works with prints a note. Repo variables, secrets and labels already created are never touched.
+  - What a repo has is recorded in the manifest (`"packs"`, and `"workflows"` only when it differs from the bundle's defaults). A plain `--update` keeps it.
+- **`--only` and `--skip` on `install`:** install just the named workflows, or the bundle without them (comma-separated, names as `list` shows them). The scripts each one needs travel with it. `--only` and `--skip` replace the whole set, and `--skip telegram-issues` keeps working as before.
+- **`list [target] [--json]`:** the bundles, packs and workflows, with what each does and what it works with. Run inside a repo it marks what is installed (✓ / ○).
+- **A setup skill: `npx github-delivery-os setup-skill`.** Adds `delivery-os-setup` to `~/.claude/skills` (or the repo's with `--project`), so it works before anything is installed. It is the front door, used once: it asks a few plain questions, recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you confirm (including the repo's `delivery-ops` skill, which it recommends to Claude Code users). It drives the CLI and reads `list --json`, so it never hard-codes the options. In a repo that already has Delivery OS and `delivery-ops` it hands over instead of starting an interview.
+- **Copy buttons on the landing page.** Command and code blocks on the docs site now have a copy button (example transcripts don't).
+- **The `delivery-ops` skill now covers changing what's installed, and knows about lite.** One assistant for everything after the install: besides sprints, releases and approvals, a new "Changing what's installed" section lets you say *"add QA sign-off"*, *"turn on Telegram"*, *"remove auto-assign"* or *"what's installed?"* and it runs `list` / `add` / `remove` for you, previewing first and asking before it changes anything. On a lite repo it also skips the QA guidance and explains the one-approval release.
+
+### Changed
+
+- **The Telegram alerts are now opt-in.** A fresh `install` (and `scripts/install.sh`) no longer includes `telegram-issues.yml`: it needs a bot and two secrets to do anything, but it ran a job on every issue, comment and merged PR. Add it with `npx github-delivery-os add telegram .`, then add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. A fresh full install is now 8 workflows, and the install's next steps say how to add Telegram.
+  - A repo that already has the Telegram workflow keeps it: `--update` still refreshes it, `status` counts it (not as a "custom selection"), and `uninstall` removes it. The manifest records that the repo has it.
+  - `--skip telegram-issues` is still accepted (a no-op), and `--only telegram-issues` can pick it. The workflow still ships in the package.
+  - A repo installed with `scripts/install.sh` keeps its Telegram file, but that script no longer refreshes it; run `add telegram` to keep it updated. `auto-close-sprint` still has its own Telegram message and is unchanged.
+
+### Updating
+
+Nothing changes in a repo until you run the update. For a full install the workflows, scripts and forms are identical to 1.12.2, so `install --update` only records the new version (and, if the repo has Telegram, that it has it). The one shipped file that gains something is the `delivery-ops` skill (for repos installed with `--with-skill`): it gets the new "Changing what's installed" section, and nothing it did before changes. Lite, packs, `--only`/`--skip`, `list` and `setup-skill` are new options you choose; they never apply on their own.
+
 ## [1.12.2] - 2026-09-30
 
 ### Fixed

@@ -39,15 +39,15 @@ From your repo root. `--with-labels` creates labels via the `gh` CLI, `--with-sk
 
 </details>
 
-### Not sure what to install?
+### Not sure what to install? Let Claude guide you
 
-Add the setup skill once, then ask Claude:
+Three steps, and after the first one you only ever talk to Claude:
 
-```bash
-npx github-delivery-os setup-skill
-```
+1. **Once:** `npx github-delivery-os setup-skill`. It goes in your `~/.claude/skills`, so it works in any repo, including ones with no Delivery OS yet. (`--project` puts it in the current repo instead.)
+2. **In Claude Code, in your repo:** say *"Set up Delivery OS here."* Claude asks a few plain questions (just you or a team? anyone testing before release?), recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you say yes. It also adds the repo's `delivery-ops` skill.
+3. **From then on, just ask Claude:** create a sprint, file a bug, request or approve a release, or *"add QA sign-off"*, *"turn on Telegram"*, *"what's installed?"* whenever your needs change. Nothing is locked in. The `delivery-ops` skill handles all of it.
 
-It goes in your `~/.claude/skills`, so it works in any repo, including ones with no Delivery OS yet. In Claude Code, ask *"Set up Delivery OS here."* It asks a few plain questions (just you or a team? anyone testing before release?), recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you say yes. Use `--project` to put it in the current repo instead. `npx github-delivery-os list` shows everything you can pick from.
+You can do the same by hand: `npx github-delivery-os list` shows everything you can pick from, and `add` / `remove` change an install later.
 
 ## Lite install: one person, small projects
 

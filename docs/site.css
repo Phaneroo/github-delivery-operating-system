@@ -239,9 +239,17 @@ body {
   line-height: 1.45;
 }
 
-.doc-sidebar a:hover {
-  color: var(--accent-hover);
-  background: var(--accent-warm-muted);
+/* Hover styling only on devices that really hover. On a touch screen :hover sticks
+   after a tap, which left a link highlighted in amber. */
+@media (hover: hover) {
+  .doc-sidebar a:hover {
+    color: var(--accent-hover);
+    background: var(--accent-warm-muted);
+  }
+}
+
+.doc-sidebar a {
+  -webkit-tap-highlight-color: transparent;
 }
 
 .doc-sidebar a[aria-current="page"] {
@@ -781,5 +789,79 @@ pre code {
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--text-muted);
+  }
+}
+
+/* ——— Phones and tablets: the section menu becomes one pinned row ———
+   Below the desktop layout the menu used to be a tall list stacked above the page,
+   which filled the whole first phone screen. It is now a single row you swipe
+   sideways, pinned under the top bar, so the title and intro show straight away. */
+@media (max-width: 74.99rem) {
+  :root {
+    --mobile-nav-height: 3rem;
+  }
+
+  /* Let the one column shrink to the screen; otherwise the row of links, which
+     never wraps, would stretch the whole page wider than the phone. */
+  .doc-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-sidebar {
+    min-width: 0;
+  }
+
+  .doc-sidebar {
+    position: sticky;
+    top: var(--topbar-height);
+    z-index: 150;
+    padding: 0.45rem 0;
+    margin: 0 calc(var(--page-pad-x) * -1);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .doc-sidebar-title {
+    display: none;
+  }
+
+  .doc-sidebar ul {
+    display: flex;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0 var(--page-pad-x);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .doc-sidebar ul::-webkit-scrollbar {
+    display: none;
+  }
+
+  .doc-sidebar li {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .doc-sidebar a {
+    margin-left: 0;
+    padding: 0.35rem 0.8rem;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+  }
+
+  .doc-sidebar a.is-active {
+    color: var(--accent-text);
+    border-color: var(--accent-text);
+    background: var(--accent-muted);
+    font-weight: 600;
+  }
+
+  /* Anchors land below the top bar and the pinned row, not under them. */
+  [id] {
+    scroll-margin-top: calc(var(--topbar-height) + var(--mobile-nav-height) + 0.75rem);
   }
 }

@@ -47,10 +47,26 @@
 
   var headroom = 96;
 
+  // The pinned section row on phones and tablets follows the same logic as the
+  // "On this page" list on desktop: mark where you are, and keep that chip in view.
+  var rowLinks = document.querySelectorAll('.doc-sidebar a[href^="#"]');
+  var lastId = null;
+
   function setActive(id) {
     links.forEach(function (a) {
       a.classList.toggle('is-active', a.getAttribute('href') === '#' + id);
     });
+    rowLinks.forEach(function (a) {
+      var on = a.getAttribute('href') === '#' + id;
+      a.classList.toggle('is-active', on);
+      var row = a.parentNode && a.parentNode.parentNode;
+      // Recenter the chip only when the section changes, so it never fights your finger.
+      if (on && id !== lastId && row && row.scrollWidth > row.clientWidth) {
+        var left = a.offsetLeft - (row.clientWidth - a.offsetWidth) / 2;
+        row.scrollLeft = Math.max(0, left);
+      }
+    });
+    lastId = id;
   }
 
   function onScroll() {

@@ -42,14 +42,16 @@
       <div class="doc-sidebar-title">Docs</div>
       <ul>
         <li><a href="#overview">Overview</a></li>
-        <li><a href="#install">Install</a></li>
         <li><a href="#start-small">Start small</a></li>
-        <li><a href="#update">Update</a></li>
+        <li><a href="#install">Get started</a></li>
+        <li><a href="#change">Change it any time</a></li>
         <li><a href="#claude-code">Delivery Ops</a></li>
+        <li><a href="#update">Update</a></li>
         <li><a href="#why">Why this exists</a></li>
         <li><a href="#features">What you get</a></li>
         <li><a href="#workflows">Workflows</a></li>
         <li><a href="#quick-start">Quick start</a></li>
+        <li><a href="#commands">Commands</a></li>
         <li><a href="#documentation">Resources</a></li>
       </ul>
     </aside>
@@ -62,46 +64,64 @@
       <div class="doc-hero" id="overview">
         <h1>GitHub Delivery Operating System</h1>
         <p class="tagline">Structured sprint execution, QA governance, and production release control — embedded in your GitHub repos. Start with the small set or the full system, change it any time, and run it all by asking Claude Code in plain language.</p>
-        <p class="doc-lead"><strong>New in 1.13:</strong> a <a href="#start-small">lite install</a> for one person or a small project, <code>add</code> / <code>remove</code> to change what's installed whenever your needs change, and a <a href="#guided">setup skill</a> that helps you choose. Telegram alerts are now opt-in.</p>
+        <p class="doc-lead"><strong>New in 1.13:</strong> a <a href="#start-small">lite install</a> for one person or a small project, the ability to <a href="#change">add or remove pieces whenever your needs change</a> (just ask Claude), and a <a href="#guided">setup assistant</a> that helps you choose. Telegram alerts are now opt-in.</p>
       </div>
 
-      <section id="install">
-        <h2 id="choose">Which install is right for you?</h2>
-        <p>Delivery OS comes in two sizes, and nothing is locked in: you can add or remove pieces later (see <a href="#start-small">Start small, change it later</a>).</p>
+      <section id="start-small">
+        <h2>Start small or take everything</h2>
+        <p>Delivery OS comes in two sizes. Pick the one that fits today. Nothing is locked in: you can add or remove pieces whenever your needs change, just by asking Claude.</p>
         <div class="table-wrap">
           <table class="workflows-table plain-first">
             <thead>
               <tr>
-                <th>You are…</th>
-                <th>Choose</th>
-                <th>What you get</th>
+                <th></th>
+                <th>Lite</th>
+                <th>Full (default)</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>Working alone, or on a small project</td><td><strong>Lite</strong> — <code>--bundle lite</code></td><td>Sprints with child tasks and burn-down, task and bug forms, and a release that one approval ships. No QA machinery.</td></tr>
-              <tr><td>A team with a QA step</td><td><strong>Full</strong> (the default)</td><td>Everything: the rolling QA issue, QA approval, QA assignment, and releases that need a QA approver too.</td></tr>
-              <tr><td>Wanting only some of it</td><td><strong>Hand-picked</strong> — <code>--only</code> / <code>--skip</code></td><td>Just the workflows you name, or the bundle without them. <code>add</code> and <code>remove</code> change it later.</td></tr>
-              <tr><td>Not sure</td><td><strong>Let Claude guide you</strong></td><td>Claude asks a few plain questions, recommends one, shows a preview, and installs after you say yes.</td></tr>
+              <tr><td>Best for</td><td><strong>Working alone, or a small project</strong></td><td><strong>A team with a QA step</strong></td></tr>
+              <tr><td>Sprint planning, child tasks, burn-down, auto-close</td><td>✓</td><td>✓</td></tr>
+              <tr><td>Task, bug and production release forms</td><td>✓</td><td>✓</td></tr>
+              <tr><td>Release approval</td><td>One approver — you</td><td>Release approver + QA approver</td></tr>
+              <tr><td>Rolling QA issue, QA Requests, QA assignment</td><td>Add later: <em>"Add QA sign-off"</em></td><td>✓</td></tr>
+              <tr><td>Telegram alerts</td><td>Add later: <em>"Turn on Telegram alerts"</em></td><td>Add later: <em>"Turn on Telegram alerts"</em></td></tr>
             </tbody>
           </table>
         </div>
+        <div class="inline-links">
+          <a href="#prompt-lite" class="cta">Start with lite →</a>
+          <a href="#prompt-full" class="cta">Start with full →</a>
+          <a href="#guided">Not sure? Let Claude guide you →</a>
+        </div>
+        <p style="margin-top: 1.5rem;"><strong>Shipping a release with lite:</strong> open a Production Release issue and it pings the release approver. They comment <code>approved</code> and it gets <code>ready-for-deploy</code>; <code>declined</code> holds it back, and approving again lifts that. There is no QA approver to set up. The install sets <code>RELEASE_APPROVER</code> to you (it never overwrites a value that's already set, and <code>--no-set-approvers</code> turns it off).</p>
+      </section>
 
-        <h3 id="guided">Let Claude guide you</h3>
-        <p>Three steps, and after the first one you only ever talk to Claude:</p>
-        <ol class="steps">
-          <li style="margin-bottom: 0.5rem;"><strong>Once:</strong> add the setup skill to your machine. It goes in your <code>~/.claude/skills</code>, so it works in any repo, including ones with no Delivery OS yet.</li>
-        </ol>
+      <section id="install">
+        <h2 id="get-started">Get started</h2>
+        <p>Open <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> in the repo you want to set up and paste one of these prompts. Claude previews the install first and only writes files after you confirm.</p>
+
+        <h3 id="guided">Not sure? Let Claude guide you</h3>
+        <p>Claude asks a few plain questions (just you or a team? does anyone test before release?), recommends lite, full or a hand-picked set, shows a preview, and installs after you say yes. It also adds the repo's <code>delivery-ops</code> skill, so from then on you only ever talk to Claude.</p>
+        <div class="install-block install-block--prompt">
+          <div class="install-label">Paste into Claude Code, from your repo root</div>
+          <code>Help me set up GitHub Delivery OS in this repo. First run "npx github-delivery-os list" to see what's available, then ask me a few plain questions (is it just me or a team? does anyone test before release?) and recommend the lite or full install. Show me a dry run ("npx github-delivery-os install ... --dry-run .") and only install after I say yes. Include the Claude Code skill.</code>
+        </div>
+        <p>Want a permanent setup assistant instead? Run this once in a terminal. The setup skill then works in any repo, including ones with no Delivery OS yet, and you just say <em>"Set up Delivery OS here."</em></p>
         <div class="install-block">
           <div class="install-label">Once, from anywhere</div>
           <code>npx github-delivery-os setup-skill</code>
         </div>
-        <ol class="steps" start="2">
-          <li style="margin-bottom: 0.5rem;"><strong>In Claude Code, in your repo:</strong> say <em>"Set up Delivery OS here."</em> It asks a few plain questions (just you or a team? does anyone test before release?), recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you confirm. It also adds the repo's <code>delivery-ops</code> skill.</li>
-          <li style="margin-bottom: 0.5rem;"><strong>From then on, just ask Claude:</strong> create a sprint, file a bug, request or approve a release, or <em>"add QA sign-off"</em>, <em>"turn on Telegram"</em>, <em>"what's installed?"</em>. The <code>delivery-ops</code> skill handles all of it.</li>
-        </ol>
 
-        <h2 id="install-with-claude-code">Install with Claude Code</h2>
-        <p>Prefer to paste one prompt? Open <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> in the repo you want to set up and paste this prompt for the <strong>full</strong> install (for the small one, add <code>--bundle lite</code> to the command, or let Claude guide you above). Claude previews the install first and only writes files after you confirm:</p>
+        <h3 id="prompt-lite">Install lite</h3>
+        <p>For one person or a small project: sprints, task and bug forms, and a release that one approval ships. The install makes you the release approver (it sets <code>RELEASE_APPROVER</code> to your GitHub login via <code>gh</code>, never overwrites an existing value, and Claude tells you first).</p>
+        <div class="install-block install-block--prompt">
+          <div class="install-label">Paste into Claude Code, from your repo root</div>
+          <code>Install the lite version of GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --bundle lite --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.</code>
+        </div>
+
+        <h3 id="prompt-full">Install the full system</h3>
+        <p>For a team with a QA step: the rolling QA issue, QA approval, QA assignment, and releases that need a QA approver too.</p>
         <div class="install-block install-block--prompt">
           <div class="install-label">Paste into Claude Code, from your repo root</div>
           <code>Install GitHub Delivery OS in this repo with the Claude Code skill: run "npx github-delivery-os install --with-templates --with-labels --with-skill --dry-run ." first and show me what it would change. If that looks right, run it without --dry-run, then run "npx github-delivery-os status ." to confirm. Labels need gh auth, so tell me if that's missing.</code>
@@ -113,99 +133,29 @@
         </div>
         <p>With several approvers, a decline from any one of them stands until that same person approves. Once it finishes, the <code>delivery-ops</code> skill is in place, so you can keep going in the same session: ask Claude to create a sprint, open a release, or check status. Skipped the approvers? Set <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> afterwards (see <a href="#claude-code">Delivery Ops</a>).</p>
 
-        <h3 id="install-one-command">Or run one command yourself</h3>
-        <p>No clone, no config. From your repo root, just run:</p>
-        <div class="install-block">
-          <div class="install-label">From your repo root</div>
-          <code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code>
-        </div>
-        <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status, autonomous task tracking (identify, file, update, and close issues as work progresses), and turning a spec or feature description into a full phase-and-task breakdown — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
-
-        <div class="table-wrap">
-          <table class="workflows-table">
-            <thead>
-              <tr>
-                <th>Command</th>
-                <th>When to run it</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td><code>install --with-templates .</code></td><td>First install — workflows + issue templates</td></tr>
-              <tr><td><code>install --with-templates --with-labels .</code></td><td>Also create labels immediately via <code>gh</code> CLI</td></tr>
-              <tr><td><code>install --with-templates --with-skill .</code></td><td>You'll operate this repo's Delivery OS from Claude Code</td></tr>
-              <tr><td><code>install --with-templates --with-labels --with-skill .</code></td><td>Everything at once, in one command</td></tr>
-              <tr><td><code>install --bundle lite --with-templates --with-labels --with-skill .</code></td><td>One person or a small project — sprints, tasks, bugs and a single-approver release, without the QA machinery. Sets you as the release approver</td></tr>
-              <tr><td><code>install --only a,b …</code> / <code>--skip a,b</code></td><td>Pick individual workflows (names from <code>list</code>) instead of a whole bundle</td></tr>
-              <tr><td><code>list .</code></td><td>See every bundle, pack and workflow, and which are installed in this repo (<code>--json</code> for tools)</td></tr>
-              <tr><td><code>add qa .</code> / <code>add telegram .</code> / <code>add &lt;workflow&gt; .</code></td><td>Add a pack or a single workflow later, without reinstalling (<code>--dry-run</code> to preview)</td></tr>
-              <tr><td><code>remove qa .</code> / <code>remove &lt;workflow&gt; .</code></td><td>Take a pack or workflow away again; deletes only the files nothing else needs</td></tr>
-              <tr><td><code>setup-skill</code></td><td>Add the Claude Code skill that helps you choose what to install, before anything is installed</td></tr>
-              <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>
-              <tr><td><code>install --update …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
-              <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>
-              <tr><td><code>shell-hook --install</code></td><td>Get a reminder in your terminal when you <code>cd</code> into an out-of-date repo</td></tr>
-              <tr><td><code>uninstall --with-templates --with-skill .</code></td><td>Remove everything, including templates and the skill</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h3 id="update">Updating an existing install</h3>
-        <p>Check what's installed and whether a newer version is available:</p>
-        <div class="install-block">
-          <div class="install-label">Check status</div>
-          <code>npx github-delivery-os@latest status .</code>
-        </div>
-        <p>Then pull the latest workflows, templates, labels, and skill. <code>--update</code> replaces files that are already installed; without it, existing files are skipped:</p>
-        <div class="install-block">
-          <div class="install-label">Update to latest</div>
-          <code>npx github-delivery-os@latest install --with-templates --with-labels --with-skill --update .</code>
-        </div>
-        <p>An update keeps your choices: your bundle, any packs, and any workflows you added or removed. A repo that already had the Telegram alerts keeps them, and they keep updating. A default install no longer includes them (add with <code>add telegram</code>).</p>
-        <p>You don't have to remember to check. A repo installed with <code>--with-skill</code> also gets an update check: when a Claude Code session starts there and the install is behind, Claude offers to run the update (only after you confirm). For the same reminder in any terminal whenever you <code>cd</code> into an out-of-date repo:</p>
-        <div class="install-block">
-          <div class="install-label">Terminal reminder (zsh or bash)</div>
-          <code>npx github-delivery-os@latest shell-hook --install</code>
-        </div>
+        
       </section>
 
-      <section id="start-small">
-        <h2>Start small, change it later</h2>
-        <p>You don't have to take everything. Install the small set, and add or remove pieces as your needs change, without reinstalling. What you have is recorded in <code>.github/delivery-os.json</code>, and an update keeps it.</p>
-
-        <h3 id="lite">Lite and full side by side</h3>
+      <section id="change">
+        <h2 id="add-remove">Change it any time</h2>
+        <p>Once Delivery OS is installed with the <code>delivery-ops</code> skill, just ask Claude. It previews with a dry run, explains the consequence in plain words, and waits for your yes before changing anything.</p>
         <div class="table-wrap">
           <table class="workflows-table plain-first">
             <thead>
               <tr>
-                <th></th>
-                <th>Lite</th>
-                <th>Full (default)</th>
+                <th>Say this</th>
+                <th>What happens</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>Sprint planning, child tasks, burn-down, auto-close</td><td>✓</td><td>✓</td></tr>
-              <tr><td>Task, bug and production release forms</td><td>✓</td><td>✓</td></tr>
-              <tr><td>Release approval</td><td>One approver — you</td><td>Release approver + QA approver</td></tr>
-              <tr><td>Rolling QA issue, QA Requests, QA assignment</td><td>Add later with <code>add qa</code></td><td>✓</td></tr>
-              <tr><td>Telegram alerts</td><td>Add later with <code>add telegram</code></td><td>Add with <code>add telegram</code></td></tr>
+              <tr><td><em>"What do I have installed?"</em></td><td>Every workflow shown as installed or not, and each pack's state.</td></tr>
+              <tr><td><em>"Add QA sign-off."</em></td><td>Adds the rolling QA issue, QA approval, QA assignment, the QA Request form and QA labels, <strong>and a release then needs a QA approver too</strong>. You set <code>QA_APPROVER</code> and <code>QA_ASSIGNEES</code>.</td></tr>
+              <tr><td><em>"Turn on Telegram alerts."</em></td><td>Adds the Telegram workflow. You add the two secrets, <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code>.</td></tr>
+              <tr><td><em>"Take QA sign-off out." / "Remove auto-assign QA."</em></td><td>Deletes only the files nothing else needs. Taking the QA pack out puts a lite repo's one-approver release back.</td></tr>
             </tbody>
           </table>
         </div>
-        <p><strong>Shipping a release with lite:</strong> open a Production Release issue and it pings the release approver. They comment <code>approved</code> and it gets <code>ready-for-deploy</code>; <code>declined</code> holds it back, and approving again lifts that. There is no QA approver to set up. The install sets <code>RELEASE_APPROVER</code> to you (it never overwrites a value that's already set, and <code>--no-set-approvers</code> turns it off).</p>
-
-        <h3 id="add-remove">Add or remove anything, any time</h3>
-        <p>A name can be a <strong>pack</strong> (a named group) or <strong>any single workflow</strong>, on a lite or a full install. Always preview first with <code>--dry-run</code>.</p>
-        <div class="install-block">
-          <div class="install-label">Preview adding QA sign-off (changes nothing)</div>
-          <code>npx github-delivery-os add qa . --dry-run</code>
-        </div>
-        <p>All of these start with <code>npx github-delivery-os</code> and end with the repo folder (<code>.</code>):</p>
-        <ul>
-          <li><code>list .</code> — what exists, and what's installed here (✓ / ○)</li>
-          <li><code>add qa .</code> — add it for real (leave off <code>--dry-run</code>)</li>
-          <li><code>remove qa .</code> — take it away again</li>
-          <li><code>add auto-assign-qa .</code> — or add one workflow at a time</li>
-        </ul>
+        <p>Behind those phrases, a name can be a <strong>pack</strong> (a named group) or <strong>any single workflow</strong>, on a lite or a full install:</p>
         <div class="table-wrap">
           <table class="workflows-table">
             <thead>
@@ -227,13 +177,6 @@
           <li>Removing something another workflow works with (for example <code>sprint-child-creator</code>, which <code>auto-close-sprint</code> counts) prints a note and still does what you asked.</li>
           <li>A plain <code>install --update</code> keeps your bundle, packs and any workflows you added or removed; <code>status</code> checks exactly what you have.</li>
         </ul>
-      </section>
-
-      <section id="claude-code">
-        <h2>Delivery Ops: run it by asking Claude</h2>
-        <p>Two Claude Code skills work as one assistant. The <strong>setup skill</strong> is the front door, used once: it helps you choose what to install and installs it. The <strong>delivery-ops</strong> skill, which the install puts in your repo, handles everything after: sprints, bugs, releases, approvals, status, and changing what's installed. You never choose between them. Ask in plain words and Claude picks the right one.</p>
-        <p>Installing with <code>--with-skill</code> (recommended) drops a <code>.claude/skills/delivery-ops/SKILL.md</code> skill into the repo, scoped to that repo's Delivery OS install. It lets anyone using <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> drive the workflows above by asking in plain language, instead of hand-building <code>gh issue create</code> calls and remembering each template's exact field names.</p>
-        <p>Before doing anything, it checks the target repo — confirms Delivery OS is installed, labels exist, and approvers/QA assignees are configured — and always shows the exact issue or comment content for confirmation before creating or posting for real. It can also run a task's whole lifecycle on its own (notice, classify, file, keep in sync, close) — acting without asking when the outcome is clear and always posting a one-line notice so nothing happens invisibly — or turn a spec/feature description into a full phase-and-task breakdown, always shown for confirmation first since that creates many issues at once.</p>
 
         <h3 id="changing">Changing what's installed, by asking</h3>
         <p>Illustrative, lightly shortened from a real session on a lite repo. Claude previews with a dry run, explains the consequence in plain words, and waits for your yes before changing anything:</p>
@@ -273,6 +216,19 @@ Claude: A dry run of `add qa` shows what comes
         QA_ASSIGNEES. Who should they be? I
         won't set them unless you tell me to,
         because they name a real person.</code></pre>
+
+        
+      </section>
+
+      
+
+      
+
+      <section id="claude-code">
+        <h2>Delivery Ops: run it by asking Claude</h2>
+        <p>Two Claude Code skills work as one assistant. The <strong>setup skill</strong> is the front door, used once: it helps you choose what to install and installs it. The <strong>delivery-ops</strong> skill, which the install puts in your repo, handles everything after: sprints, bugs, releases, approvals, status, and changing what's installed. You never choose between them. Ask in plain words and Claude picks the right one.</p>
+        <p>Installing with <code>--with-skill</code> (recommended) drops a <code>.claude/skills/delivery-ops/SKILL.md</code> skill into the repo, scoped to that repo's Delivery OS install. It lets anyone using <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> drive the workflows above by asking in plain language, instead of hand-building <code>gh issue create</code> calls and remembering each template's exact field names.</p>
+        <p>Before doing anything, it checks the target repo — confirms Delivery OS is installed, labels exist, and approvers/QA assignees are configured — and always shows the exact issue or comment content for confirmation before creating or posting for real. It can also run a task's whole lifecycle on its own (notice, classify, file, keep in sync, close) — acting without asking when the outcome is clear and always posting a one-line notice so nothing happens invisibly — or turn a spec/feature description into a full phase-and-task breakdown, always shown for confirmation first since that creates many issues at once.</p>
 
         <h3 id="conversation">What a session looks like</h3>
         <p>Illustrative, on a repo called <code>acme/storefront</code>. Claude checks the repo, shows exactly what it will create, and waits for your yes:</p>
@@ -498,6 +454,18 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
         </details>
       </section>
 
+      <section id="update">
+        <h2>Updating an existing install</h2>
+        <p>Ask Claude:</p>
+        <div class="install-block install-block--prompt">
+          <div class="install-label">Paste into Claude Code, from your repo root</div>
+          <code>Check whether the Delivery OS install in this repo is up to date. If it isn't, show me what an update would change before running it.</code>
+        </div>
+        <p>An update keeps your choices: your bundle, any packs, and any workflows you added or removed. A repo that already had the Telegram alerts keeps them, and they keep updating. A default install no longer includes them (add with <em>"Turn on Telegram alerts"</em>).</p>
+        <p>You don't have to remember to check. A repo installed with the skill also gets an update check: when a Claude Code session starts there and the install is behind, Claude offers to run the update (only after you confirm). Prefer the terminal? See the <a href="#commands">command reference</a>.</p>
+      </section>
+
+
       <section id="why">
         <h2>Why this exists</h2>
         <p>Engineering teams often rely on informal coordination in GitHub — manual approvals, inconsistent sprint tracking, reactive QA, and socially enforced releases. As teams scale, that creates:</p>
@@ -524,7 +492,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
           </div>
           <div class="feature">
             <strong>Start small, grow later</strong>
-            <span>A lite install for one person or a small project, and <code>add</code> / <code>remove</code> for any pack or workflow whenever your needs change.</span>
+            <span>A lite install for one person or a small project. Ask Claude to add or remove any pack or workflow whenever your needs change.</span>
           </div>
           <div class="feature">
             <strong>Auto-assign QA</strong>
@@ -532,7 +500,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
           </div>
           <div class="feature">
             <strong>Telegram alerts</strong>
-            <span>Optional notifications for bugs, QA requests, sprints, and releases. Opt-in: add them with <code>add telegram</code>.</span>
+            <span>Optional notifications for bugs, QA requests, sprints, and releases. Opt-in: ask Claude to turn them on.</span>
           </div>
           <div class="feature">
             <strong>One assistant for Claude Code</strong>
@@ -559,7 +527,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td>notify-release-approver<br><em>Lite + Full</em></td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code>, and posts a <em>What's in this release</em> roll-up of the plain-English changelogs from QA Requests since the last authorized release (informational; refresh via <code>workflow_dispatch</code>)</td></tr>
               <tr><td>authorize-deployment<br><em>Lite + Full</em></td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code> (each may be a comma-separated list). Once both sides approve, adds <code>ready-for-deploy</code>; a decline from any release or QA approver adds <code>declined</code> and stands until that same person approves. On approval it also closes the Tasks/QA Requests <code>auto-qa-request</code> filed for work in the release (opt out: <code>DELIVERY_OS_AUTO_CLOSE=false</code>)</td></tr>
               <tr><td>auto-assign-qa<br><em>Full · pack: qa</em></td><td>Issue opened/labeled <code>qa</code> or <code>qa-request</code></td><td>Assigns the repo's configured <code>QA_ASSIGNEES</code></td></tr>
-              <tr><td>telegram-issues<br><em>Opt-in · pack: telegram</em></td><td>Issue/comment/PR events</td><td>Not in a default install; add it with <code>npx github-delivery-os add telegram .</code>. Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
+              <tr><td>telegram-issues<br><em>Opt-in · pack: telegram</em></td><td>Issue/comment/PR events</td><td>Not in a default install; ask Claude to turn on Telegram alerts (or run <code>npx github-delivery-os add telegram .</code>). Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
               <tr><td>auto-qa-request<br><em>Full · pack: qa</em></td><td>Push to <code>main</code>, including PR merges (plus PR events in per-change mode)</td><td>QA reminder for every change that isn't docs/settings-only or <code>[skip qa-request]</code>. Default: adds a line (with a plain-English draft and any linked <code>#N</code>) to the <strong>one open rolling QA issue</strong>, opening it if needed. <code>DELIVERY_OS_AUTO_QA_MODE=per-change</code> files a QA Request (+ Task) per change instead; <code>off</code> files nothing</td></tr>
               <tr><td>qa-rollup-approval<br><em>Full · pack: qa</em></td><td>Comment on, or edit of, the rolling QA issue</td><td>The <code>QA_APPROVER</code> approves (a comment starting with e.g. <code>approved</code>, <code>lgtm</code>, ✅, or ticking the Approved box), which closes it, or declines (<code>needs work</code>, <code>not ok</code>, ❌), which keeps it open. With several QA approvers, a decline stands until that same person approves. Anyone else is ignored with a reply</td></tr>
               <tr><td>setup-labels<br><em>Lite + Full</em></td><td>Manual (<code>workflow_dispatch</code>)</td><td>One-time run that creates all labels Delivery OS needs</td></tr>
@@ -575,8 +543,70 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
           <li style="margin-bottom: 0.5rem;">Configure variables: Settings → Secrets and variables → Actions → Variables<br>
             Full: <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, <code>QA_ASSIGNEES</code>. Lite: just <code>RELEASE_APPROVER</code>, which the install sets to you.</li>
           <li style="margin-bottom: 0.5rem;">Optional: QA reminders default to one rolling QA issue — switch with <code>DELIVERY_OS_AUTO_QA_MODE</code> (<code>rolling</code>/<code>per-change</code>/<code>off</code>), and tune with <code>DELIVERY_OS_AUTO_QA_QUIET_PATHS</code>, <code>DELIVERY_OS_AUTO_TASK</code> and <code>DELIVERY_OS_AUTO_CLOSE</code> (see <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos">consumer setup</a>)</li>
-          <li style="margin-bottom: 0.5rem;">Optional: for Telegram alerts, run <code>add telegram</code>, then add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code></li>
+          <li style="margin-bottom: 0.5rem;">Optional: for Telegram alerts, ask Claude to <em>"turn on Telegram alerts"</em>, then add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> as repo secrets</li>
         </ol>
+      </section>
+
+      <section id="commands">
+        <h2>Command reference</h2>
+        <p>Everything above is also available as plain commands, for people who prefer the terminal or want to script it.</p>
+        <details class="example-details">
+          <summary>Show every command</summary>
+          <h3 id="install-one-command">Install from a terminal</h3>
+        <p>No clone, no config. From your repo root, just run:</p>
+        <div class="install-block">
+          <div class="install-label">From your repo root</div>
+          <code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code>
+        </div>
+        <p>Add <code>--with-labels</code> to create labels via <code>gh</code> CLI (requires <code>gh auth</code>). Add <code>--with-skill</code> to also drop in a <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> skill for operating the installed repo — creating sprint/release/QA/bug issues, commenting as an approver, checking status, autonomous task tracking (identify, file, update, and close issues as work progresses), and turning a spec or feature description into a full phase-and-task breakdown — without knowing the underlying <code>gh</code> commands. Use <code>--dry-run</code> to preview first.</p>
+
+        <div class="table-wrap">
+          <table class="workflows-table">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>When to run it</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>install --with-templates .</code></td><td>First install — workflows + issue templates</td></tr>
+              <tr><td><code>install --with-templates --with-labels .</code></td><td>Also create labels immediately via <code>gh</code> CLI</td></tr>
+              <tr><td><code>install --with-templates --with-skill .</code></td><td>You'll operate this repo's Delivery OS from Claude Code</td></tr>
+              <tr><td><code>install --with-templates --with-labels --with-skill .</code></td><td>Everything at once, in one command</td></tr>
+              <tr><td><code>install --bundle lite --with-templates --with-labels --with-skill .</code></td><td>One person or a small project — sprints, tasks, bugs and a single-approver release, without the QA machinery. Sets you as the release approver</td></tr>
+              <tr><td><code>install --only a,b …</code> / <code>--skip a,b</code></td><td>Pick individual workflows (names from <code>list</code>) instead of a whole bundle</td></tr>
+              <tr><td><code>list .</code></td><td>See every bundle, pack and workflow, and which are installed in this repo (<code>--json</code> for tools)</td></tr>
+              <tr><td><code>add qa .</code> / <code>add telegram .</code> / <code>add &lt;workflow&gt; .</code></td><td>Add a pack or a single workflow later, without reinstalling (<code>--dry-run</code> to preview)</td></tr>
+              <tr><td><code>remove qa .</code> / <code>remove &lt;workflow&gt; .</code></td><td>Take a pack or workflow away again; deletes only the files nothing else needs</td></tr>
+              <tr><td><code>setup-skill</code></td><td>Add the Claude Code skill that helps you choose what to install, before anything is installed</td></tr>
+              <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>
+              <tr><td><code>install --update …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
+              <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>
+              <tr><td><code>shell-hook --install</code></td><td>Get a reminder in your terminal when you <code>cd</code> into an out-of-date repo</td></tr>
+              <tr><td><code>uninstall --with-templates --with-skill .</code></td><td>Remove everything, including templates and the skill</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        
+          <h3 id="update-commands">Check and update from a terminal</h3>
+        <p>Check what's installed and whether a newer version is available:</p>
+        <div class="install-block">
+          <div class="install-label">Check status</div>
+          <code>npx github-delivery-os@latest status .</code>
+        </div>
+        <p>Then pull the latest workflows, templates, labels, and skill. <code>--update</code> replaces files that are already installed; without it, existing files are skipped:</p>
+        <div class="install-block">
+          <div class="install-label">Update to latest</div>
+          <code>npx github-delivery-os@latest install --with-templates --with-labels --with-skill --update .</code>
+        </div>
+        <p>For a reminder in any terminal whenever you <code>cd</code> into an out-of-date repo:</p>
+        <div class="install-block">
+          <div class="install-label">Terminal reminder (zsh or bash)</div>
+          <code>npx github-delivery-os@latest shell-hook --install</code>
+        </div>
+      
+        </details>
       </section>
 
       <section id="documentation">
@@ -592,14 +622,16 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
       <div class="doc-toc-title">On this page</div>
       <ul>
         <li><a href="#overview">Overview</a></li>
-        <li><a href="#install">Install</a></li>
         <li><a href="#start-small">Start small</a></li>
-        <li><a href="#update">Update</a></li>
+        <li><a href="#install">Get started</a></li>
+        <li><a href="#change">Change it any time</a></li>
         <li><a href="#claude-code">Delivery Ops</a></li>
+        <li><a href="#update">Update</a></li>
         <li><a href="#why">Why this exists</a></li>
         <li><a href="#features">What you get</a></li>
         <li><a href="#workflows">Workflows</a></li>
         <li><a href="#quick-start">Quick start</a></li>
+        <li><a href="#commands">Commands</a></li>
         <li><a href="#documentation">Resources</a></li>
       </ul>
     </aside>

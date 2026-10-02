@@ -279,7 +279,12 @@ The consumer repo must allow workflows to write. In your consumer repo:
 
 ## Letting Claude choose with you
 
-`npx github-delivery-os setup-skill` adds the `delivery-os-setup` Claude Code skill to your `~/.claude/skills` (or the current repo's `.claude/skills` with `--project`; `--update` replaces an existing copy, `--dry-run` previews). Unlike the `delivery-ops` skill, which ships inside an install, this one works before anything is installed. In Claude Code, ask it to set up Delivery OS: it checks the repo, asks a few questions, recommends lite, full or a hand-picked set, previews with `--dry-run`, and installs only after you confirm. It reads `list --json` for what's available and never edits workflow files itself. For operating a repo afterwards, use the `delivery-ops` skill.
+Two Claude Code skills work as one assistant, one after the other:
+
+- **`delivery-os-setup` is the front door, used once.** `npx github-delivery-os setup-skill` adds it to your `~/.claude/skills` (or the current repo's `.claude/skills` with `--project`; `--update` replaces an existing copy, `--dry-run` previews). It works before anything is installed. In Claude Code, ask it to set up Delivery OS: it checks the repo, asks a few questions, recommends lite, full or a hand-picked set, previews with `--dry-run`, installs only after you confirm, and adds the repo's `delivery-ops` skill. It reads `list --json` for what's available and never edits workflow files itself.
+- **`delivery-ops` is for everything after.** It ships inside the install (`.claude/skills/delivery-ops/`). Sprints, bugs, releases, approvals and status, and also changing what's installed: *"add QA sign-off"*, *"turn on Telegram"*, *"remove auto-assign"*, *"what's installed?"*. It runs the same `list` / `add` / `remove` commands described below, previews first, and asks before changing anything.
+
+If you ask the setup skill for something in a repo that already has Delivery OS and the `delivery-ops` skill, it hands over, so you never have to choose between them.
 
 ---
 

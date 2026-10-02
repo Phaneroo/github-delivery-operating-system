@@ -20,9 +20,9 @@ Start small and grow: a lite install for one person or a small project, and comm
   - What a repo has is recorded in the manifest (`"packs"`, and `"workflows"` only when it differs from the bundle's defaults). A plain `--update` keeps it.
 - **`--only` and `--skip` on `install`:** install just the named workflows, or the bundle without them (comma-separated, names as `list` shows them). The scripts each one needs travel with it. `--only` and `--skip` replace the whole set, and `--skip telegram-issues` keeps working as before.
 - **`list [target] [--json]`:** the bundles, packs and workflows, with what each does and what it works with. Run inside a repo it marks what is installed (✓ / ○).
-- **A setup skill: `npx github-delivery-os setup-skill`.** Adds `delivery-os-setup` to `~/.claude/skills` (or the repo's with `--project`), so it works before anything is installed. It asks a few plain questions, recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you confirm. It drives the CLI and reads `list --json`, so it never hard-codes the options.
+- **A setup skill: `npx github-delivery-os setup-skill`.** Adds `delivery-os-setup` to `~/.claude/skills` (or the repo's with `--project`), so it works before anything is installed. It is the front door, used once: it asks a few plain questions, recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you confirm (including the repo's `delivery-ops` skill, which it recommends to Claude Code users). It drives the CLI and reads `list --json`, so it never hard-codes the options. In a repo that already has Delivery OS and `delivery-ops` it hands over instead of starting an interview.
 - **Copy buttons on the landing page.** Command and code blocks on the docs site now have a copy button (example transcripts don't).
-- **The `delivery-ops` skill knows about lite.** On a lite repo it skips the QA guidance and explains the one-approval release, packs, and `add` / `remove`. The skill a full install gets is unchanged.
+- **The `delivery-ops` skill now covers changing what's installed, and knows about lite.** One assistant for everything after the install: besides sprints, releases and approvals, a new "Changing what's installed" section lets you say *"add QA sign-off"*, *"turn on Telegram"*, *"remove auto-assign"* or *"what's installed?"* and it runs `list` / `add` / `remove` for you, previewing first and asking before it changes anything. On a lite repo it also skips the QA guidance and explains the one-approval release.
 
 ### Changed
 
@@ -33,7 +33,7 @@ Start small and grow: a lite install for one person or a small project, and comm
 
 ### Updating
 
-Nothing changes in a repo until you run the update. For a full install the workflows, scripts, forms and skill are identical to 1.12.2, so `install --update` only records the new version (and, if the repo has Telegram, that it has it). Lite, packs, `--only`/`--skip`, `list` and `setup-skill` are new options you choose; they never apply on their own.
+Nothing changes in a repo until you run the update. For a full install the workflows, scripts and forms are identical to 1.12.2, so `install --update` only records the new version (and, if the repo has Telegram, that it has it). The one shipped file that gains something is the `delivery-ops` skill (for repos installed with `--with-skill`): it gets the new "Changing what's installed" section, and nothing it did before changes. Lite, packs, `--only`/`--skip`, `list` and `setup-skill` are new options you choose; they never apply on their own.
 
 ## [1.12.2] - 2026-09-30
 

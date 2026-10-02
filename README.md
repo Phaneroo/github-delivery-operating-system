@@ -39,6 +39,28 @@ From your repo root. `--with-labels` creates labels via the `gh` CLI, `--with-sk
 
 </details>
 
+## Lite install: one person, small projects
+
+Working alone? The lite bundle keeps sprints, tasks, bugs and a release approval, and leaves out the QA machinery you don't need.
+
+```bash
+npx github-delivery-os install --bundle lite --with-templates --with-labels --with-skill .
+```
+
+| | Lite | Full (default) |
+|---|---|---|
+| Sprint planning, child tasks, burn-down, auto-close | ✓ | ✓ |
+| Task, bug and production release issue forms | ✓ | ✓ |
+| Release approval | one approver, you | release approver + QA approver |
+| Rolling QA issue, QA Requests, QA assignment, Telegram | none | ✓ |
+| Claude Code skill (`--with-skill`) | ✓ (skips QA guidance) | ✓ |
+
+**Shipping a release:** open a Production Release issue. It pings you, and you comment `approved` to authorize it (the issue gets `ready-for-deploy`) or `declined` to hold it back. Approving again lifts a decline. There is no QA approver to set up.
+
+**Setup:** the install sets the `RELEASE_APPROVER` repo variable to your GitHub login (needs `gh`; it never overwrites an existing value and tells you what it did). Skip that with `--no-set-approvers` and set the variable yourself in Settings → Secrets and variables → Actions.
+
+**Switching:** a plain `install --update` keeps a lite repo lite. To fill it out to everything, run `install --bundle full`: it adds the missing workflows and swaps lite's release workflows, release form and labels for the full ones, so QA sign-off applies from then on. Going from full to lite swaps them back, but doesn't remove the QA workflows already installed. `status` shows which bundle a repo is on.
+
 ## Delivery Ops: run it by asking Claude
 
 The `delivery-ops` skill (`.claude/skills/delivery-ops/SKILL.md`) lets you drive every workflow in plain language. It checks the repo first, shows the exact issue or comment, and only posts after you confirm.

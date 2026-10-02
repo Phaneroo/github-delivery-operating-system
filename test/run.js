@@ -14,6 +14,8 @@ require('./sprint-child-creator.test.js');
 require('./auto-close-sprint.test.js');
 require('./auto-qa-request.test.js');
 require('./release-rollup.test.js');
+require('./lite-release.test.js');
+require('./lite-drift.test.js');
 require('./rolling-qa.test.js');
 require('./workflows-e2e.test.js');
 

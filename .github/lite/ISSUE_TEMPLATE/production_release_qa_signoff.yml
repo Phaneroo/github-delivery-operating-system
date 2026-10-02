@@ -1,0 +1,35 @@
+name: "PRODUCTION RELEASE"
+description: "Ship a release: one approval from the release approver"
+title: "PRODUCTION RELEASE - [Project Name] - vX.X.X"
+labels: ["release", "production", "approval"]
+
+body:
+  - type: input
+    id: sprint_reference
+    attributes:
+      label: "Sprint Reference (Sprint Planning Issue #)"
+      placeholder: "#45"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: "Version / Build Number"
+      placeholder: "v2.4.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: release_summary
+    attributes:
+      label: "Release Summary"
+      description: "What is shipping, in plain words"
+    validations:
+      required: true
+
+  - type: textarea
+    id: checks
+    attributes:
+      label: "What you checked before shipping"
+      placeholder: "Tests passed, tried the main flows, screenshots, links..."

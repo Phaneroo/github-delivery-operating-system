@@ -1,0 +1,53 @@
+# Lite variant of notify-release-approver.yml, installed under the same name by
+# `install --bundle lite`: pings the release approver, without the QA
+# recommendation line or the QA roll-up.
+name: Notify Release Approver
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  notify:
+    if: contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Post Approval Comment
+        uses: actions/github-script@v9
+        env:
+          RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || '' }}
+        with:
+          script: |
+            const issueTitle = context.payload.issue.title;
+            const issueBody = context.payload.issue.body || "";
+            // RELEASE_APPROVER may be a comma-separated list: mention each login.
+            const approvers = (process.env.RELEASE_APPROVER || "")
+              .split(",").map((s) => s.trim().replace(/^@/, "")).filter(Boolean);
+            const mentions = approvers.map((a) => "@" + a).join(" ");
+            const projectName = process.env.PROJECT_NAME;
+
+            let sprintRef = "Not specified";
+            const sprintMatch = issueBody.match(/#\d+/);
+            if (sprintMatch) sprintRef = sprintMatch[0];
+
+            const projectLine = projectName ? "**Project:** " + projectName + "\n\n" : "";
+            const commentBody =
+              "🚨 " + mentions + " This release is ready for your go-ahead.\n\n" +
+              projectLine +
+              "**Issue:** " + issueTitle + "\n\n" +
+              "**Linked Sprint:** " + sprintRef + "\n\n" +
+              "Comment **approved** to authorize it, or **declined** to hold it back.";
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });

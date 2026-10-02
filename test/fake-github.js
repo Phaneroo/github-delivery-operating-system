@@ -14,8 +14,8 @@ const ROOT = path.join(__dirname, '..');
  * Pulls the `script: |` block of a job's github-script step out of a
  * workflow file by indentation (no YAML dependency).
  */
-function extractScript(workflowFile, jobName) {
-  const lines = fs.readFileSync(path.join(ROOT, '.github', 'workflows', workflowFile), 'utf8').split('\n');
+function extractScript(workflowFile, jobName, dir = path.join('.github', 'workflows')) {
+  const lines = fs.readFileSync(path.join(ROOT, dir, workflowFile), 'utf8').split('\n');
   const jobLine = lines.findIndex((l) => l === `  ${jobName}:`);
   if (jobLine === -1) throw new Error(`job ${jobName} not found in ${workflowFile}`);
   const scriptLine = lines.findIndex((l, i) => i > jobLine && /^\s+script: \|\s*$/.test(l));

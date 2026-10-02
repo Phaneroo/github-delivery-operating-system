@@ -57,6 +57,8 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 | `-l, --with-labels` | Create labels via `gh` CLI |
 | `-s, --with-skill` | Add the `delivery-ops` Claude Code skill and its update-check hook |
 | `-u, --update` | Replace existing files |
+| `-b, --bundle <full\|lite>` | Which set to install. `full` (default) is everything; `lite` is for one person or a small project — see [Lite install](#lite-install). With no `--bundle`, a repo keeps the bundle it's already on |
+| `--set-approvers` / `--no-set-approvers` | Set (or don't set) the `RELEASE_APPROVER` repo variable to your GitHub login via `gh`. On by default for `--bundle lite`, off otherwise; never overwrites an existing value |
 | `-d, --dry-run` | Preview without changing files |
 
 **Options:**
@@ -66,6 +68,8 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 | `--with-templates` | Copy issue templates (sprint, task, bug, QA, production release) |
 | `--with-labels` | Create labels via `gh` CLI (requires `gh auth` and GitHub remote) |
 | `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status — plus `.claude/hooks/delivery-os-update-check.js`, registered in `.claude/settings.json`, which offers the update when a session starts in an out-of-date repo |
+| `--bundle <full\|lite>` | Install the full system (default) or the lite set — see [Lite install](#lite-install). `npx github-delivery-os` only; `scripts/install.sh` always installs full |
+| `--set-approvers` | Set `RELEASE_APPROVER` to your GitHub login via `gh` (default for `--bundle lite`; `--no-set-approvers` turns it off) |
 | `--update` | Replace existing workflow/template files |
 | `--no-update` | Explicitly skip existing files (default behavior) |
 | `--dry-run` | Show what would happen without changing any files |
@@ -268,6 +272,33 @@ The consumer repo must allow workflows to write. In your consumer repo:
 1. Go to **Settings** → **Actions** → **General**
 2. Under **Workflow permissions**, select **Read and write permissions**
 3. Save
+
+---
+
+## Lite install
+
+For one person or a small project. Lite keeps sprints, tasks, bugs and a release approval, and leaves out the QA machinery.
+
+```bash
+npx github-delivery-os install --bundle lite --with-templates --with-labels --with-skill .
+```
+
+**What lite installs**
+
+| Piece | Lite |
+|-------|------|
+| Workflows | `sprint-child-creator`, `auto-close-sprint`, `setup-labels`, plus lite versions of `notify-release-approver` and `authorize-deployment` |
+| Issue templates | `config`, `sprint_planning`, `task`, `bug_report`, and a plain Production Release form (no QA fields) |
+| Labels | The full list without `qa-request` and `qa-rollup` |
+| Not installed | `auto-qa-request`, `qa-rollup-approval`, `auto-assign-qa`, `telegram-issues`, and the release roll-up |
+
+**How a release works.** Opening a Production Release issue pings `RELEASE_APPROVER`. That person comments `approved` to authorize it (the issue gets `ready-for-deploy`) or `declined` to hold it back (`declined` label); approving again lifts a decline. The phrases are the same ones the full release approver uses. There is no QA approver, so `QA_APPROVER` and `QA_ASSIGNEES` don't apply.
+
+**Setup.** The install sets the `RELEASE_APPROVER` variable to your GitHub login using `gh` (it needs `gh auth` and admin access to the repo). It never overwrites a value that is already set, says what it did, and skips with a message if `gh` isn't available. `--no-set-approvers` skips it; then set the variable yourself under Settings → Secrets and variables → Actions → Variables. With `--dry-run` nothing is set.
+
+**Staying lite, or moving to full.** The bundle is recorded in `.github/delivery-os.json` as `"bundle": "lite"` (a missing field means full). A plain `install --update` keeps a lite repo lite, and `status` shows the bundle and checks only what lite should have. To fill a lite repo out to everything, run `install --bundle full`: it adds the missing workflows and replaces lite's own release workflows, release form and label list with the full ones (naming a different `--bundle` is what triggers the swap; a plain re-run never overwrites your edits). Going the other way (full to lite) swaps them back to lite's but doesn't remove the QA workflows already installed, so use `uninstall` first if you want them gone.
+
+The lite release workflows live in `.github/lite/` in this package and are installed under the same file names, so they replace nothing in a full install. `scripts/install.sh` doesn't know about bundles; use the `npx` command for lite.
 
 ---
 

@@ -21,6 +21,11 @@ const {
   LABELS_TSV,
   setupLabelsMissingFiles,
   loadLabels,
+  BUNDLES,
+  manifestBundle,
+  skillForBundle,
+  SKILL_ANCHOR,
+  REQUIRED_SCRIPT_BY_WORKFLOW,
 } = __test__;
 
 const packageRoot = path.join(__dirname, '..');
@@ -1154,6 +1159,498 @@ test('templates are only installed with --with-templates', () => {
     for (const t of TEMPLATES) {
       assert.equal(fs.existsSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', t)), false, `${t} should not be installed`);
     }
+  } finally {
+    rm(dir);
+  }
+});
+
+// ---- bundles (full / lite) ----
+
+function statusOutput(dir) {
+  const lines = [];
+  const origLog = console.log;
+  const origCwd = process.cwd();
+  console.log = (...args) => lines.push(args.join(' '));
+  return (async () => {
+    try {
+      process.chdir(dir);
+      await runStatus({ targetDir: '.', checkUpdates: false });
+      return lines.join('\n');
+    } finally {
+      console.log = origLog;
+      process.chdir(origCwd);
+    }
+  })();
+}
+
+test('the lite bundle is a strict subset of full, and full is everything', () => {
+  assert.deepEqual(BUNDLES.full.workflows, WORKFLOWS);
+  assert.deepEqual(BUNDLES.full.scripts, SCRIPTS);
+  assert.deepEqual(BUNDLES.full.templates, TEMPLATES);
+  for (const kind of ['workflows', 'scripts', 'templates']) {
+    for (const item of BUNDLES.lite[kind]) assert.ok(BUNDLES.full[kind].includes(item), `lite ${kind} has ${item}, which full doesn't`);
+    assert.ok(BUNDLES.lite[kind].length < BUNDLES.full[kind].length, `lite should drop some ${kind}`);
+  }
+});
+
+test('lite ships every script its workflows require (apart from the QA ones it leaves out), and every template exists', () => {
+  for (const wf of BUNDLES.lite.workflows) {
+    const required = [].concat(REQUIRED_SCRIPT_BY_WORKFLOW[wf] || []);
+    for (const script of required) assert.ok(BUNDLES.lite.scripts.includes(script), `${wf} requires ${script}.js, which lite doesn't ship`);
+  }
+  for (const t of BUNDLES.lite.templates) assert.ok(fs.existsSync(path.join(packageRoot, '.github', 'ISSUE_TEMPLATE', t)), `${t} is missing`);
+});
+
+test('the full release workflows are untouched by lite, and lite ships its own with no QA approver or roll-up', () => {
+  const lite = (f) => fs.readFileSync(path.join(packageRoot, '.github', 'lite', 'workflows', f), 'utf8');
+  assert.doesNotMatch(lite('authorize-deployment.yml'), /QA_APPROVER|qa-approver/);
+  assert.doesNotMatch(lite('notify-release-approver.yml'), /release-rollup|qa-request/);
+  assert.match(lite('authorize-deployment.yml'), /authorize-deployment-verdict\.js/);
+  const full = fs.readFileSync(path.join(packageRoot, '.github', 'workflows', 'authorize-deployment.yml'), 'utf8');
+  assert.match(full, /QA_APPROVER/);
+});
+
+test('install --bundle lite puts the lite release workflows, release template and label list in place', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    const read = (...p) => fs.readFileSync(path.join(dir, '.github', ...p), 'utf8');
+    assert.doesNotMatch(read('workflows', 'authorize-deployment.yml'), /QA_APPROVER/);
+    assert.doesNotMatch(read('workflows', 'notify-release-approver.yml'), /release-rollup/);
+    assert.doesNotMatch(read('ISSUE_TEMPLATE', 'production_release_qa_signoff.yml'), /QA Recommendation/);
+    const labels = read('scripts', LABELS_TSV);
+    assert.doesNotMatch(labels, /^qa-request\t/m);
+    assert.doesNotMatch(labels, /^qa-rollup\t/m);
+    assert.match(labels, /^production\t/m);
+    assert.match(labels, /^ready-for-deploy\t/m);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a default install copies the full release workflows and labels byte for byte', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    for (const [rel, src] of [
+      ['workflows/authorize-deployment.yml', '.github/workflows/authorize-deployment.yml'],
+      ['workflows/notify-release-approver.yml', '.github/workflows/notify-release-approver.yml'],
+      ['scripts/labels.tsv', '.github/scripts/labels.tsv'],
+      ['ISSUE_TEMPLATE/production_release_qa_signoff.yml', '.github/ISSUE_TEMPLATE/production_release_qa_signoff.yml'],
+    ]) {
+      assert.equal(fs.readFileSync(path.join(dir, '.github', rel), 'utf8'), fs.readFileSync(path.join(packageRoot, src), 'utf8'), rel);
+    }
+  } finally {
+    rm(dir);
+  }
+});
+
+test('install --bundle lite installs only the lite set and records the bundle', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    const have = (sub) => fs.readdirSync(path.join(dir, '.github', sub)).sort();
+    assert.deepEqual(have('workflows'), BUNDLES.lite.workflows.map((w) => `${w}.yml`).sort());
+    assert.deepEqual(have('ISSUE_TEMPLATE'), [...BUNDLES.lite.templates].sort());
+    for (const s of BUNDLES.lite.scripts) assert.ok(fs.existsSync(path.join(dir, '.github', 'scripts', `${s}.js`)));
+    assert.equal(fs.existsSync(path.join(dir, '.github', 'scripts', 'auto-qa-request.js')), false);
+    assert.equal(readManifest(dir).bundle, 'lite');
+    assert.equal(readManifest(dir).version, pkgVersion);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a default install is unchanged: every workflow, and no bundle field in the manifest', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    for (const wf of WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
+    assert.equal('bundle' in readManifest(dir), false);
+    assert.equal(manifestBundle(readManifest(dir)), 'full');
+    assert.equal(manifestBundle(null), 'full');
+    assert.equal(manifestBundle({ bundle: 'bogus' }), 'full');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('status on a lite install reports 5/5 and flags nothing as missing or broken', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    const output = await statusOutput(dir);
+    assert.match(output, /Summary: 5\/5 workflows, 5\/5 templates/);
+    assert.match(output, /Bundle: lite/);
+    assert.doesNotMatch(output, /Missing workflows/);
+    assert.doesNotMatch(output, /Broken install detected/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('status still flags a lite install whose own script is missing', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    fs.unlinkSync(path.join(dir, '.github', 'scripts', 'sprint-child-creator.js'));
+    const output = await statusOutput(dir);
+    assert.match(output, /Broken install detected/);
+    assert.match(output, /sprint-child-creator\.js/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('the update command a lite install is pointed at keeps it lite; a full one is unchanged', () => {
+  assert.match(buildUpdateCommand({ hasTemplates: true, hasSkill: false, bundle: 'lite' }), /--bundle lite/);
+  assert.doesNotMatch(buildUpdateCommand({ hasTemplates: true, hasSkill: false }), /--bundle/);
+});
+
+test('a plain --update on a lite install stays lite', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true }));
+    assert.equal(fs.existsSync(path.join(dir, '.github', 'workflows', 'auto-qa-request.yml')), false);
+    assert.equal(readManifest(dir).bundle, 'lite');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--bundle full on a lite install fills it out and drops the bundle field', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+    for (const wf of WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
+    assert.equal(manifestBundle(readManifest(dir)), 'full');
+    assert.equal(readManifest(dir).version, pkgVersion, 'the recorded version is kept');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('an unknown bundle installs nothing and sets a failing exit code', () => {
+  const dir = mkTmpRepo();
+  const origErr = console.error;
+  const origExit = process.exitCode;
+  try {
+    console.error = () => {};
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'bogus' }));
+    assert.equal(process.exitCode, 1);
+    assert.equal(fs.existsSync(path.join(dir, '.github')), false);
+  } finally {
+    process.exitCode = origExit;
+    console.error = origErr;
+    rm(dir);
+  }
+});
+
+// ---- --set-approvers (a stubbed `gh` on PATH; nothing touches GitHub) ----
+
+// Runs fn with a fake `gh` first on PATH. FAKE_GH_VARS = variables that
+// already exist, FAKE_GH_LOGIN = who `gh api user` says you are,
+// FAKE_GH_UNAUTH=1 = `gh auth status` fails. Every call is appended to the log.
+function withFakeGh({ vars = '', unauth = false, login = 'solo-dev' } = {}, fn) {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'delivery-os-gh-'));
+  const log = path.join(bin, 'calls.log');
+  fs.writeFileSync(
+    path.join(bin, 'gh'),
+    [
+      '#!/bin/sh',
+      'echo "$@" >> "$FAKE_GH_LOG"',
+      'case "$1 $2" in',
+      '  "auth status") [ -n "$FAKE_GH_UNAUTH" ] && exit 1 ;;',
+      '  "variable list") printf "%s\\n" $FAKE_GH_VARS ;;',
+      '  "api user") echo "$FAKE_GH_LOGIN" ;;',
+      'esac',
+      'exit 0',
+    ].join('\n'),
+    { mode: 0o755 }
+  );
+  const saved = { PATH: process.env.PATH };
+  Object.assign(process.env, {
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    FAKE_GH_LOG: log,
+    FAKE_GH_VARS: vars,
+    FAKE_GH_LOGIN: login,
+  });
+  if (unauth) process.env.FAKE_GH_UNAUTH = '1';
+  try {
+    return fn(() => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : ''));
+  } finally {
+    process.env.PATH = saved.PATH;
+    for (const k of ['FAKE_GH_LOG', 'FAKE_GH_VARS', 'FAKE_GH_LOGIN', 'FAKE_GH_UNAUTH']) delete process.env[k];
+    rm(bin);
+  }
+}
+
+function gitRepo() {
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  return dir;
+}
+
+test('a lite install sets RELEASE_APPROVER to the person installing, and says so', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, (calls) => {
+      const lines = [];
+      const origLog = console.log;
+      console.log = (...a) => lines.push(a.join(' '));
+      try {
+        const cwd = process.cwd();
+        process.chdir(dir);
+        runInstall({ targetDir: '.', bundle: 'lite' });
+        process.chdir(cwd);
+      } finally {
+        console.log = origLog;
+      }
+      assert.match(calls(), /variable set RELEASE_APPROVER --body solo-dev/);
+      assert.doesNotMatch(calls(), /QA_APPROVER/);
+      assert.match(lines.join('\n'), /Set RELEASE_APPROVER to @solo-dev/);
+      assert.match(lines.join('\n'), /RELEASE_APPROVER: done/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--set-approvers never overwrites an approver that is already set', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({ vars: 'RELEASE_APPROVER QA_APPROVER' }, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+      assert.doesNotMatch(calls(), /variable set/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--set-approvers skips cleanly when gh is not signed in, and the install still completes', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({ unauth: true }, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+      assert.doesNotMatch(calls(), /variable set/);
+      assert.equal(readManifest(dir).bundle, 'lite');
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--dry-run and --no-set-approvers set nothing; a full install does not set approvers by default', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', dryRun: true }));
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', setApprovers: false }));
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+      assert.doesNotMatch(calls(), /variable set/);
+      assert.doesNotMatch(calls(), /variable list/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--set-approvers can be asked for on a full install', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', setApprovers: true }));
+      assert.match(calls(), /variable set RELEASE_APPROVER --body solo-dev/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+function installOutput(dir, opts) {
+  const lines = [];
+  const origLog = console.log;
+  const cwd = process.cwd();
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    process.chdir(dir);
+    runInstall({ targetDir: '.', ...opts });
+  } finally {
+    process.chdir(cwd);
+    console.log = origLog;
+  }
+  return lines.join('\n');
+}
+
+test('lite next steps: a dry run says the approver will be set, not that you must set it', () => {
+  const dir = gitRepo();
+  try {
+    const out = installOutput(dir, { bundle: 'lite', dryRun: true });
+    assert.match(out, /RELEASE_APPROVER: will be set to your GitHub login/);
+    assert.doesNotMatch(out, /or re-run with --set-approvers/);
+    assert.match(out, /1\. Create labels/, 'labels were not created in a dry run');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('lite next steps: once labels are created, the "create labels" step is gone and the rest renumber', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, () => {
+      const out = installOutput(dir, { bundle: 'lite', withLabels: true, withTemplates: true, withSkill: true });
+      assert.match(out, /Created \d+ label/);
+      assert.doesNotMatch(out, /Create labels: Actions/);
+      assert.match(out, /1\. Configure the repo variable/);
+      assert.match(out, /RELEASE_APPROVER: done/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('lite next steps: with no labels created it still points at Setup Labels, then the variable', () => {
+  const dir = mkTmpRepo();
+  try {
+    const out = installOutput(dir, { bundle: 'lite', withTemplates: true, withSkill: true });
+    assert.match(out, /1\. Create labels: Actions/);
+    assert.match(out, /2\. Configure the repo variable/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('full next steps are unchanged: labels, QA variables, Telegram secrets', () => {
+  const dir = mkTmpRepo();
+  try {
+    const out = installOutput(dir, { withTemplates: true, withSkill: true });
+    const steps = out.slice(out.indexOf('Next steps:'), out.indexOf('See https://'));
+    assert.equal(
+      steps.trim(),
+      [
+        'Next steps:',
+        '  1. Create labels: Actions → Setup Labels → Run workflow',
+        '  2. Configure repo variables (Settings → Secrets and variables → Actions):',
+        '     - RELEASE_APPROVER: GitHub username of release approver',
+        '     - QA_APPROVER: GitHub username of QA approver',
+        '     - QA_ASSIGNEES: Comma-separated usernames for QA assignment',
+        '  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID',
+      ].join('\n')
+    );
+  } finally {
+    rm(dir);
+  }
+});
+
+// ---- switching bundles swaps the files the bundles keep different versions of ----
+
+const VARIANT_FILES = [
+  ['workflows/authorize-deployment.yml', 'workflows/authorize-deployment.yml', 'lite/workflows/authorize-deployment.yml'],
+  ['workflows/notify-release-approver.yml', 'workflows/notify-release-approver.yml', 'lite/workflows/notify-release-approver.yml'],
+  ['ISSUE_TEMPLATE/production_release_qa_signoff.yml', 'ISSUE_TEMPLATE/production_release_qa_signoff.yml', 'lite/ISSUE_TEMPLATE/production_release_qa_signoff.yml'],
+];
+const pkgFile = (rel) => fs.readFileSync(path.join(packageRoot, '.github', rel), 'utf8');
+const repoFile = (dir, rel) => fs.readFileSync(path.join(dir, '.github', rel), 'utf8');
+
+test('lite to full replaces the lite release workflows and form with the full ones (no --update needed)', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    for (const [rel, , liteSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(liteSrc), `${rel} starts as lite's`);
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full', withTemplates: true }));
+    for (const [rel, fullSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(fullSrc), `${rel} is now the full version`);
+    assert.match(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m, 'the full label list is back');
+    assert.equal(manifestBundle(readManifest(dir)), 'full');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('full to lite swaps them the other way', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    for (const [rel, , liteSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(liteSrc), `${rel} is now lite's`);
+    assert.doesNotMatch(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m);
+    assert.equal(readManifest(dir).bundle, 'lite');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('re-running the same bundle does not replace a file you edited; only an explicit switch does', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    const file = path.join(dir, '.github', 'workflows', 'authorize-deployment.yml');
+    fs.writeFileSync(file, 'my own edit');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    assert.equal(fs.readFileSync(file, 'utf8'), 'my own edit');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+    assert.notEqual(fs.readFileSync(file, 'utf8'), 'my own edit');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('naming --bundle full on a repo with no install, or one already full, changes nothing about a default install', () => {
+  const a = mkTmpRepo();
+  const b = mkTmpRepo();
+  try {
+    inRepoQuietly(a, () => runInstall({ targetDir: '.', withTemplates: true }));
+    inRepoQuietly(b, () => runInstall({ targetDir: '.', bundle: 'full', withTemplates: true }));
+    for (const sub of ['workflows', 'scripts', 'ISSUE_TEMPLATE']) {
+      for (const f of fs.readdirSync(path.join(a, '.github', sub))) {
+        assert.equal(repoFile(b, `${sub}/${f}`), repoFile(a, `${sub}/${f}`), `${sub}/${f}`);
+      }
+    }
+    assert.equal('bundle' in readManifest(b), false);
+  } finally {
+    rm(a);
+    rm(b);
+  }
+});
+
+// ---- the delivery-ops skill per bundle ----
+
+const skillRepoFile = path.join(packageRoot, SKILL_REL_PATH);
+const addendumFile = path.join(packageRoot, '.github', 'lite', 'skill-addendum.md');
+
+test('the delivery-ops skill still has the anchor the lite addendum is spliced in at', () => {
+  assert.ok(fs.readFileSync(skillRepoFile, 'utf8').includes(SKILL_ANCHOR));
+  assert.match(fs.readFileSync(addendumFile, 'utf8'), /^## Which install is this\? \(full or lite\)/);
+});
+
+test('a full install gets the delivery-ops skill byte for byte; lite gets the same skill plus only the addendum', () => {
+  const full = mkTmpRepo();
+  const lite = mkTmpRepo();
+  try {
+    inRepoQuietly(full, () => runInstall({ targetDir: '.', withSkill: true }));
+    inRepoQuietly(lite, () => runInstall({ targetDir: '.', bundle: 'lite', withSkill: true }));
+    const base = fs.readFileSync(skillRepoFile, 'utf8');
+    const addendum = fs.readFileSync(addendumFile, 'utf8');
+    assert.equal(fs.readFileSync(skillPath(full), 'utf8'), base);
+    const liteSkill = fs.readFileSync(skillPath(lite), 'utf8');
+    assert.equal(liteSkill.replace(addendum, ''), base, 'removing the addendum gives the base skill back');
+    assert.ok(liteSkill.indexOf(addendum) < liteSkill.indexOf(SKILL_ANCHOR), 'ahead of the pre-flight check');
+    assert.ok(liteSkill.length > base.length);
+  } finally {
+    rm(full);
+    rm(lite);
+  }
+});
+
+test('skillForBundle never loses the addendum if the skill is reorganised', () => {
+  const dir = mkTmpRepo();
+  try {
+    const file = path.join(dir, 'a.md');
+    fs.writeFileSync(file, 'ADDENDUM\n');
+    assert.match(skillForBundle('no anchor here\n', file), /ADDENDUM/);
   } finally {
     rm(dir);
   }

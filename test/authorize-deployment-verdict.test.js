@@ -2,7 +2,7 @@
 
 const assert = require('assert/strict');
 const { test } = require('./harness');
-const { computeVerdict, nextReleaseAction, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
+const { computeVerdict, nextReleaseAction, isQaRequired, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
 const { buildAutoTaskBody, buildQaRequestBody } = require('../.github/scripts/auto-qa-request');
 
 const RELEASE = 'alice';
@@ -426,4 +426,16 @@ test('otherQaDecliners ignores decliners who are no longer QA approvers', () => 
   const log = new Map([['gone', 'declined'], ['qa2', 'declined']]);
   assert.deepEqual(otherQaDecliners(log, 'qa1', ['QA1', 'qa2']), ['qa2']);
   assert.deepEqual(otherQaDecliners(log, 'qa1', ['qa1']), []);
+});
+
+test('isQaRequired: required by default, off for a lite install, and the variable wins either way', () => {
+  assert.equal(isQaRequired(), true);
+  assert.equal(isQaRequired({ manifest: null }), true);
+  assert.equal(isQaRequired({ manifest: { version: '1.12.2' } }), true);
+  assert.equal(isQaRequired({ manifest: { bundle: 'full' } }), true);
+  assert.equal(isQaRequired({ manifest: { bundle: 'lite' } }), false);
+  assert.equal(isQaRequired({ override: 'false' }), false);
+  assert.equal(isQaRequired({ override: ' FALSE ' }), false);
+  assert.equal(isQaRequired({ override: 'true', manifest: { bundle: 'lite' } }), true, 'an explicit true re-requires QA on lite');
+  assert.equal(isQaRequired({ override: 'false', manifest: { bundle: 'full' } }), false);
 });

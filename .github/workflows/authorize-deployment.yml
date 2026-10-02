@@ -44,15 +44,18 @@ jobs:
             // .github/scripts/authorize-deployment-verdict.js and
             // test/authorize-deployment-verdict.test.js) rather than inline here,
             // so it isn't only verified by hand whenever it changes.
-            const { computeVerdict, nextReleaseAction, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const { computeVerdict, nextReleaseAction, isQaRequired, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const releaseApprover = process.env.RELEASE_APPROVER;
             const qaApprover = process.env.QA_APPROVER;
-            // DELIVERY_OS_QA_REQUIRED=false: no separate QA sign-off needed (solo repos).
-            const qaRequired = String(process.env.DELIVERY_OS_QA_REQUIRED || "").trim().toLowerCase() !== "false";
+            // No separate QA sign-off on a lite install (read from the manifest), or
+            // when DELIVERY_OS_QA_REQUIRED says so explicitly ('false' / 'true').
+            let manifest = null;
+            try { manifest = JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/.github/delivery-os.json`, "utf8")); } catch (e) {}
+            const qaRequired = isQaRequired({ override: process.env.DELIVERY_OS_QA_REQUIRED, manifest });
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,

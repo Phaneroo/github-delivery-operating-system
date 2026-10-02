@@ -4,6 +4,9 @@
 // run against the in-memory fake GitHub API (see fake-github.js).
 
 const assert = require('assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { test } = require('./harness');
 const { extractScript, createFakeRepo, runScript, repo } = require('./fake-github');
 const { AUTO_CLOSE_COMMENT } = require('../.github/scripts/auto-close-sprint');
@@ -40,6 +43,44 @@ test('release flow: the release approver alone authorizes when DELIVERY_OS_QA_RE
   const { labels, comments } = await authorize(release([by('relA', 'approved')]), { DELIVERY_OS_QA_REQUIRED: 'false' });
   assert.ok(labels.includes('ready-for-deploy'));
   assert.match(comments[0].body, /Release approval received/);
+});
+
+function workspaceWithManifest(manifest) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delivery-os-ws-'));
+  fs.mkdirSync(path.join(dir, '.github', 'scripts'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', '.github', 'scripts', 'authorize-deployment-verdict.js'), path.join(dir, '.github', 'scripts', 'authorize-deployment-verdict.js'));
+  fs.writeFileSync(path.join(dir, '.github', 'delivery-os.json'), JSON.stringify(manifest));
+  return dir;
+}
+
+test('release flow: a lite install (per its manifest) authorizes on the release approval alone, with no variable set', async () => {
+  const ws = workspaceWithManifest({ version: '1.12.2', bundle: 'lite' });
+  try {
+    const { labels } = await authorize(release([by('relA', 'approved')]), { GITHUB_WORKSPACE: ws });
+    assert.ok(labels.includes('ready-for-deploy'));
+  } finally {
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test('release flow: a full install (per its manifest) still waits for QA', async () => {
+  const ws = workspaceWithManifest({ version: '1.12.2' });
+  try {
+    const { labels } = await authorize(release([by('relA', 'approved')]), { GITHUB_WORKSPACE: ws });
+    assert.ok(!labels.includes('ready-for-deploy'));
+  } finally {
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test('release flow: DELIVERY_OS_QA_REQUIRED=true makes a lite install require QA again', async () => {
+  const ws = workspaceWithManifest({ version: '1.12.2', bundle: 'lite' });
+  try {
+    const { labels } = await authorize(release([by('relA', 'approved')]), { GITHUB_WORKSPACE: ws, DELIVERY_OS_QA_REQUIRED: 'true' });
+    assert.ok(!labels.includes('ready-for-deploy'));
+  } finally {
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
 });
 
 test('release flow: without DELIVERY_OS_QA_REQUIRED=false the release approval alone still waits for QA', async () => {

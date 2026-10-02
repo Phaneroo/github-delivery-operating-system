@@ -3,7 +3,7 @@
 const { program, Option } = require('commander');
 const path = require('path');
 const fs = require('fs');
-const { runInstall, runStatus, runUninstall } = require('./install');
+const { runInstall, runStatus, runUninstall, runList } = require('./install');
 const { runShellHook } = require('./shell-hook');
 
 const pkgPath = path.join(__dirname, '..', 'package.json');
@@ -31,6 +31,8 @@ program
   .addOption(
     new Option('-b, --bundle <name>', 'Which set to install: full (everything) or lite (sprints, tasks, bugs and a release approval, without the QA machinery). Defaults to the repo\'s current bundle, or full.').choices(['full', 'lite'])
   )
+  .option('--only <workflows>', 'Install just these workflows (comma-separated names; see `list`)')
+  .option('--skip <workflows>', 'Install the bundle without these workflows (comma-separated names; see `list`)')
   .option('--set-approvers', 'Set the RELEASE_APPROVER repo variable to your GitHub login via gh (never overwrites an existing value). On by default for --bundle lite')
   .option('--no-set-approvers', 'Do not set the approver variable')
   .option('-d, --dry-run', 'Show what would happen without changing files')
@@ -45,7 +47,17 @@ program
       dryRun: options.dryRun ?? false,
       bundle: options.bundle,
       setApprovers: options.setApprovers,
+      only: options.only,
+      skip: options.skip,
     });
+  });
+
+program
+  .command('list')
+  .description('List the bundles and workflows you can install (use --json for tools)')
+  .option('--json', 'Machine-readable output')
+  .action((options) => {
+    runList({ json: options.json ?? false });
   });
 
 program

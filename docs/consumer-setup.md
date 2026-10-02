@@ -58,6 +58,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 | `-s, --with-skill` | Add the `delivery-ops` Claude Code skill and its update-check hook |
 | `-u, --update` | Replace existing files |
 | `-b, --bundle <full\|lite>` | Which set to install. `full` (default) is everything; `lite` is for one person or a small project — see [Lite install](#lite-install). With no `--bundle`, a repo keeps the bundle it's already on |
+| `--only <names>` / `--skip <names>` | Install just these workflows, or the bundle without these (comma-separated names; run `npx github-delivery-os list` for them). See [Picking individual workflows](#picking-individual-workflows) |
 | `--set-approvers` / `--no-set-approvers` | Set (or don't set) the `RELEASE_APPROVER` repo variable to your GitHub login via `gh`. On by default for `--bundle lite`, off otherwise; never overwrites an existing value |
 | `-d, --dry-run` | Preview without changing files |
 
@@ -69,6 +70,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 | `--with-labels` | Create labels via `gh` CLI (requires `gh auth` and GitHub remote) |
 | `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status — plus `.claude/hooks/delivery-os-update-check.js`, registered in `.claude/settings.json`, which offers the update when a session starts in an out-of-date repo |
 | `--bundle <full\|lite>` | Install the full system (default) or the lite set — see [Lite install](#lite-install). `npx github-delivery-os` only; `scripts/install.sh` always installs full |
+| `--only <names>` / `--skip <names>` | Choose individual workflows — see [Picking individual workflows](#picking-individual-workflows) |
 | `--set-approvers` | Set `RELEASE_APPROVER` to your GitHub login via `gh` (default for `--bundle lite`; `--no-set-approvers` turns it off) |
 | `--update` | Replace existing workflow/template files |
 | `--no-update` | Explicitly skip existing files (default behavior) |
@@ -272,6 +274,25 @@ The consumer repo must allow workflows to write. In your consumer repo:
 1. Go to **Settings** → **Actions** → **General**
 2. Under **Workflow permissions**, select **Read and write permissions**
 3. Save
+
+---
+
+## Picking individual workflows
+
+Beyond the two bundles, you can choose workflows one by one. `list` shows what exists and what each does (`--json` for tools):
+
+```bash
+npx github-delivery-os list
+npx github-delivery-os install --only sprint-child-creator,auto-close-sprint,setup-labels --with-templates .   # just these
+npx github-delivery-os install --skip telegram-issues,auto-assign-qa --with-templates .                       # all but these
+npx github-delivery-os install --bundle lite --skip notify-release-approver .                                  # narrow a bundle
+```
+
+- Names are the workflow file names without `.yml`. `--only` and `--skip` can't be combined, and an unknown name stops the install before anything is written.
+- The supporting scripts each chosen workflow needs are installed with it, and nothing else.
+- Some workflows have little to do alone (`qa-rollup-approval` needs `auto-qa-request` to create the rolling QA issue; `auto-close-sprint` needs the child issues `sprint-child-creator` makes). The install tells you, and still installs what you asked for.
+- The selection is recorded in `.github/delivery-os.json`. A plain `install --update` keeps it, `status` checks only what you chose, and `--only`/`--skip` again replaces it. `--bundle full` (or `lite`) with neither flag goes back to the whole bundle.
+- Narrowing never removes files already installed, and `--with-templates` still copies the bundle's templates.
 
 ---
 

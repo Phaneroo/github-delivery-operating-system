@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { test } = require('./harness');
-const { runInstall, runStatus, runUninstall, __test__ } = require('../src/install');
+const { runInstall, runStatus, runUninstall, runList, __test__ } = require('../src/install');
 const {
   manifestPath,
   readManifest,
@@ -24,6 +24,11 @@ const {
   BUNDLES,
   manifestBundle,
   REQUIRED_SCRIPT_BY_WORKFLOW,
+  resolveSelection,
+  parseNameList,
+  manifestWorkflows,
+  scriptsForWorkflows,
+  WORKFLOW_INFO,
 } = __test__;
 
 const packageRoot = path.join(__dirname, '..');
@@ -1466,4 +1471,172 @@ test('--set-approvers can be asked for on a full install', () => {
   } finally {
     rm(dir);
   }
+});
+
+// ---- --only / --skip / list ----
+
+const wfFiles = (dir) => fs.readdirSync(path.join(dir, '.github', 'workflows')).sort();
+
+test('every workflow has a description, and what it needs is a real workflow', () => {
+  for (const wf of WORKFLOWS) {
+    assert.ok(WORKFLOW_INFO[wf] && WORKFLOW_INFO[wf].summary, `${wf} has no description`);
+    for (const need of WORKFLOW_INFO[wf].needs) assert.ok(WORKFLOWS.includes(need), `${wf} needs unknown ${need}`);
+  }
+  assert.deepEqual(Object.keys(WORKFLOW_INFO).sort(), [...WORKFLOWS].sort());
+});
+
+test('parseNameList trims, drops .yml, de-duplicates, and leaves an absent flag alone', () => {
+  assert.deepEqual(parseNameList('a, b.yml ,a,,'), ['a', 'b']);
+  assert.deepEqual(parseNameList(['a,b', 'c']), ['a', 'b', 'c']);
+  assert.equal(parseNameList(undefined), null);
+});
+
+test('resolveSelection: only, skip, errors, and keeping a prior selection', () => {
+  const only = resolveSelection({ bundle: 'full', only: ['auto-close-sprint', 'sprint-child-creator'] });
+  assert.deepEqual(only.workflows, ['sprint-child-creator', 'auto-close-sprint'], 'keeps the bundle order');
+  assert.equal(only.custom, true);
+
+  const skip = resolveSelection({ bundle: 'full', skip: ['telegram-issues'] });
+  assert.equal(skip.workflows.length, WORKFLOWS.length - 1);
+  assert.ok(!skip.workflows.includes('telegram-issues'));
+
+  const none = resolveSelection({ bundle: 'full' });
+  assert.deepEqual(none.workflows, WORKFLOWS);
+  assert.equal(none.custom, false);
+  assert.deepEqual(none.scripts, SCRIPTS, 'an unnarrowed install ships exactly the bundle\'s scripts');
+
+  assert.match(resolveSelection({ bundle: 'full', only: ['nope'] }).error, /Unknown workflow.*nope/);
+  assert.match(resolveSelection({ bundle: 'lite', only: ['auto-qa-request'] }).error, /for the lite bundle/);
+  assert.match(resolveSelection({ bundle: 'full', only: ['a'], skip: ['b'] }).error, /not both/);
+  assert.match(resolveSelection({ bundle: 'lite', skip: BUNDLES.lite.workflows }).error, /nothing to install/);
+  assert.deepEqual(resolveSelection({ bundle: 'full', keepPrior: ['setup-labels'] }).workflows, ['setup-labels']);
+});
+
+test('resolveSelection warns when a workflow is chosen without what it works with', () => {
+  assert.match(resolveSelection({ bundle: 'full', only: ['qa-rollup-approval'] }).warnings.join(), /auto-qa-request/);
+  assert.match(resolveSelection({ bundle: 'full', only: ['auto-close-sprint'] }).warnings.join(), /sprint-child-creator/);
+  assert.deepEqual(resolveSelection({ bundle: 'full', only: ['telegram-issues'] }).warnings, []);
+});
+
+test('scriptsForWorkflows ships only what the chosen workflows require', () => {
+  assert.deepEqual(scriptsForWorkflows('full', ['sprint-child-creator', 'setup-labels']).sort(), ['labels', 'sprint-child-creator']);
+  assert.deepEqual(scriptsForWorkflows('full', ['telegram-issues']), []);
+  const notify = scriptsForWorkflows('full', ['notify-release-approver']);
+  assert.ok(notify.includes('release-rollup') && notify.includes('auto-qa-request'), 'the full notify workflow runs the roll-up');
+  assert.deepEqual(scriptsForWorkflows('lite', ['notify-release-approver']), [], 'lite\'s notify needs no script');
+  for (const wf of WORKFLOWS) {
+    for (const script of [].concat(REQUIRED_SCRIPT_BY_WORKFLOW[wf] || [])) {
+      assert.ok(scriptsForWorkflows('full', [wf]).includes(script), `${wf} -> ${script}`);
+    }
+  }
+});
+
+test('install --only installs just those workflows and their scripts, records them, and status is happy', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', only: 'sprint-child-creator,auto-close-sprint,setup-labels' }));
+    assert.deepEqual(wfFiles(dir), ['auto-close-sprint.yml', 'setup-labels.yml', 'sprint-child-creator.yml']);
+    assert.deepEqual(fs.readdirSync(path.join(dir, '.github', 'scripts')).sort(), ['auto-close-sprint.js', 'labels.js', 'labels.tsv', 'package.json', 'sprint-child-creator.js']);
+    assert.deepEqual(readManifest(dir).workflows, ['sprint-child-creator', 'auto-close-sprint', 'setup-labels']);
+    const output = await statusOutput(dir);
+    assert.match(output, /Summary: 3\/3 workflows/);
+    assert.match(output, /selected workflows only/);
+    assert.doesNotMatch(output, /Missing workflows|Broken install/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('install --skip leaves out just those, on full and on lite', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', skip: 'telegram-issues,auto-assign-qa' }));
+    assert.deepEqual(wfFiles(dir), WORKFLOWS.filter((w) => !['telegram-issues', 'auto-assign-qa'].includes(w)).map((w) => `${w}.yml`).sort());
+  } finally {
+    rm(dir);
+  }
+  const lite = mkTmpRepo();
+  try {
+    inRepoQuietly(lite, () => runInstall({ targetDir: '.', bundle: 'lite', skip: 'notify-release-approver' }));
+    assert.deepEqual(wfFiles(lite), ['authorize-deployment.yml', 'auto-close-sprint.yml', 'setup-labels.yml', 'sprint-child-creator.yml']);
+    assert.doesNotMatch(fs.readFileSync(path.join(lite, '.github', 'workflows', 'authorize-deployment.yml'), 'utf8'), /QA_APPROVER/, 'still lite\'s own version');
+    assert.equal(readManifest(lite).bundle, 'lite');
+  } finally {
+    rm(lite);
+  }
+});
+
+test('a plain --update keeps a narrowed install; --bundle resets it; --only changes it', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', only: 'sprint-child-creator,setup-labels' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true }));
+    assert.deepEqual(wfFiles(dir), ['setup-labels.yml', 'sprint-child-creator.yml']);
+
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', only: 'authorize-deployment' }));
+    assert.deepEqual(readManifest(dir).workflows, ['authorize-deployment']);
+    assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', 'authorize-deployment.yml')));
+
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+    assert.deepEqual(wfFiles(dir), WORKFLOWS.map((w) => `${w}.yml`).sort());
+    assert.equal('workflows' in readManifest(dir), false, 'back to following the bundle');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('bad --only/--skip installs nothing and fails', () => {
+  const origErr = console.error;
+  const origExit = process.exitCode;
+  const cases = [{ only: 'nope' }, { only: 'setup-labels', skip: 'auto-qa-request' }, { bundle: 'lite', only: 'telegram-issues' }];
+  try {
+    console.error = () => {};
+    for (const opts of cases) {
+      const dir = mkTmpRepo();
+      try {
+        process.exitCode = 0;
+        inRepoQuietly(dir, () => runInstall({ targetDir: '.', ...opts }));
+        assert.equal(process.exitCode, 1, JSON.stringify(opts));
+        assert.equal(fs.existsSync(path.join(dir, '.github')), false, JSON.stringify(opts));
+      } finally {
+        rm(dir);
+      }
+    }
+  } finally {
+    process.exitCode = origExit;
+    console.error = origErr;
+  }
+});
+
+test('a default install records no workflows field, and manifestWorkflows ignores junk', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    assert.equal('workflows' in readManifest(dir), false);
+  } finally {
+    rm(dir);
+  }
+  assert.equal(manifestWorkflows(null, 'full'), null);
+  assert.equal(manifestWorkflows({ workflows: 'x' }, 'full'), null);
+  assert.equal(manifestWorkflows({ workflows: [] }, 'full'), null);
+  assert.equal(manifestWorkflows({ workflows: ['bogus'] }, 'full'), null);
+  assert.equal(manifestWorkflows({ workflows: WORKFLOWS }, 'full'), null, 'the whole bundle is not a narrowing');
+  assert.deepEqual(manifestWorkflows({ workflows: ['setup-labels', 'bogus'] }, 'full'), ['setup-labels']);
+});
+
+test('list --json describes every workflow and both bundles', () => {
+  const lines = [];
+  const origLog = console.log;
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    runList({ json: true });
+  } finally {
+    console.log = origLog;
+  }
+  const out = JSON.parse(lines.join('\n'));
+  assert.deepEqual(Object.keys(out.bundles).sort(), ['full', 'lite']);
+  assert.equal(out.workflows.length, WORKFLOWS.length);
+  const qa = out.workflows.find((w) => w.name === 'auto-qa-request');
+  assert.deepEqual(qa.bundles, ['full']);
+  assert.ok(out.workflows.find((w) => w.name === 'setup-labels').bundles.includes('lite'));
 });

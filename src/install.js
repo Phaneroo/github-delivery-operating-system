@@ -840,23 +840,35 @@ function runInstall(options) {
     }
     console.log('');
     console.log('Next steps:');
-    console.log('  1. Create labels: Actions → Setup Labels → Run workflow');
-    if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
-    console.log('  2. Configure repo variables (Settings → Secrets and variables → Actions):');
+    let nextStep;
     if (bundle === 'lite') {
+      // Lite: skip steps that are already done, and number what's left.
+      nextStep = 1;
+      if (labelsCreated === 0) {
+        console.log(`  ${nextStep}. Create labels: Actions → Setup Labels → Run workflow`);
+        if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
+        nextStep++;
+      }
+      console.log(`  ${nextStep}. Configure the repo variable (Settings → Secrets and variables → Actions):`);
+      nextStep++;
       if (approver && (approver.state === 'set' || approver.state === 'exists')) {
         console.log('     - RELEASE_APPROVER: done (see above)');
+      } else if (approver && approver.state === 'dry-run') {
+        console.log('     - RELEASE_APPROVER: will be set to your GitHub login (unless it is already set)');
       } else {
         console.log('     - RELEASE_APPROVER: your GitHub username (or re-run with --set-approvers)');
       }
       console.log('     No QA approver is needed: comment "approved" on a Production Release issue to ship it.');
     } else {
+      console.log('  1. Create labels: Actions → Setup Labels → Run workflow');
+      if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
+      console.log('  2. Configure repo variables (Settings → Secrets and variables → Actions):');
       console.log('     - RELEASE_APPROVER: GitHub username of release approver');
       console.log('     - QA_APPROVER: GitHub username of QA approver');
       console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
       console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
+      nextStep = 4;
     }
-    let nextStep = bundle === 'lite' ? 3 : 4;
     if (!withTemplates) {
       console.log(`  ${nextStep}. Copy templates: re-run with --with-templates`);
       nextStep++;

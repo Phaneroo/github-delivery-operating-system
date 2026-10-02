@@ -1467,3 +1467,78 @@ test('--set-approvers can be asked for on a full install', () => {
     rm(dir);
   }
 });
+
+function installOutput(dir, opts) {
+  const lines = [];
+  const origLog = console.log;
+  const cwd = process.cwd();
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    process.chdir(dir);
+    runInstall({ targetDir: '.', ...opts });
+  } finally {
+    process.chdir(cwd);
+    console.log = origLog;
+  }
+  return lines.join('\n');
+}
+
+test('lite next steps: a dry run says the approver will be set, not that you must set it', () => {
+  const dir = gitRepo();
+  try {
+    const out = installOutput(dir, { bundle: 'lite', dryRun: true });
+    assert.match(out, /RELEASE_APPROVER: will be set to your GitHub login/);
+    assert.doesNotMatch(out, /or re-run with --set-approvers/);
+    assert.match(out, /1\. Create labels/, 'labels were not created in a dry run');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('lite next steps: once labels are created, the "create labels" step is gone and the rest renumber', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, () => {
+      const out = installOutput(dir, { bundle: 'lite', withLabels: true, withTemplates: true, withSkill: true });
+      assert.match(out, /Created \d+ label/);
+      assert.doesNotMatch(out, /Create labels: Actions/);
+      assert.match(out, /1\. Configure the repo variable/);
+      assert.match(out, /RELEASE_APPROVER: done/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('lite next steps: with no labels created it still points at Setup Labels, then the variable', () => {
+  const dir = mkTmpRepo();
+  try {
+    const out = installOutput(dir, { bundle: 'lite', withTemplates: true, withSkill: true });
+    assert.match(out, /1\. Create labels: Actions/);
+    assert.match(out, /2\. Configure the repo variable/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('full next steps are unchanged: labels, QA variables, Telegram secrets', () => {
+  const dir = mkTmpRepo();
+  try {
+    const out = installOutput(dir, { withTemplates: true, withSkill: true });
+    const steps = out.slice(out.indexOf('Next steps:'), out.indexOf('See https://'));
+    assert.equal(
+      steps.trim(),
+      [
+        'Next steps:',
+        '  1. Create labels: Actions → Setup Labels → Run workflow',
+        '  2. Configure repo variables (Settings → Secrets and variables → Actions):',
+        '     - RELEASE_APPROVER: GitHub username of release approver',
+        '     - QA_APPROVER: GitHub username of QA approver',
+        '     - QA_ASSIGNEES: Comma-separated usernames for QA assignment',
+        '  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID',
+      ].join('\n')
+    );
+  } finally {
+    rm(dir);
+  }
+});

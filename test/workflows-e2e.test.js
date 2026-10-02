@@ -4,9 +4,6 @@
 // run against the in-memory fake GitHub API (see fake-github.js).
 
 const assert = require('assert/strict');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const { test } = require('./harness');
 const { extractScript, createFakeRepo, runScript, repo } = require('./fake-github');
 const { AUTO_CLOSE_COMMENT } = require('../.github/scripts/auto-close-sprint');
@@ -27,9 +24,9 @@ function release(comments, labels = ['release', 'production', 'approval']) {
     comments,
   });
 }
-async function authorize(fx, extraEnv = {}) {
+async function authorize(fx) {
   const context = { eventName: 'issue_comment', repo, issue: { number: 7 }, payload: { issue: { number: 7 } } };
-  await runScript(AUTHORIZE, { github: fx.github, context, env: { ...RELEASE_ENV, ...extraEnv } });
+  await runScript(AUTHORIZE, { github: fx.github, context, env: RELEASE_ENV });
   return { labels: fx.store.issues[0].labels.map((l) => (typeof l === 'string' ? l : l.name)), comments: fx.store.comments.filter((c) => c.user.login === 'github-actions[bot]') };
 }
 
@@ -37,61 +34,6 @@ test('release flow: release approval + QA approval authorizes the deployment', a
   const { labels, comments } = await authorize(release([by('relA', 'approved'), by('qaA', 'qa ok')]));
   assert.ok(labels.includes('ready-for-deploy'));
   assert.match(comments[0].body, /Deployment Authorized/);
-});
-
-test('release flow: the release approver alone authorizes when DELIVERY_OS_QA_REQUIRED=false (solo repos)', async () => {
-  const { labels, comments } = await authorize(release([by('relA', 'approved')]), { DELIVERY_OS_QA_REQUIRED: 'false' });
-  assert.ok(labels.includes('ready-for-deploy'));
-  assert.match(comments[0].body, /Release approval received/);
-});
-
-function workspaceWithManifest(manifest) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'delivery-os-ws-'));
-  fs.mkdirSync(path.join(dir, '.github', 'scripts'), { recursive: true });
-  fs.copyFileSync(path.join(__dirname, '..', '.github', 'scripts', 'authorize-deployment-verdict.js'), path.join(dir, '.github', 'scripts', 'authorize-deployment-verdict.js'));
-  fs.writeFileSync(path.join(dir, '.github', 'delivery-os.json'), JSON.stringify(manifest));
-  return dir;
-}
-
-test('release flow: a lite install (per its manifest) authorizes on the release approval alone, with no variable set', async () => {
-  const ws = workspaceWithManifest({ version: '1.12.2', bundle: 'lite' });
-  try {
-    const { labels } = await authorize(release([by('relA', 'approved')]), { GITHUB_WORKSPACE: ws });
-    assert.ok(labels.includes('ready-for-deploy'));
-  } finally {
-    fs.rmSync(ws, { recursive: true, force: true });
-  }
-});
-
-test('release flow: a full install (per its manifest) still waits for QA', async () => {
-  const ws = workspaceWithManifest({ version: '1.12.2' });
-  try {
-    const { labels } = await authorize(release([by('relA', 'approved')]), { GITHUB_WORKSPACE: ws });
-    assert.ok(!labels.includes('ready-for-deploy'));
-  } finally {
-    fs.rmSync(ws, { recursive: true, force: true });
-  }
-});
-
-test('release flow: DELIVERY_OS_QA_REQUIRED=true makes a lite install require QA again', async () => {
-  const ws = workspaceWithManifest({ version: '1.12.2', bundle: 'lite' });
-  try {
-    const { labels } = await authorize(release([by('relA', 'approved')]), { GITHUB_WORKSPACE: ws, DELIVERY_OS_QA_REQUIRED: 'true' });
-    assert.ok(!labels.includes('ready-for-deploy'));
-  } finally {
-    fs.rmSync(ws, { recursive: true, force: true });
-  }
-});
-
-test('release flow: without DELIVERY_OS_QA_REQUIRED=false the release approval alone still waits for QA', async () => {
-  const { labels } = await authorize(release([by('relA', 'approved')]));
-  assert.ok(!labels.includes('ready-for-deploy'));
-});
-
-test('release flow: a QA decline still blocks even when QA is not required', async () => {
-  const { labels } = await authorize(release([by('relA', 'approved'), by('qaA', 'declined')]), { DELIVERY_OS_QA_REQUIRED: 'false' });
-  assert.ok(labels.includes('declined'));
-  assert.ok(!labels.includes('ready-for-deploy'));
 });
 
 test('release flow: a QA approver\'s decline blocks the release and removes ready-for-deploy', async () => {

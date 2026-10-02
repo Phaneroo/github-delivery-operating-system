@@ -255,22 +255,6 @@ function computeVerdict(comments, releaseApprover, qaApprover) {
 }
 
 /**
- * Whether a release needs a separate QA approval. The explicit
- * DELIVERY_OS_QA_REQUIRED variable wins in either direction ('false' / 'true');
- * with it unset, a lite install (recorded in .github/delivery-os.json) doesn't
- * need one, and everything else does, as before.
- *
- * @param {{ override?: string | null, manifest?: { bundle?: string } | null }} input
- * @returns {boolean}
- */
-function isQaRequired({ override, manifest } = {}) {
-  const value = String(override || '').trim().toLowerCase();
-  if (value === 'false') return false;
-  if (value === 'true') return true;
-  return !(manifest && manifest.bundle === 'lite');
-}
-
-/**
  * What authorize-deployment should do for the current verdicts and the
  * release issue's live labels. Keeps the `declined` label truthful: a decline
  * from either the release approver or the QA approver applies it, and it is
@@ -282,11 +266,9 @@ function isQaRequired({ override, manifest } = {}) {
  *   declined/ready: the labels currently on the issue
  * @returns {'decline' | 'authorize' | 'clear-declined' | 'none'}
  */
-function nextReleaseAction({ releaseVerdict, qaVerdict, declined, ready, qaRequired = true }) {
+function nextReleaseAction({ releaseVerdict, qaVerdict, declined, ready }) {
   if (releaseVerdict === 'declined' || qaVerdict === 'declined') return declined ? 'none' : 'decline';
-  // qaRequired=false (a repo with no separate QA approver, e.g. a one-person
-  // team) lets the release approver's approval stand on its own.
-  if (releaseVerdict === 'approved' && (qaVerdict === 'approved' || !qaRequired) && !ready) return 'authorize';
+  if (releaseVerdict === 'approved' && qaVerdict === 'approved' && !ready) return 'authorize';
   if (declined && (releaseVerdict || qaVerdict)) return 'clear-declined';
   return 'none';
 }
@@ -334,7 +316,6 @@ function parseFilingPrNumber(body) {
 }
 
 module.exports = {
-  isQaRequired,
   phraseRegex,
   matchVerdict,
   matchRollingQaVerdict,

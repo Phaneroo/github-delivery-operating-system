@@ -2,7 +2,7 @@
 
 const assert = require('assert/strict');
 const { test } = require('./harness');
-const { computeVerdict, nextReleaseAction, isQaRequired, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
+const { computeVerdict, nextReleaseAction, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require('../.github/scripts/authorize-deployment-verdict');
 const { buildAutoTaskBody, buildQaRequestBody } = require('../.github/scripts/auto-qa-request');
 
 const RELEASE = 'alice';
@@ -304,13 +304,6 @@ test('nextReleaseAction: decline once (from either side), then nothing until the
   assert.equal(nextReleaseAction({ releaseVerdict: 'declined', qaVerdict: null, declined: true, ready: false }), 'none');
 });
 
-test('nextReleaseAction: qaRequired=false authorizes on the release approval alone, but a QA decline still blocks', () => {
-  assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: null, declined: false, ready: false, qaRequired: false }), 'authorize');
-  assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: null, declined: false, ready: true, qaRequired: false }), 'none');
-  assert.equal(nextReleaseAction({ releaseVerdict: null, qaVerdict: null, declined: false, ready: false, qaRequired: false }), 'none');
-  assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: 'declined', declined: false, ready: false, qaRequired: false }), 'decline');
-});
-
 test('nextReleaseAction: authorize needs the release verdict AND QA, and only once', () => {
   assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: 'approved', declined: false, ready: false }), 'authorize');
   assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: 'approved', declined: true, ready: false }), 'authorize', 'a re-approval after a decline authorizes and clears the label');
@@ -426,16 +419,4 @@ test('otherQaDecliners ignores decliners who are no longer QA approvers', () => 
   const log = new Map([['gone', 'declined'], ['qa2', 'declined']]);
   assert.deepEqual(otherQaDecliners(log, 'qa1', ['QA1', 'qa2']), ['qa2']);
   assert.deepEqual(otherQaDecliners(log, 'qa1', ['qa1']), []);
-});
-
-test('isQaRequired: required by default, off for a lite install, and the variable wins either way', () => {
-  assert.equal(isQaRequired(), true);
-  assert.equal(isQaRequired({ manifest: null }), true);
-  assert.equal(isQaRequired({ manifest: { version: '1.12.2' } }), true);
-  assert.equal(isQaRequired({ manifest: { bundle: 'full' } }), true);
-  assert.equal(isQaRequired({ manifest: { bundle: 'lite' } }), false);
-  assert.equal(isQaRequired({ override: 'false' }), false);
-  assert.equal(isQaRequired({ override: ' FALSE ' }), false);
-  assert.equal(isQaRequired({ override: 'true', manifest: { bundle: 'lite' } }), true, 'an explicit true re-requires QA on lite');
-  assert.equal(isQaRequired({ override: 'false', manifest: { bundle: 'full' } }), false);
 });

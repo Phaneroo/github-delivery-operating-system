@@ -37,25 +37,19 @@ jobs:
           RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
           QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
           DELIVERY_OS_AUTO_CLOSE: ${{ vars.DELIVERY_OS_AUTO_CLOSE }}
-          DELIVERY_OS_QA_REQUIRED: ${{ vars.DELIVERY_OS_QA_REQUIRED }}
         with:
           script: |
             // Pure verdict logic lives in a real, unit-tested module (see
             // .github/scripts/authorize-deployment-verdict.js and
             // test/authorize-deployment-verdict.test.js) rather than inline here,
             // so it isn't only verified by hand whenever it changes.
-            const { computeVerdict, nextReleaseAction, isQaRequired, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const { computeVerdict, nextReleaseAction, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const issueNumber = context.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const releaseApprover = process.env.RELEASE_APPROVER;
             const qaApprover = process.env.QA_APPROVER;
-            // No separate QA sign-off on a lite install (read from the manifest), or
-            // when DELIVERY_OS_QA_REQUIRED says so explicitly ('false' / 'true').
-            let manifest = null;
-            try { manifest = JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/.github/delivery-os.json`, "utf8")); } catch (e) {}
-            const qaRequired = isQaRequired({ override: process.env.DELIVERY_OS_QA_REQUIRED, manifest });
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
@@ -88,8 +82,7 @@ jobs:
               releaseVerdict,
               qaVerdict,
               declined: alreadyDeclined,
-              ready: alreadyReady,
-              qaRequired
+              ready: alreadyReady
             });
 
             // Nobody's latest verdict is a decline any more (the decliner approved),
@@ -160,9 +153,7 @@ jobs:
                 owner,
                 repo,
                 issue_number: issueNumber,
-                body: qaRequired
-                  ? "🟢🚀 **Deployment Authorized**\n\nDual approval received. This release is cleared for production deployment."
-                  : "🟢🚀 **Deployment Authorized**\n\nRelease approval received. This release is cleared for production deployment."
+                body: "🟢🚀 **Deployment Authorized**\n\nDual approval received. This release is cleared for production deployment."
               });
 
               // Close what auto-qa-request filed for work that's in this

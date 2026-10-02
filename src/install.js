@@ -746,7 +746,7 @@ function runInstall(options) {
     console.log('  2. Configure repo variables (Settings → Secrets and variables → Actions):');
     console.log('     - RELEASE_APPROVER: GitHub username of release approver');
     if (bundle === 'lite') {
-      console.log('       (no QA approver needed: on a lite install the release approver alone authorizes a release)');
+      console.log('     - QA_APPROVER: set this to the same username (a release needs both approvals; one person can give both)');
     } else {
       console.log('     - QA_APPROVER: GitHub username of QA approver');
       console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');

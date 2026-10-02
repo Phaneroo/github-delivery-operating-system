@@ -62,12 +62,14 @@ npx github-delivery-os install --bundle lite --with-templates --with-labels --wi
 | Sprint planning, child tasks, burn-down, auto-close | ✓ | ✓ |
 | Task, bug and production release issue forms | ✓ | ✓ |
 | Release approval | one approver, you | release approver + QA approver |
-| Rolling QA issue, QA Requests, QA assignment, Telegram | none | ✓ |
+| Rolling QA issue, QA Requests, QA assignment, Telegram | none (add them later as packs) | ✓ |
 | Claude Code skill (`--with-skill`) | ✓ (skips QA guidance) | ✓ |
 
 **Shipping a release:** open a Production Release issue. It pings you, and you comment `approved` to authorize it (the issue gets `ready-for-deploy`) or `declined` to hold it back. Approving again lifts a decline. There is no QA approver to set up.
 
 **Setup:** the install sets the `RELEASE_APPROVER` repo variable to your GitHub login (needs `gh`; it never overwrites an existing value and tells you what it did). Skip that with `--no-set-approvers` and set the variable yourself in Settings → Secrets and variables → Actions.
+
+**Adding what you need later:** `npx github-delivery-os add qa .` adds QA sign-off (the rolling QA issue, QA approval, QA assignment, the QA Request form and labels) and switches releases to need a QA approver too; `add telegram .` adds Telegram alerts. `remove qa .` takes a pack away again, deleting the files only it needs. Add `--dry-run` to preview. `npx github-delivery-os list` shows the packs.
 
 **Switching:** a plain `install --update` keeps a lite repo lite. To fill it out to everything, run `install --bundle full`: it adds the missing workflows and swaps lite's release workflows, release form and labels for the full ones, so QA sign-off applies from then on. Going from full to lite swaps them back, but doesn't remove the QA workflows already installed. `status` shows which bundle a repo is on.
 

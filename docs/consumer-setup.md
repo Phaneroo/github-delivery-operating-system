@@ -283,6 +283,29 @@ The consumer repo must allow workflows to write. In your consumer repo:
 
 ---
 
+## Adding and removing packs
+
+A lite install can grow later. Packs are optional pieces you add to it (and take away again) without reinstalling:
+
+| Pack | What it adds |
+|------|--------------|
+| `qa` | The rolling QA issue (`auto-qa-request`), QA approval (`qa-rollup-approval`), QA assignment (`auto-assign-qa`), the QA Request form and QA labels, and **a release that needs a QA approver as well as the release approver** (the full release workflows and form replace lite's) |
+| `telegram` | Telegram alerts (`telegram-issues`) |
+
+```bash
+npx github-delivery-os add qa .                  # add the QA pack to a lite repo
+npx github-delivery-os add qa,telegram . --dry-run
+npx github-delivery-os remove qa .               # take it away again
+npx github-delivery-os list                      # the packs, bundles and workflows
+```
+
+- Packs belong to the lite bundle. On a full install they would add nothing (it already has everything), so the command stops with a message; use `--only`/`--skip` there.
+- `add` copies a pack's issue form only if the repo already uses Delivery OS's issue forms, and creates its labels with `--with-labels` (or run the Setup Labels workflow). After `add qa`, set `QA_APPROVER` and `QA_ASSIGNEES` under Settings → Secrets and variables → Actions → Variables.
+- `remove` deletes the files only that pack needs (never one another piece still uses) and puts lite's release workflows, form and labels back. Your repo variables, secrets and labels already created are left alone.
+- The packs are recorded in `.github/delivery-os.json` (`"packs": ["qa"]`). A plain `install --update` keeps them; naming `--bundle` resets to the bundle alone. `status` shows them (`Bundle: lite + qa`).
+
+---
+
 ## Picking individual workflows
 
 Beyond the two bundles, you can choose workflows one by one. `list` shows what exists and what each does (`--json` for tools):

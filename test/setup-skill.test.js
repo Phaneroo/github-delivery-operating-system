@@ -36,6 +36,7 @@ test('every CLI flag and command the setup skill tells Claude to use exists', ()
     assert.ok(cli.includes(flag) || flag === '--json' || flag === '--help', `skill mentions ${flag}, which the CLI doesn't define`);
   }
   assert.ok(cli.includes("command('list')"));
+  assert.ok(cli.includes("command('add <packs>") && cli.includes("command('remove <packs>"), 'the skill tells Claude to use add and remove');
   assert.ok(cli.includes("command('status"));
 });
 

@@ -3,7 +3,7 @@
 const { program, Option } = require('commander');
 const path = require('path');
 const fs = require('fs');
-const { runInstall, runStatus, runUninstall, runList } = require('./install');
+const { runInstall, runStatus, runUninstall, runList, runAddPacks, runRemovePacks } = require('./install');
 const { runShellHook } = require('./shell-hook');
 const { runSetupSkill } = require('./setup-skill');
 
@@ -51,6 +51,23 @@ program
       only: options.only,
       skip: options.skip,
     });
+  });
+
+program
+  .command('add <packs> [target]')
+  .description('Add optional packs (comma-separated, e.g. qa, telegram) to a lite install; see `list`')
+  .option('-l, --with-labels', 'Create labels via gh CLI (requires gh auth)')
+  .option('-d, --dry-run', 'Show what would happen without changing files')
+  .action((packs, target, options) => {
+    runAddPacks({ targetDir: target || '.', packs, withLabels: options.withLabels ?? false, dryRun: options.dryRun ?? false });
+  });
+
+program
+  .command('remove <packs> [target]')
+  .description('Remove optional packs from a lite install, deleting the files only they need')
+  .option('-d, --dry-run', 'Show what would be removed without deleting')
+  .action((packs, target, options) => {
+    runRemovePacks({ targetDir: target || '.', packs, dryRun: options.dryRun ?? false });
   });
 
 program

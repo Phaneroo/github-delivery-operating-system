@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { test } = require('./harness');
-const { runInstall, runStatus, runUninstall, runList, __test__ } = require('../src/install');
+const { runInstall, runStatus, runUninstall, runList, runAddPacks, runRemovePacks, __test__ } = require('../src/install');
 const {
   manifestPath,
   readManifest,
@@ -25,6 +25,10 @@ const {
   manifestBundle,
   skillForBundle,
   SKILL_ANCHOR,
+  PACKS,
+  manifestPacks,
+  flavorFor,
+  effectiveFor,
   REQUIRED_SCRIPT_BY_WORKFLOW,
   resolveSelection,
   parseNameList,
@@ -1827,4 +1831,241 @@ test('skillForBundle never loses the addendum if the skill is reorganised', () =
   } finally {
     rm(dir);
   }
+});
+
+// ---- packs: add / remove on a lite install ----
+
+const exists = (dir, rel) => fs.existsSync(path.join(dir, '.github', rel));
+function liteRepo(opts = {}) {
+  const dir = mkTmpRepo();
+  inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', setApprovers: false, ...opts }));
+  return dir;
+}
+const add = (dir, packs, extra = {}) => inRepoQuietly(dir, () => runAddPacks({ targetDir: '.', packs, ...extra }));
+const remove = (dir, packs, extra = {}) => inRepoQuietly(dir, () => runRemovePacks({ targetDir: '.', packs, ...extra }));
+
+test('packs only add things: every pack workflow and template is real and outside lite, and lite plus all packs is full', () => {
+  for (const [name, pack] of Object.entries(PACKS)) {
+    assert.ok(pack.summary, name);
+    for (const wf of pack.workflows) {
+      assert.ok(WORKFLOWS.includes(wf), `${name}: ${wf}`);
+      assert.ok(!BUNDLES.lite.workflows.includes(wf), `${wf} is already in lite`);
+    }
+    for (const t of pack.templates) assert.ok(TEMPLATES.includes(t), `${name}: ${t}`);
+  }
+  const all = effectiveFor('lite', Object.keys(PACKS), null);
+  assert.deepEqual(all.workflows, WORKFLOWS, 'lite + every pack has every workflow, in the usual order');
+  assert.deepEqual(all.scripts, SCRIPTS);
+  assert.deepEqual([...all.templates].sort(), [...TEMPLATES].sort());
+  assert.equal(all.flavor, 'full');
+});
+
+test('effectiveFor: lite alone is unchanged, telegram keeps lite\'s release flow, qa switches it to full\'s', () => {
+  const lite = effectiveFor('lite', [], null);
+  assert.deepEqual(lite.workflows, BUNDLES.lite.workflows);
+  assert.deepEqual(lite.scripts, BUNDLES.lite.scripts);
+  assert.equal(lite.flavor, 'lite');
+  const tg = effectiveFor('lite', ['telegram'], null);
+  assert.equal(tg.flavor, 'lite');
+  assert.ok(tg.workflows.includes('telegram-issues'));
+  const qa = effectiveFor('lite', ['qa'], null);
+  assert.equal(qa.flavor, 'full');
+  assert.ok(qa.scripts.includes('auto-qa-request') && qa.scripts.includes('release-rollup'), 'the full notify workflow runs the roll-up');
+  assert.equal(flavorFor('full', []), 'full');
+  assert.deepEqual(effectiveFor('full', [], null).workflows, WORKFLOWS, 'full ignores packs entirely');
+  assert.deepEqual(manifestPacks({ bundle: 'lite', packs: ['qa', 'bogus'] }, 'lite'), ['qa']);
+  assert.deepEqual(manifestPacks({ packs: ['qa'] }, 'full'), [], 'only lite has packs');
+});
+
+test('add qa gives a lite repo the QA workflows, the full release flow, the QA form and labels, and records the pack', async () => {
+  const dir = liteRepo({ withTemplates: true });
+  try {
+    add(dir, 'qa');
+    for (const wf of ['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa']) assert.ok(exists(dir, `workflows/${wf}.yml`), wf);
+    for (const s of ['auto-qa-request.js', 'release-rollup.js']) assert.ok(exists(dir, `scripts/${s}`), s);
+    for (const [rel, fullSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(fullSrc), `${rel} is the full version`);
+    assert.ok(exists(dir, 'ISSUE_TEMPLATE/qa_request.yml'));
+    assert.match(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m);
+    assert.deepEqual(readManifest(dir).packs, ['qa']);
+    assert.equal(readManifest(dir).bundle, 'lite');
+    const out = await statusOutput(dir);
+    assert.match(out, /Summary: 8\/8 workflows, 6\/6 templates/);
+    assert.match(out, /Bundle: lite \+ qa/);
+    assert.doesNotMatch(out, /Missing workflows|Broken install/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('add telegram adds only the Telegram workflow and leaves lite\'s release flow alone', () => {
+  const dir = liteRepo();
+  try {
+    add(dir, 'telegram');
+    assert.ok(exists(dir, 'workflows/telegram-issues.yml'));
+    assert.equal(exists(dir, 'workflows/auto-qa-request.yml'), false);
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('lite/workflows/authorize-deployment.yml'));
+    assert.deepEqual(readManifest(dir).packs, ['telegram']);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('add with no issue templates installed does not start copying templates, and is safe to repeat', () => {
+  const dir = liteRepo();
+  try {
+    add(dir, 'qa');
+    assert.equal(fs.existsSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', 'qa_request.yml')), false);
+    const before = repoFile(dir, 'workflows/authorize-deployment.yml');
+    add(dir, 'qa');
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), before);
+    assert.deepEqual(readManifest(dir).packs, ['qa']);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('remove qa deletes what only the pack needs, puts lite\'s release flow back, and keeps other packs', async () => {
+  const dir = liteRepo({ withTemplates: true });
+  try {
+    add(dir, 'qa,telegram');
+    remove(dir, 'qa');
+    for (const f of ['workflows/auto-qa-request.yml', 'workflows/qa-rollup-approval.yml', 'workflows/auto-assign-qa.yml', 'scripts/auto-qa-request.js', 'scripts/release-rollup.js', 'ISSUE_TEMPLATE/qa_request.yml']) {
+      assert.equal(exists(dir, f), false, `${f} should be gone`);
+    }
+    assert.ok(exists(dir, 'workflows/telegram-issues.yml'), 'the telegram pack stays');
+    assert.ok(exists(dir, 'scripts/authorize-deployment-verdict.js'), 'a script lite still uses stays');
+    for (const [rel, , liteSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(liteSrc), `${rel} is lite\'s again`);
+    assert.doesNotMatch(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m);
+    assert.deepEqual(readManifest(dir).packs, ['telegram']);
+    const out = await statusOutput(dir);
+    assert.match(out, /Summary: 6\/6 workflows/);
+    assert.doesNotMatch(out, /Missing workflows|Broken install/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('removing the last pack drops the packs field; removing one that is not there changes nothing', () => {
+  const dir = liteRepo();
+  try {
+    add(dir, 'telegram');
+    remove(dir, 'telegram');
+    assert.equal('packs' in readManifest(dir), false);
+    assert.equal(exists(dir, 'workflows/telegram-issues.yml'), false);
+    const snapshot = JSON.stringify(readManifest(dir));
+    remove(dir, 'qa');
+    assert.equal(JSON.stringify(readManifest(dir)), snapshot);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('add and remove --dry-run change nothing', () => {
+  const dir = liteRepo();
+  try {
+    const before = JSON.stringify(readManifest(dir));
+    add(dir, 'qa', { dryRun: true });
+    assert.equal(exists(dir, 'workflows/auto-qa-request.yml'), false);
+    add(dir, 'qa');
+    remove(dir, 'qa', { dryRun: true });
+    assert.ok(exists(dir, 'workflows/auto-qa-request.yml'));
+    assert.deepEqual(readManifest(dir).packs, ['qa']);
+    assert.notEqual(JSON.stringify(readManifest(dir)), before);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a plain --update keeps the packs; naming --bundle lite resets them', () => {
+  const dir = liteRepo();
+  try {
+    add(dir, 'qa');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true, setApprovers: false }));
+    assert.deepEqual(readManifest(dir).packs, ['qa']);
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('workflows/authorize-deployment.yml'));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', setApprovers: false }));
+    assert.equal('packs' in readManifest(dir), false);
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('lite/workflows/authorize-deployment.yml'), 'back to lite\'s release flow');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('packs refuse to run on a full install or with an unknown name, and change nothing', () => {
+  const origErr = console.error;
+  const origExit = process.exitCode;
+  const full = mkTmpRepo();
+  const lite = liteRepo();
+  const errors = [];
+  try {
+    console.error = (m) => errors.push(m);
+    inRepoQuietly(full, () => runInstall({ targetDir: '.' }));
+    const before = fs.readdirSync(path.join(full, '.github', 'workflows')).length;
+    process.exitCode = 0;
+    add(full, 'qa');
+    assert.equal(process.exitCode, 1);
+    assert.match(errors.join('\n'), /not on the lite bundle/);
+    assert.equal(fs.readdirSync(path.join(full, '.github', 'workflows')).length, before);
+
+    process.exitCode = 0;
+    add(lite, 'nope');
+    assert.equal(process.exitCode, 1);
+    assert.match(errors.join('\n'), /Unknown pack: nope\. Available: qa, telegram/);
+    assert.equal('packs' in readManifest(lite), false);
+
+    process.exitCode = 0;
+    inRepoQuietly(mkTmpRepo(), () => runAddPacks({ targetDir: '.', packs: 'qa' }));
+    assert.equal(process.exitCode, 1, 'nothing installed at all: start with install --bundle lite');
+  } finally {
+    process.exitCode = origExit;
+    console.error = origErr;
+    rm(full);
+    rm(lite);
+  }
+});
+
+test('add and remove do not say the install is half done just because files were skipped', () => {
+  const dir = liteRepo();
+  try {
+    const lines = [];
+    const origLog = console.log;
+    console.log = (...a) => lines.push(a.join(' '));
+    const cwd = process.cwd();
+    try {
+      process.chdir(dir);
+      runAddPacks({ targetDir: '.', packs: 'qa' });
+      runRemovePacks({ targetDir: '.', packs: 'qa' });
+    } finally {
+      process.chdir(cwd);
+      console.log = origLog;
+    }
+    assert.doesNotMatch(lines.join('\n'), /version was not updated/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a default install is still unchanged by packs: no packs field, every workflow', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    assert.equal('packs' in readManifest(dir), false);
+    for (const wf of WORKFLOWS) assert.ok(exists(dir, `workflows/${wf}.yml`));
+  } finally {
+    rm(dir);
+  }
+});
+
+test('list --json describes the packs', () => {
+  const lines = [];
+  const origLog = console.log;
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    runList({ json: true });
+  } finally {
+    console.log = origLog;
+  }
+  const out = JSON.parse(lines.join('\n'));
+  assert.deepEqual(Object.keys(out.packs).sort(), ['qa', 'telegram']);
+  assert.ok(out.packs.qa.workflows.includes('auto-qa-request'));
 });

@@ -307,13 +307,15 @@ function readManifest(targetAbs) {
 
 // `bundle` is only written when it isn't the default, so a full install's
 // manifest looks exactly as it always has.
-function writeManifest(targetAbs, version, bundle = DEFAULT_BUNDLE, workflows = null) {
+function writeManifest(targetAbs, version, bundle = DEFAULT_BUNDLE, workflows = null, packs = []) {
   const dest = manifestPath(targetAbs);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const manifest = { version, installedAt: new Date().toISOString() };
   if (bundle !== DEFAULT_BUNDLE) manifest.bundle = bundle;
   // Only when --only/--skip narrowed the bundle.
   if (workflows) manifest.workflows = workflows;
+  // Only when optional packs were added to a lite install.
+  if (packs.length) manifest.packs = packs;
   fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
 }
 
@@ -547,8 +549,38 @@ function runInstall(options) {
     process.exitCode = 1;
     return;
   }
-  const selected = { ...BUNDLES[bundle], workflows: selection.workflows, scripts: selection.scripts };
   const customWorkflows = selection.custom ? selection.workflows : null;
+
+  // Packs (lite only): the repo's current ones, plus any being added, minus any
+  // being removed. Naming a --bundle starts from the bundle alone, like it does
+  // for a --only/--skip selection.
+  const addPacks = parseNameList(options.addPacks) || [];
+  const removePacks = parseNameList(options.removePacks) || [];
+  const unknownPacks = [...addPacks, ...removePacks].filter((p) => !Object.prototype.hasOwnProperty.call(PACKS, p));
+  if (unknownPacks.length) {
+    console.error(`Unknown pack${unknownPacks.length > 1 ? 's' : ''}: ${unknownPacks.join(', ')}. Available: ${Object.keys(PACKS).join(', ')}.`);
+    process.exitCode = 1;
+    return;
+  }
+  if ((addPacks.length || removePacks.length) && bundle !== 'lite') {
+    console.error(
+      manifestBundle(priorManifest) === 'lite'
+        ? 'Packs belong to the lite bundle.'
+        : 'Packs add to a lite install, and this repo is not on the lite bundle. The full bundle already includes everything (use --only/--skip to choose workflows). To start small: install --bundle lite.'
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const priorPacks = manifestPacks(priorManifest, manifestBundle(priorManifest));
+  let packs = options.bundle ? [] : priorPacks;
+  packs = Object.keys(PACKS).filter((p) => (packs.includes(p) || addPacks.includes(p)) && !removePacks.includes(p));
+  for (const p of removePacks) if (!priorPacks.includes(p)) console.log(`Note: the ${p} pack isn't installed here.`);
+
+  const effective = effectiveFor(bundle, packs, customWorkflows);
+  const flavor = effective.flavor;
+  const priorFlavor = flavorFor(manifestBundle(priorManifest), priorPacks);
+  // With --only/--skip the selection decides the scripts; otherwise the effective set does.
+  const selected = effective;
 
   const pkgRoot = getPackageRoot();
   const workflowsSrc = path.join(pkgRoot, '.github', 'workflows');
@@ -559,6 +591,7 @@ function runInstall(options) {
   console.log('=== GitHub Delivery Operating System ===');
   console.log(`Target: ${targetAbs}`);
   if (bundle !== DEFAULT_BUNDLE) console.log(`Bundle: ${bundle}`);
+  if (packs.length) console.log(`Packs: ${packs.join(', ')}`);
   if (selection.custom) console.log(`Workflows: ${selection.workflows.join(', ')}`);
   for (const w of selection.warnings) console.log(`Note: ${w}`);
 
@@ -607,13 +640,35 @@ function runInstall(options) {
   // They are Delivery OS's own files, and leaving the old bundle's copy in
   // place would quietly keep the old behavior (a lite authorize-deployment
   // ignoring the QA approver on a repo that now says it's full).
-  const switching = Boolean(options.bundle) && manifestBundle(priorManifest) !== bundle;
+  const switching = flavor !== priorFlavor;
   if (switching) {
-    console.log(`Switching to the ${bundle} bundle: its versions of the release workflows, release form and labels replace the current ones.`);
+    console.log(`Switching the release flow to the ${flavor} one: its versions of the release workflows, release form and labels replace the current ones.`);
     console.log('');
   }
+
+  // Taking a pack away removes the files only it needs (not ones another
+  // piece still uses). Your repo variables and secrets are left alone.
+  if (removePacks.length) {
+    const before = effectiveFor(bundle, priorPacks, customWorkflows);
+    const gone = (list, now) => list.filter((x) => !now.includes(x));
+    const toRemove = [
+      ...gone(before.workflows, effective.workflows).map((wf) => path.join(workflowsDest, `${wf}.yml`)),
+      ...gone(before.scripts, effective.scripts).map((name) => path.join(scriptsDest, `${name}.js`)),
+      ...gone(before.templates, effective.templates).map((name) => path.join(templatesDest, name)),
+    ];
+    for (const file of toRemove) {
+      if (!fs.existsSync(file)) continue;
+      const shown = path.relative(targetAbs, file);
+      if (dryRun) {
+        console.log(`  [dry-run] Would remove: ${shown}`);
+      } else {
+        fs.unlinkSync(file);
+        console.log(`  Removed: ${shown}`);
+      }
+    }
+  }
   const variantWorkflows = BUNDLES.lite.liteWorkflows;
-  const variantSrc = bundle === 'lite' ? path.join(pkgRoot, LITE_REL_DIR, 'workflows') : workflowsSrc;
+  const variantSrc = flavor === 'lite' ? path.join(pkgRoot, LITE_REL_DIR, 'workflows') : workflowsSrc;
   workflowsCopied = 0;
   workflowsSkipped = 0;
   // One at a time, in the bundle's order, so the log reads as it always has.
@@ -847,11 +902,12 @@ function runInstall(options) {
     !skillPresentButNotTouched;
   if (!dryRun && cleanInstall) {
     const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
-    writeManifest(targetAbs, pkgVersion, bundle, customWorkflows);
+    writeManifest(targetAbs, pkgVersion, bundle, customWorkflows, packs);
   } else if (
     !dryRun &&
     (manifestBundle(priorManifest) !== bundle ||
-      JSON.stringify(manifestWorkflows(priorManifest, bundle)) !== JSON.stringify(customWorkflows))
+      JSON.stringify(manifestWorkflows(priorManifest, bundle)) !== JSON.stringify(customWorkflows) ||
+      JSON.stringify(priorPacks) !== JSON.stringify(packs))
   ) {
     // Not a clean install, so the recorded version stays put — but which
     // bundle this repo is on is its own fact (e.g. an existing lite install
@@ -861,13 +917,15 @@ function runInstall(options) {
     else patched.bundle = bundle;
     if (customWorkflows) patched.workflows = customWorkflows;
     else delete patched.workflows;
+    if (packs.length) patched.packs = packs;
+    else delete patched.packs;
     fs.mkdirSync(path.dirname(manifestPath(targetAbs)), { recursive: true });
     fs.writeFileSync(manifestPath(targetAbs), JSON.stringify(patched, null, 2) + '\n');
   }
 
   // Summary
   console.log('');
-  if (!dryRun && !cleanInstall) {
+  if (!dryRun && !cleanInstall && !options.packChange) {
     if (templatesPresentButNotTouched || skillPresentButNotTouched) {
       console.log('  Note: previously-installed templates and/or the Claude Code skill exist');
       console.log('  on disk but were not requested this run, so the recorded Delivery OS');
@@ -896,7 +954,7 @@ function runInstall(options) {
     console.log('');
     console.log('Next steps:');
     let nextStep;
-    if (bundle === 'lite') {
+    if (flavor === 'lite') {
       // Lite: skip steps that are already done, and number what's left.
       nextStep = 1;
       if (labelsCreated === 0) {
@@ -1094,12 +1152,69 @@ function resolveSelection({ bundle, only, skip, keepPrior }) {
   return { workflows, scripts: scriptsForWorkflows(bundle, workflows), custom: workflows.length !== base.length, warnings };
 }
 
+// Packs: optional pieces a lite install can add later (`add qa`) and drop again
+// (`remove qa`) without reinstalling. Only lite has them; full already
+// includes everything. The `qa` pack also switches the release flow to the
+// two-approver one, because that is what QA sign-off means.
+const PACKS = {
+  qa: {
+    summary: 'QA sign-off: the rolling QA issue, QA approval, QA assignment, the QA Request form, QA labels, and a release that needs a QA approver too',
+    workflows: ['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa'],
+    templates: ['qa_request.yml'],
+  },
+  telegram: {
+    summary: 'Telegram alerts for bugs, QA, sprints, releases and merges',
+    workflows: ['telegram-issues'],
+    templates: [],
+  },
+};
+
+// The packs a manifest records (known names only; none unless it is lite).
+function manifestPacks(manifest, bundle) {
+  if (bundle !== 'lite' || !manifest || !Array.isArray(manifest.packs)) return [];
+  return Object.keys(PACKS).filter((p) => manifest.packs.includes(p));
+}
+
+// Which version of the files the bundles keep different versions of (release
+// workflows, release form, labels) a repo gets: lite's, unless it is full or
+// has added the qa pack.
+function flavorFor(bundle, packs) {
+  return bundle === 'lite' && !packs.includes('qa') ? 'lite' : 'full';
+}
+
+// Everything a repo is meant to have for a bundle, its optional --only/--skip
+// selection and its packs: the one place install, remove and status agree on.
+function effectiveFor(bundle, packs, customWorkflows) {
+  const base = BUNDLES[bundle];
+  const flavor = flavorFor(bundle, packs);
+  let workflows = customWorkflows || base.workflows;
+  let templates = base.templates;
+  if (bundle === 'lite' && packs.length) {
+    const packWorkflows = packs.flatMap((p) => PACKS[p].workflows);
+    workflows = WORKFLOWS.filter((wf) => workflows.includes(wf) || packWorkflows.includes(wf));
+    templates = [...base.templates, ...packs.flatMap((p) => PACKS[p].templates)];
+  }
+  const lite = flavor === 'lite';
+  return {
+    ...base,
+    flavor,
+    workflows,
+    templates,
+    scripts: scriptsForWorkflows(flavor, workflows),
+    liteWorkflows: lite ? BUNDLES.lite.liteWorkflows : undefined,
+    liteTemplates: lite ? BUNDLES.lite.liteTemplates : undefined,
+    excludedLabels: lite ? BUNDLES.lite.excludedLabels : undefined,
+  };
+}
+
 // What a repo is expected to have, from its manifest: the bundle, narrowed by
-// any recorded selection. Used by status.
+// any recorded selection, plus its packs. Used by status.
 function expectedFor(manifest) {
   const bundle = manifestBundle(manifest);
-  const workflows = manifestWorkflows(manifest, bundle) || BUNDLES[bundle].workflows;
-  return { bundle, expected: { ...BUNDLES[bundle], workflows, scripts: scriptsForWorkflows(bundle, workflows) }, custom: workflows.length !== BUNDLES[bundle].workflows.length };
+  const custom = manifestWorkflows(manifest, bundle);
+  const packs = manifestPacks(manifest, bundle);
+  const expected = effectiveFor(bundle, packs, custom);
+  return { bundle, packs, expected, custom: Boolean(custom) };
 }
 
 // What can be installed: the bundles and each workflow (what it does, which
@@ -1116,13 +1231,18 @@ function runList({ json = false } = {}) {
   for (const [name, def] of Object.entries(BUNDLES)) {
     bundles[name] = { workflows: def.workflows, templates: def.templates };
   }
+  const packs = {};
+  for (const [name, def] of Object.entries(PACKS)) packs[name] = { summary: def.summary, workflows: def.workflows, templates: def.templates };
   if (json) {
-    console.log(JSON.stringify({ bundles, workflows }, null, 2));
+    console.log(JSON.stringify({ bundles, packs, workflows }, null, 2));
     return;
   }
   console.log('Bundles:');
   console.log('  full  everything (the default)');
   console.log('  lite  one person or a small project: sprints, tasks, bugs and a single-approver release');
+  console.log('');
+  console.log('Packs (add to a lite install later with `add <pack>`, drop with `remove <pack>`):');
+  for (const [name, def] of Object.entries(PACKS)) console.log(`  ${name.padEnd(10)} ${def.summary}`);
   console.log('');
   console.log('Workflows (choose with --only a,b or leave some out with --skip a,b):');
   for (const w of workflows) {
@@ -1130,6 +1250,29 @@ function runList({ json = false } = {}) {
     const needs = w.needs.length ? ` (works with: ${w.needs.join(', ')})` : '';
     console.log(`  ${w.name.padEnd(24)} [${where}]  ${w.summary}${needs}`);
   }
+}
+
+// `add` / `remove`: change a lite install's packs. Issue templates and labels
+// follow what the repo already has: templates are copied (or removed with the
+// pack) only if the repo uses them, and labels are created only with --with-labels.
+function packChange(kind, { targetDir = '.', packs, withLabels = false, dryRun = false }) {
+  const targetAbs = path.resolve(process.cwd(), targetDir);
+  const usesTemplates = BUNDLES.lite.templates.some((t) => fs.existsSync(path.join(targetAbs, '.github', 'ISSUE_TEMPLATE', t)));
+  runInstall({
+    targetDir,
+    [kind === 'add' ? 'addPacks' : 'removePacks']: packs,
+    withTemplates: usesTemplates,
+    withLabels,
+    dryRun,
+    setApprovers: false,
+    packChange: true, // skipping what is already there is normal here, not a half-done install
+  });
+}
+function runAddPacks(options) {
+  packChange('add', options);
+}
+function runRemovePacks(options) {
+  packChange('remove', options);
 }
 
 async function runStatus(options) {
@@ -1144,7 +1287,7 @@ async function runStatus(options) {
 
   // What this repo is meant to have: the bundle its manifest records (full if
   // none). Anything outside it isn't "missing" or "broken".
-  const { bundle, expected, custom } = expectedFor(readManifest(targetAbs));
+  const { bundle, packs, expected, custom } = expectedFor(readManifest(targetAbs));
 
   const installedWorkflows = WORKFLOWS.filter((wf) =>
     fs.existsSync(path.join(workflowsDest, `${wf}.yml`))
@@ -1295,7 +1438,9 @@ async function runStatus(options) {
     console.log(
       `Summary: ${installedWorkflows.length}/${expected.workflows.length} workflows, ${installedTemplates.length}/${expected.templates.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
     );
-    if (bundle !== DEFAULT_BUNDLE || custom) console.log(`Bundle: ${bundle}${custom ? ' (selected workflows only)' : ''}`);
+    if (bundle !== DEFAULT_BUNDLE || custom) {
+      console.log(`Bundle: ${bundle}${packs.length ? ` + ${packs.join(', ')}` : ''}${custom ? ' (selected workflows only)' : ''}`);
+    }
   }
   console.log('');
 }
@@ -1463,6 +1608,8 @@ module.exports = {
   runStatus,
   runUninstall,
   runList,
+  runAddPacks,
+  runRemovePacks,
   TEMPLATES, // also read by src/shell-hook.js
   // Exposed for tests only — not part of the CLI's public API.
   __test__: {
@@ -1500,5 +1647,9 @@ module.exports = {
     WORKFLOW_INFO,
     skillForBundle,
     SKILL_ANCHOR,
+    PACKS,
+    manifestPacks,
+    flavorFor,
+    effectiveFor,
   },
 };

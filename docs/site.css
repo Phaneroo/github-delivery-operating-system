@@ -801,10 +801,18 @@ pre code {
     --mobile-nav-height: 3rem;
   }
 
-  /* Let the one column shrink to the screen; otherwise the row of links, which
-     never wraps, would stretch the whole page wider than the phone. */
+  /* One plain column, not a grid. Safari pins a sticky item only within its grid
+     cell, which can leave the row unpinned or its taps misplaced; in a block
+     layout it is pinned against the whole page, and the row of links, which never
+     wraps, cannot stretch the page wider than the phone. */
   .doc-shell {
-    grid-template-columns: minmax(0, 1fr);
+    display: block;
+  }
+
+  /* Jump straight to a tapped section. Smooth scrolling is fragile on phones: it
+     is easily interrupted, which can make a tap look like it did nothing. */
+  html {
+    scroll-behavior: auto;
   }
 
   .doc-sidebar {
@@ -851,6 +859,11 @@ pre code {
     border: 1px solid var(--border);
     border-radius: 999px;
     font-size: 0.85rem;
+  }
+
+  .doc-sidebar a:active {
+    background: var(--accent-muted);
+    border-color: var(--accent-text);
   }
 
   .doc-sidebar a.is-active {

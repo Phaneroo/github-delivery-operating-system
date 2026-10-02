@@ -39,32 +39,41 @@ Run this from the **root** of the repository where you want the files:
 npx github-delivery-os install --with-templates .
 ```
 
+That installs the **full** system. For one person or a small project, install **lite** instead (sprints, task and bug forms, and a release that one approval ships), and add anything else later:
+
+```bash
+npx github-delivery-os install --bundle lite --with-templates .
+```
+
+If you use Claude Code, you can skip the commands and ask Claude: it can guide the choice, preview the install, and make later changes ("add QA sign-off", "turn on Telegram alerts") for you.
+
 Common flags:
 
 | Flag | Purpose |
 |------|---------|
 | `--with-templates` | Copy issue templates (recommended for sprint and release forms). |
 | `--with-labels` | Create labels using the GitHub CLI (`gh`); requires authentication. |
+| `--bundle lite` | Install the small set (single-approver release, no QA machinery) instead of the full system. Packs can be added later. |
 | `--with-skill` | Add a Claude Code skill for operating this repo's Delivery OS from Claude Code. Optional. |
 | `--dry-run` | Show planned changes without writing files. |
 | `--update` | Replace existing Delivery OS files (use when upgrading; prefer `--dry-run` first). |
 
-Other commands include `status` and `uninstall`. By default, existing files are **not** overwritten unless you opt in.
+Other commands include `status`, `list` (what exists and what is installed), `add` and `remove` (change what is installed later, by pack or single workflow), `setup-skill` (a Claude Code assistant that helps you choose) and `uninstall`. By default, existing files are **not** overwritten unless you opt in.
 
 ---
 
 ## 4. What gets installed?
 
-Typical workflows (names may vary by release):
+Two sizes: **full** (everything below) and **lite** (sprints, task and bug forms, and a release that one approval ships; no QA machinery). You can add the rest later as packs (`qa`, `telegram`) or one workflow at a time. Typical workflows (names may vary by release):
 
 | Area | Behavior |
 |------|----------|
 | Sprint | Create child issues from sprint planning issues whose title contains `SPRINT -` and whose body lists features. |
 | Sprint completion | Update burn-down and optionally auto-close the sprint when work is complete. |
 | Production | Notify a release approver when production-style issues are opened. |
-| Approvals | Apply `ready-for-deploy` after dual approval rules in [Governance](governance.md). |
-| QA | Auto-assign QA on issues labeled `qa` or `qa-request`. |
-| Notifications | Optional Telegram messages for configured events. |
+| Approvals | Apply `ready-for-deploy` after dual approval rules in [Governance](governance.md) (release approver and QA approver on full; one approver on lite). |
+| QA | Auto-assign QA on issues labeled `qa` or `qa-request`, and keep one rolling QA issue (full, or lite with the `qa` pack). |
+| Notifications | Optional Telegram messages for configured events. Opt-in: not in a default install; add them with `add telegram`. |
 | Labels | A workflow to create required labels on demand. |
 
 With `--with-templates`, you get structured forms for sprints, tasks, bugs, QA requests, production sign-off, and configuration. See [Architecture](architecture.md) for the full list and triggers.
@@ -82,11 +91,11 @@ GitHub’s built-in features focus on **code review** and **branch rules**. Deli
 Set **GitHub Actions variables** (Repository → Settings → Secrets and variables → Actions → Variables) as described in [Consumer Setup](consumer-setup.md), for example:
 
 - `RELEASE_APPROVER` — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.
-- `QA_APPROVER` — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios. QA can decline too, and a decline stands until that same person approves.
-- `QA_ASSIGNEES` — Comma-separated handles for QA assignment.
+- `QA_APPROVER` — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios (full, or lite with the `qa` pack). QA can decline too, and a decline stands until that same person approves.
+- `QA_ASSIGNEES` — Comma-separated handles for QA assignment (full, or lite with the `qa` pack).
 - `PROJECT_NAME` — Optional display name in notifications.
 
-Optional **secrets** for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+A lite install needs only `RELEASE_APPROVER`, and the installer sets it to the person running it. Optional **secrets** for Telegram, after you add it (`add telegram`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
 
 Create labels via the **Setup Labels** workflow or `install --with-labels` with `gh` authenticated.
 

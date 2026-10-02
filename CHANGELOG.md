@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.2] - 2026-10-02
+
+Tidies the rough edges left after 1.13 (tracked in #119). Nothing here changes what a default full install puts in a repo.
+
+### Fixed
+
+- **Switching a full install to lite now tells you what's left, and `remove` can clear it.** Installing never deletes, so the QA workflows stayed on disk, but nothing said so, and `remove qa` did nothing afterwards because the manifest no longer listed them. Now the install prints a note naming the leftover workflows and the command to remove them, `status` lists them under "Still on disk, but not part of this install" (and its summary counts only what the install should have, not "8/5"), and `remove` works from what is really on disk: it clears the workflows together with their scripts (including the orphaned release roll-up script) and the QA form, never a script a remaining workflow still needs. `remove --dry-run` lists exactly what the real run removes.
+- **Issue forms follow their workflows.** `--with-templates` used to copy the bundle's whole set of forms even when you had picked workflows with `--only` / `--skip` / `add` / `remove`. Now the sprint planning form is installed with the sprint workflows, the production release form with the release workflows, and the QA Request form with the QA workflows; the task, bug and config forms always stay. `remove` takes a form away with its last workflow. A default install still gets all six.
+- **After `--with-labels` has created the labels, a full install's next steps no longer say to run Setup Labels** (lite already left it out). The remaining steps are renumbered.
+- **Landing page, light theme:** links and code were the brand green on white (a contrast of 2:1). They now use a darker green in the light theme (5.2:1); the dark theme is unchanged.
+- **Landing page, tables:** the workflows table's last column ("Purpose") was cut off on desktop and phones because long names could not wrap. It now fits, and on a phone each workflow stacks as a small card.
+
+### Changed
+
+- **The Telegram wording is now exact about where each alert comes from.** The `telegram` pack (the `telegram-issues` workflow) sends the alerts for bugs, QA, sprints created, releases and merges; the *Sprint Completed* alert is sent by `auto-close-sprint` itself, because GitHub doesn't run other workflows for a close made by an Action. It needs only the two secrets and sends nothing without them. Said so in the docs, `list`, and the landing page.
+- **The PRFAQ pages (`docs/PRFAQ.md`, `prfaq.html`) now cover lite, packs, `add` / `remove` and the setup assistant,** and the HTML page's upgrade flag matches the CLI (`--update`).
+- **The `delivery-ops` skill** gains one line: leftovers reported by an install or `status` are not an error, and it offers to clear them with the printed `remove` command after a dry run.
+
 ## [1.13.1] - 2026-10-02
 
 ### Fixed

@@ -41,6 +41,7 @@ Delivery OS isn't all-or-nothing, and this is the place to come when someone wan
   - `add qa`: the rolling QA issue, QA approval, QA assignment, the QA Request form and the QA labels come in, and **a release then needs the QA approver as well**, so they set `QA_APPROVER` and `QA_ASSIGNEES`. (On a full install QA is already included. Adding single QA workflows without the `qa` pack doesn't change how releases work.)
   - `remove`: only the files nothing else needs are deleted. Repo variables, secrets and labels already created stay, and `remove qa` puts a lite repo's single-approver release back.
   - If the CLI prints a note (a workflow does little without another one, e.g. `auto-close-sprint` without `sprint-child-creator`), pass it on plainly.
+- **Leftovers.** If an install or `status` says some workflows are "still on disk but not part of this install" (typically the QA ones after a full install was switched to lite), that isn't an error: offer to clear them with the `remove` command it prints, after a dry run and a yes.
 - **It sticks.** The change is recorded in `.github/delivery-os.json`, and a plain `install --update` keeps it. Don't use `--only` / `--skip` for this: they replace the whole set.
 - **No Delivery OS in the repo yet?** That's first-time setup, not a change: use the `delivery-os-setup` skill (or run `npx github-delivery-os@latest install ...` and show the dry run first). Everything after that comes back here.
 

@@ -88,6 +88,9 @@
         <h2>3. How do I install it?</h2>
         <p>Run this from the root of the repository where you want the files:</p>
         <pre><code>npx github-delivery-os install --with-templates .</code></pre>
+        <p>That installs the full system. For one person or a small project, install lite instead (sprints, task and bug forms, and a release that one approval ships), and add anything else later:</p>
+        <pre><code>npx github-delivery-os install --bundle lite --with-templates .</code></pre>
+        <p>If you use Claude Code, you can skip the commands and ask Claude: it can guide the choice, preview the install, and make later changes ("add QA sign-off", "turn on Telegram alerts") for you.</p>
         <p>Common flags:</p>
         <div class="table-wrap">
           <table class="workflows-table plain-first">
@@ -97,17 +100,18 @@
             <tbody>
               <tr><td><code>--with-templates</code></td><td>Copy issue templates (recommended for sprint and release forms).</td></tr>
               <tr><td><code>--with-labels</code></td><td>Create labels using the GitHub CLI (<code>gh</code>); requires authentication.</td></tr>
+              <tr><td><code>--bundle lite</code></td><td>Install the small set (single-approver release, no QA machinery) instead of the full system. Packs can be added later.</td></tr>
               <tr><td><code>--with-skill</code></td><td>Add a Claude Code skill for operating this repo's Delivery OS from Claude Code. Optional.</td></tr>
               <tr><td><code>--dry-run</code></td><td>Show planned changes without writing files.</td></tr>
-              <tr><td><code>--overwrite</code></td><td>Replace existing Delivery OS files (use when upgrading; prefer <code>--dry-run</code> first).</td></tr>
+              <tr><td><code>--update</code></td><td>Replace existing Delivery OS files (use when upgrading; prefer <code>--dry-run</code> first).</td></tr>
             </tbody>
           </table>
         </div>
-        <p>Other commands include <code>status</code> and <code>uninstall</code>. By default, existing files are not overwritten unless you opt in.</p>
+        <p>Other commands include <code>status</code>, <code>list</code> (what exists and what is installed), <code>add</code> and <code>remove</code> (change what is installed later, by pack or single workflow), <code>setup-skill</code> (a Claude Code assistant that helps you choose) and <code>uninstall</code>. By default, existing files are not overwritten unless you opt in.</p>
       </article>
       <article class="doc-section" id="q4">
         <h2>4. What gets installed?</h2>
-        <p>Typical workflows (names may vary by release):</p>
+        <p>Two sizes: full (everything below) and lite (sprints, task and bug forms, and a release that one approval ships; no QA machinery). You can add the rest later as packs (<code>qa</code>, <code>telegram</code>) or one workflow at a time. Typical workflows (names may vary by release):</p>
         <div class="table-wrap">
           <table class="workflows-table plain-first">
             <thead>
@@ -117,9 +121,9 @@
               <tr><td>Sprint</td><td>Create child issues from sprint planning issues whose title contains <code>SPRINT -</code> and whose body lists features.</td></tr>
               <tr><td>Sprint completion</td><td>Update burn-down and optionally auto-close the sprint when work is complete.</td></tr>
               <tr><td>Production</td><td>Notify a release approver when production-style issues are opened.</td></tr>
-              <tr><td>Approvals</td><td>Apply <code>ready-for-deploy</code> after dual approval rules in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a>.</td></tr>
-              <tr><td>QA</td><td>Auto-assign QA on issues labeled <code>qa</code> or <code>qa-request</code>.</td></tr>
-              <tr><td>Notifications</td><td>Optional Telegram messages for configured events.</td></tr>
+              <tr><td>Approvals</td><td>Apply <code>ready-for-deploy</code> after dual approval rules in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> (release approver and QA approver on full; one approver on lite).</td></tr>
+              <tr><td>QA</td><td>Auto-assign QA on issues labeled <code>qa</code> or <code>qa-request</code>, and keep one rolling QA issue (full, or lite with the <code>qa</code> pack).</td></tr>
+              <tr><td>Notifications</td><td>Optional Telegram messages for configured events. Opt-in: not in a default install; add them with <code>add telegram</code>.</td></tr>
               <tr><td>Labels</td><td>A workflow to create required labels on demand.</td></tr>
             </tbody>
           </table>
@@ -135,11 +139,11 @@
         <p>Set GitHub Actions variables (Repository → Settings → Secrets and variables → Actions → Variables) as described in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md">Consumer Setup</a>, for example:</p>
         <ul>
           <li><code>RELEASE_APPROVER</code> — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.</li>
-          <li><code>QA_APPROVER</code> — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios. QA can decline too, and a decline stands until that same person approves.</li>
-          <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment.</li>
+          <li><code>QA_APPROVER</code> — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios (full, or lite with the <code>qa</code> pack). QA can decline too, and a decline stands until that same person approves.</li>
+          <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment (full, or lite with the <code>qa</code> pack).</li>
           <li><code>PROJECT_NAME</code> — Optional display name in notifications.</li>
         </ul>
-        <p>Optional secrets for Telegram: <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code>.</p>
+        <p>A lite install needs only <code>RELEASE_APPROVER</code>, and the installer sets it to the person running it. Optional secrets for Telegram, after you add it (<code>add telegram</code>): <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code>.</p>
         <p>Create labels via the Setup Labels workflow or <code>install --with-labels</code> with <code>gh</code> authenticated.</p>
       </article>
       <article class="doc-section" id="q7">

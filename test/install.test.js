@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { test } = require('./harness');
-const { runInstall, runStatus, runUninstall, runList, runAddPacks, runRemovePacks, __test__ } = require('../src/install');
+const { runInstall, runStatus, runUninstall, runList, runAdd, runRemove, __test__ } = require('../src/install');
 const {
   manifestPath,
   readManifest,
@@ -25,10 +25,14 @@ const {
   manifestBundle,
   skillForBundle,
   SKILL_ANCHOR,
+  needsWarnings,
   PACKS,
   manifestPacks,
   flavorFor,
   effectiveFor,
+  defaultSet,
+  sameSet,
+  hasQaWorkflows,
   REQUIRED_SCRIPT_BY_WORKFLOW,
   resolveSelection,
   parseNameList,
@@ -1497,31 +1501,26 @@ test('parseNameList trims, drops .yml, de-duplicates, and leaves an absent flag 
   assert.equal(parseNameList(undefined), null);
 });
 
-test('resolveSelection: only, skip, errors, and keeping a prior selection', () => {
+test('resolveSelection: only, skip, errors', () => {
   const only = resolveSelection({ bundle: 'full', only: ['auto-close-sprint', 'sprint-child-creator'] });
   assert.deepEqual(only.workflows, ['sprint-child-creator', 'auto-close-sprint'], 'keeps the bundle order');
-  assert.equal(only.custom, true);
 
   const skip = resolveSelection({ bundle: 'full', skip: ['telegram-issues'] });
   assert.equal(skip.workflows.length, WORKFLOWS.length - 1);
   assert.ok(!skip.workflows.includes('telegram-issues'));
 
-  const none = resolveSelection({ bundle: 'full' });
-  assert.deepEqual(none.workflows, WORKFLOWS);
-  assert.equal(none.custom, false);
-  assert.deepEqual(none.scripts, SCRIPTS, 'an unnarrowed install ships exactly the bundle\'s scripts');
-
+  assert.equal(resolveSelection({ bundle: 'full' }).workflows, null, 'neither flag: nothing chosen');
   assert.match(resolveSelection({ bundle: 'full', only: ['nope'] }).error, /Unknown workflow.*nope/);
   assert.match(resolveSelection({ bundle: 'lite', only: ['auto-qa-request'] }).error, /for the lite bundle/);
   assert.match(resolveSelection({ bundle: 'full', only: ['a'], skip: ['b'] }).error, /not both/);
   assert.match(resolveSelection({ bundle: 'lite', skip: BUNDLES.lite.workflows }).error, /nothing to install/);
-  assert.deepEqual(resolveSelection({ bundle: 'full', keepPrior: ['setup-labels'] }).workflows, ['setup-labels']);
 });
 
-test('resolveSelection warns when a workflow is chosen without what it works with', () => {
-  assert.match(resolveSelection({ bundle: 'full', only: ['qa-rollup-approval'] }).warnings.join(), /auto-qa-request/);
-  assert.match(resolveSelection({ bundle: 'full', only: ['auto-close-sprint'] }).warnings.join(), /sprint-child-creator/);
-  assert.deepEqual(resolveSelection({ bundle: 'full', only: ['telegram-issues'] }).warnings, []);
+test('needsWarnings notes a workflow chosen without what it works with', () => {
+  assert.match(needsWarnings(['qa-rollup-approval']).join(), /auto-qa-request/);
+  assert.match(needsWarnings(['auto-close-sprint']).join(), /sprint-child-creator/);
+  assert.deepEqual(needsWarnings(['telegram-issues']), []);
+  assert.deepEqual(needsWarnings(WORKFLOWS), []);
 });
 
 test('scriptsForWorkflows ships only what the chosen workflows require', () => {
@@ -1546,7 +1545,7 @@ test('install --only installs just those workflows and their scripts, records th
     assert.deepEqual(readManifest(dir).workflows, ['sprint-child-creator', 'auto-close-sprint', 'setup-labels']);
     const output = await statusOutput(dir);
     assert.match(output, /Summary: 3\/3 workflows/);
-    assert.match(output, /selected workflows only/);
+    assert.match(output, /custom selection/);
     assert.doesNotMatch(output, /Missing workflows|Broken install/);
   } finally {
     rm(dir);
@@ -1841,8 +1840,8 @@ function liteRepo(opts = {}) {
   inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', setApprovers: false, ...opts }));
   return dir;
 }
-const add = (dir, packs, extra = {}) => inRepoQuietly(dir, () => runAddPacks({ targetDir: '.', packs, ...extra }));
-const remove = (dir, packs, extra = {}) => inRepoQuietly(dir, () => runRemovePacks({ targetDir: '.', packs, ...extra }));
+const add = (dir, packs, extra = {}) => inRepoQuietly(dir, () => runAdd({ targetDir: '.', names: packs, ...extra }));
+const remove = (dir, packs, extra = {}) => inRepoQuietly(dir, () => runRemove({ targetDir: '.', names: packs, ...extra }));
 
 test('packs only add things: every pack workflow and template is real and outside lite, and lite plus all packs is full', () => {
   for (const [name, pack] of Object.entries(PACKS)) {
@@ -1991,36 +1990,51 @@ test('a plain --update keeps the packs; naming --bundle lite resets them', () =>
   }
 });
 
-test('packs refuse to run on a full install or with an unknown name, and change nothing', () => {
+test('add and remove refuse unknown names, and an empty repo, and change nothing', () => {
   const origErr = console.error;
   const origExit = process.exitCode;
-  const full = mkTmpRepo();
   const lite = liteRepo();
   const errors = [];
   try {
     console.error = (m) => errors.push(m);
-    inRepoQuietly(full, () => runInstall({ targetDir: '.' }));
-    const before = fs.readdirSync(path.join(full, '.github', 'workflows')).length;
-    process.exitCode = 0;
-    add(full, 'qa');
-    assert.equal(process.exitCode, 1);
-    assert.match(errors.join('\n'), /not on the lite bundle/);
-    assert.equal(fs.readdirSync(path.join(full, '.github', 'workflows')).length, before);
-
     process.exitCode = 0;
     add(lite, 'nope');
     assert.equal(process.exitCode, 1);
-    assert.match(errors.join('\n'), /Unknown pack: nope\. Available: qa, telegram/);
+    assert.match(errors.join('\n'), /Unknown name: nope\. Packs: qa, telegram\. Workflows: /);
     assert.equal('packs' in readManifest(lite), false);
 
     process.exitCode = 0;
-    inRepoQuietly(mkTmpRepo(), () => runAddPacks({ targetDir: '.', packs: 'qa' }));
-    assert.equal(process.exitCode, 1, 'nothing installed at all: start with install --bundle lite');
+    remove(lite, 'qa,nope');
+    assert.equal(process.exitCode, 1, 'a bad name anywhere stops the whole change');
+
+    const empty = mkTmpRepo();
+    process.exitCode = 0;
+    inRepoQuietly(empty, () => runAdd({ targetDir: '.', names: 'qa' }));
+    assert.equal(process.exitCode, 1, 'nothing installed: add must not install the world');
+    assert.equal(fs.existsSync(path.join(empty, '.github')), false);
+    rm(empty);
   } finally {
     process.exitCode = origExit;
     console.error = origErr;
-    rm(full);
     rm(lite);
+  }
+});
+
+test('removing the last workflow is refused', () => {
+  const origErr = console.error;
+  const origExit = process.exitCode;
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', only: 'setup-labels' }));
+    console.error = () => {};
+    process.exitCode = 0;
+    remove(dir, 'setup-labels');
+    assert.equal(process.exitCode, 1);
+    assert.ok(exists(dir, 'workflows/setup-labels.yml'));
+  } finally {
+    process.exitCode = origExit;
+    console.error = origErr;
+    rm(dir);
   }
 });
 
@@ -2033,8 +2047,8 @@ test('add and remove do not say the install is half done just because files were
     const cwd = process.cwd();
     try {
       process.chdir(dir);
-      runAddPacks({ targetDir: '.', packs: 'qa' });
-      runRemovePacks({ targetDir: '.', packs: 'qa' });
+      runAdd({ targetDir: '.', names: 'qa' });
+      runRemove({ targetDir: '.', names: 'qa' });
     } finally {
       process.chdir(cwd);
       console.log = origLog;
@@ -2068,4 +2082,204 @@ test('list --json describes the packs', () => {
   const out = JSON.parse(lines.join('\n'));
   assert.deepEqual(Object.keys(out.packs).sort(), ['qa', 'telegram']);
   assert.ok(out.packs.qa.workflows.includes('auto-qa-request'));
+});
+
+// ---- add / remove single workflows, on any bundle ----
+
+const manifestSet = (dir) => readManifest(dir).workflows;
+
+test('add one QA workflow to lite: it gets its scripts, the QA form and labels, and lite\'s release flow stays', async () => {
+  const dir = liteRepo({ withTemplates: true });
+  try {
+    add(dir, 'auto-qa-request');
+    assert.ok(exists(dir, 'workflows/auto-qa-request.yml'));
+    assert.ok(exists(dir, 'scripts/auto-qa-request.js'), 'the script it requires comes with it');
+    assert.equal(exists(dir, 'scripts/release-rollup.js'), false, 'lite\'s notify workflow does not run the roll-up');
+    assert.ok(exists(dir, 'ISSUE_TEMPLATE/qa_request.yml'));
+    assert.match(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m, 'the labels it files under are created');
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('lite/workflows/authorize-deployment.yml'), 'releases still need one approval');
+    assert.equal('packs' in readManifest(dir), false, 'a single workflow is not a pack');
+    assert.deepEqual(manifestSet(dir), [...BUNDLES.lite.workflows, 'auto-qa-request'].sort((a, b) => WORKFLOWS.indexOf(a) - WORKFLOWS.indexOf(b)));
+    const out = await statusOutput(dir);
+    assert.match(out, /Summary: 6\/6 workflows, 6\/6 templates/);
+    assert.match(out, /custom selection/);
+    assert.doesNotMatch(out, /Missing workflows|Broken install/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('remove one core workflow from lite: its file and the script only it used go, and a plain --update keeps it gone', async () => {
+  const dir = liteRepo();
+  try {
+    remove(dir, 'auto-close-sprint');
+    assert.equal(exists(dir, 'workflows/auto-close-sprint.yml'), false);
+    assert.equal(exists(dir, 'scripts/auto-close-sprint.js'), false);
+    assert.ok(exists(dir, 'workflows/sprint-child-creator.yml') && exists(dir, 'scripts/sprint-child-creator.js'));
+    assert.equal(manifestSet(dir).length, BUNDLES.lite.workflows.length - 1);
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true, setApprovers: false }));
+    assert.equal(exists(dir, 'workflows/auto-close-sprint.yml'), false);
+    const out = await statusOutput(dir);
+    assert.match(out, /Summary: 4\/4 workflows/);
+    assert.doesNotMatch(out, /Missing workflows|Broken install/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('adding a workflow back returns the repo to the plain bundle, with no recorded selection', () => {
+  const dir = liteRepo();
+  try {
+    remove(dir, 'auto-close-sprint');
+    assert.ok(manifestSet(dir));
+    add(dir, 'auto-close-sprint');
+    assert.equal('workflows' in readManifest(dir), false);
+    assert.ok(exists(dir, 'workflows/auto-close-sprint.yml') && exists(dir, 'scripts/auto-close-sprint.js'));
+  } finally {
+    rm(dir);
+  }
+});
+
+test('add and remove work on a full install too, one workflow at a time', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    remove(dir, 'telegram-issues');
+    assert.equal(exists(dir, 'workflows/telegram-issues.yml'), false);
+    assert.equal(manifestSet(dir).length, WORKFLOWS.length - 1);
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('workflows/authorize-deployment.yml'), 'still full\'s release flow');
+    const out = await statusOutput(dir);
+    assert.match(out, /Summary: 8\/8 workflows/);
+    assert.doesNotMatch(out, /Missing workflows|Broken install/);
+    add(dir, 'telegram-issues');
+    assert.equal('workflows' in readManifest(dir), false);
+    assert.ok(exists(dir, 'workflows/telegram-issues.yml'));
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a pack is just a named group: add qa, remove one of its workflows, then remove qa takes the rest', () => {
+  const dir = liteRepo({ withTemplates: true });
+  try {
+    add(dir, 'qa');
+    remove(dir, 'auto-assign-qa');
+    assert.equal(exists(dir, 'workflows/auto-assign-qa.yml'), false);
+    assert.ok(exists(dir, 'workflows/auto-qa-request.yml'));
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('workflows/authorize-deployment.yml'), 'the pack is still on, so releases still need QA');
+    remove(dir, 'qa');
+    for (const wf of PACKS.qa.workflows) assert.equal(exists(dir, `workflows/${wf}.yml`), false, wf);
+    assert.equal(exists(dir, 'ISSUE_TEMPLATE/qa_request.yml'), false);
+    assert.equal(repoFile(dir, 'workflows/authorize-deployment.yml'), pkgFile('lite/workflows/authorize-deployment.yml'), 'back to one approval');
+    assert.doesNotMatch(repoFile(dir, 'scripts/labels.tsv'), /^qa-request\t/m, 'the QA labels leave with the last QA workflow');
+    assert.equal('workflows' in readManifest(dir), false);
+    assert.equal('packs' in readManifest(dir), false);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('removing a workflow another one needs prints a note, and a script still in use stays', () => {
+  const dir = liteRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    console.log = (...a) => lines.push(a.join(' '));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      runRemove({ targetDir: '.', names: 'sprint-child-creator' });
+    } finally {
+      process.chdir(cwd);
+      console.log = origLog;
+    }
+    assert.match(lines.join('\n'), /Note: auto-close-sprint has little to do without sprint-child-creator\./);
+    assert.ok(exists(dir, 'workflows/auto-close-sprint.yml'), 'it only warns');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('shared scripts stay while any workflow that needs them is installed', () => {
+  const dir = liteRepo();
+  try {
+    add(dir, 'qa');
+    remove(dir, 'authorize-deployment');
+    assert.equal(exists(dir, 'workflows/authorize-deployment.yml'), false);
+    assert.ok(exists(dir, 'scripts/authorize-deployment-verdict.js'), 'qa-rollup-approval still requires it');
+    remove(dir, 'qa');
+    assert.equal(exists(dir, 'scripts/authorize-deployment-verdict.js'), false, 'nothing needs it any more');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('removing something that is not installed says so and changes nothing', () => {
+  const dir = liteRepo();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    const before = JSON.stringify(readManifest(dir));
+    console.log = (...a) => lines.push(a.join(' '));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      runRemove({ targetDir: '.', names: 'telegram-issues' });
+    } finally {
+      process.chdir(cwd);
+      console.log = origLog;
+    }
+    assert.match(lines.join('\n'), /Note: telegram-issues isn't installed here\./);
+    assert.equal(JSON.stringify(readManifest(dir)), before);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('list inside a repo marks what is installed, and --json carries it', () => {
+  const dir = liteRepo();
+  const run = (opts) => {
+    const lines = [];
+    const origLog = console.log;
+    console.log = (...a) => lines.push(a.join(' '));
+    try {
+      runList({ targetDir: dir, ...opts });
+    } finally {
+      console.log = origLog;
+    }
+    return lines.join('\n');
+  };
+  try {
+    add(dir, 'telegram');
+    const json = JSON.parse(run({ json: true }));
+    assert.ok(json.installed.includes('sprint-child-creator') && json.installed.includes('telegram-issues'));
+    assert.equal(json.packs.telegram.state, 'installed');
+    assert.equal(json.packs.qa.state, 'available');
+    assert.equal(json.workflows.find((w) => w.name === 'auto-qa-request').installed, false);
+    const text = run({});
+    assert.match(text, /✓ sprint-child-creator/);
+    assert.match(text, /○ auto-qa-request/);
+    add(dir, 'auto-assign-qa');
+    assert.equal(JSON.parse(run({ json: true })).packs.qa.state, 'partly installed');
+  } finally {
+    rm(dir);
+  }
+  const bare = mkTmpRepo();
+  try {
+    const out = JSON.parse((() => {
+      const lines = [];
+      const origLog = console.log;
+      console.log = (...a) => lines.push(a.join(' '));
+      try {
+        runList({ json: true, targetDir: bare });
+      } finally {
+        console.log = origLog;
+      }
+      return lines.join('\n');
+    })());
+    assert.equal(out.installed, null);
+    assert.equal('installed' in out.workflows[0], false);
+  } finally {
+    rm(bare);
+  }
 });

@@ -3,7 +3,7 @@
 const { program, Option } = require('commander');
 const path = require('path');
 const fs = require('fs');
-const { runInstall, runStatus, runUninstall, runList, runAddPacks, runRemovePacks } = require('./install');
+const { runInstall, runStatus, runUninstall, runList, runAdd, runRemove } = require('./install');
 const { runShellHook } = require('./shell-hook');
 const { runSetupSkill } = require('./setup-skill');
 
@@ -54,28 +54,28 @@ program
   });
 
 program
-  .command('add <packs> [target]')
-  .description('Add optional packs (comma-separated, e.g. qa, telegram) to a lite install; see `list`')
+  .command('add <names> [target]')
+  .description('Add packs (qa, telegram) or single workflows (comma-separated) to what is installed; see `list`')
   .option('-l, --with-labels', 'Create labels via gh CLI (requires gh auth)')
   .option('-d, --dry-run', 'Show what would happen without changing files')
-  .action((packs, target, options) => {
-    runAddPacks({ targetDir: target || '.', packs, withLabels: options.withLabels ?? false, dryRun: options.dryRun ?? false });
+  .action((names, target, options) => {
+    runAdd({ targetDir: target || '.', names, withLabels: options.withLabels ?? false, dryRun: options.dryRun ?? false });
   });
 
 program
-  .command('remove <packs> [target]')
-  .description('Remove optional packs from a lite install, deleting the files only they need')
+  .command('remove <names> [target]')
+  .description('Remove packs or single workflows (comma-separated), deleting the files only they need')
   .option('-d, --dry-run', 'Show what would be removed without deleting')
-  .action((packs, target, options) => {
-    runRemovePacks({ targetDir: target || '.', packs, dryRun: options.dryRun ?? false });
+  .action((names, target, options) => {
+    runRemove({ targetDir: target || '.', names, dryRun: options.dryRun ?? false });
   });
 
 program
-  .command('list')
-  .description('List the bundles and workflows you can install (use --json for tools)')
+  .command('list [target]')
+  .description('List the bundles, packs and workflows you can install, and which are installed in the repo (use --json for tools)')
   .option('--json', 'Machine-readable output')
-  .action((options) => {
-    runList({ json: options.json ?? false });
+  .action((target, options) => {
+    runList({ json: options.json ?? false, targetDir: target || '.' });
   });
 
 program

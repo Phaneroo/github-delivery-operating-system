@@ -139,10 +139,13 @@ A comment from anyone else is ignored with a short reply. Emoji *reactions* don'
 
 ## Enable Telegram Alerts
 
-1. Create a bot via [@BotFather](https://t.me/BotFather)
-2. Get `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
-3. Settings → Secrets and variables → Actions → Secrets
-4. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+Telegram alerts are opt-in, so a default install doesn't include them.
+
+1. Add the workflow to your repo: `npx github-delivery-os add telegram .` (a repo that already has it can skip this)
+2. Create a bot via [@BotFather](https://t.me/BotFather)
+3. Get `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+4. Settings → Secrets and variables → Actions → Secrets
+5. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 
 Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges to main.
 
@@ -208,5 +211,5 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Approve release | Comment `approved` (dual: both approvers) |
 | Report bug | New issue → Bug Report |
 | QA request | New issue → QA REQUEST |
-| Enable Telegram | Add TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID |
+| Enable Telegram | `npx github-delivery-os add telegram .`, then add TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID |
 | Uninstall | Delete workflow files |

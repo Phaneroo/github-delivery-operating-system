@@ -385,7 +385,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
           </div>
           <div class="feature">
             <strong>Telegram alerts</strong>
-            <span>Optional notifications for bugs, QA requests, sprints, and releases.</span>
+            <span>Optional notifications for bugs, QA requests, sprints, and releases. Opt-in: add them with <code>add telegram</code>.</span>
           </div>
           <div class="feature">
             <strong>Claude Code skill</strong>
@@ -411,7 +411,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td>notify-release-approver</td><td>Issue opened, labeled <code>production</code></td><td>Comments on the issue tagging the repo's <code>RELEASE_APPROVER</code>, and posts a <em>What's in this release</em> roll-up of the plain-English changelogs from QA Requests since the last authorized release (informational; refresh via <code>workflow_dispatch</code>)</td></tr>
               <tr><td>authorize-deployment</td><td>Comment posted on a <code>production</code>-labeled issue</td><td>Checks the commenter and keyword against <code>RELEASE_APPROVER</code>/<code>QA_APPROVER</code> (each may be a comma-separated list). Once both sides approve, adds <code>ready-for-deploy</code>; a decline from any release or QA approver adds <code>declined</code> and stands until that same person approves. On approval it also closes the Tasks/QA Requests <code>auto-qa-request</code> filed for work in the release (opt out: <code>DELIVERY_OS_AUTO_CLOSE=false</code>)</td></tr>
               <tr><td>auto-assign-qa</td><td>Issue opened/labeled <code>qa</code> or <code>qa-request</code></td><td>Assigns the repo's configured <code>QA_ASSIGNEES</code></td></tr>
-              <tr><td>telegram-issues</td><td>Issue/comment/PR events</td><td>Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
+              <tr><td>telegram-issues <em>(opt-in)</em></td><td>Issue/comment/PR events</td><td>Not in a default install; add it with <code>npx github-delivery-os add telegram .</code>. Sends a Telegram alert if <code>TELEGRAM_BOT_TOKEN</code>/<code>TELEGRAM_CHAT_ID</code> are configured</td></tr>
               <tr><td>auto-qa-request</td><td>Push to <code>main</code>, including PR merges (plus PR events in per-change mode)</td><td>QA reminder for every change that isn't docs/settings-only or <code>[skip qa-request]</code>. Default: adds a line (with a plain-English draft and any linked <code>#N</code>) to the <strong>one open rolling QA issue</strong>, opening it if needed. <code>DELIVERY_OS_AUTO_QA_MODE=per-change</code> files a QA Request (+ Task) per change instead; <code>off</code> files nothing</td></tr>
               <tr><td>qa-rollup-approval</td><td>Comment on, or edit of, the rolling QA issue</td><td>The <code>QA_APPROVER</code> approves (a comment starting with e.g. <code>approved</code>, <code>lgtm</code>, ✅, or ticking the Approved box), which closes it, or declines (<code>needs work</code>, <code>not ok</code>, ❌), which keeps it open. With several QA approvers, a decline stands until that same person approves. Anyone else is ignored with a reply</td></tr>
               <tr><td>setup-labels</td><td>Manual (<code>workflow_dispatch</code>)</td><td>One-time run that creates all labels Delivery OS needs</td></tr>
@@ -427,7 +427,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
           <li style="margin-bottom: 0.5rem;">Configure variables: Settings → Secrets and variables → Actions → Variables<br>
             <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, <code>QA_ASSIGNEES</code></li>
           <li style="margin-bottom: 0.5rem;">Optional: QA reminders default to one rolling QA issue — switch with <code>DELIVERY_OS_AUTO_QA_MODE</code> (<code>rolling</code>/<code>per-change</code>/<code>off</code>), and tune with <code>DELIVERY_OS_AUTO_QA_QUIET_PATHS</code>, <code>DELIVERY_OS_AUTO_TASK</code> and <code>DELIVERY_OS_AUTO_CLOSE</code> (see <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/consumer-setup.md#tuning-auto-qa-request-for-direct-push-repos">consumer setup</a>)</li>
-          <li style="margin-bottom: 0.5rem;">Optional: Add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> for alerts</li>
+          <li style="margin-bottom: 0.5rem;">Optional: for Telegram alerts, run <code>add telegram</code>, then add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code></li>
         </ol>
       </section>
 

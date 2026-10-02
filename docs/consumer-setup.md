@@ -127,7 +127,7 @@ Both are silent when the repo has no manifest, when you're offline, or when anyt
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
 | `auto-qa-request.yml` | QA reminder whenever work reaches `main` (a safety net, not a gate). By default it adds a line to the one **rolling QA issue**; in `per-change` mode it files a QA Request (plus a Task if nothing is linked) per PR or direct push. Docs/settings-only changes are skipped |
 | `qa-rollup-approval.yml` | Applies the QA approver's approve/decline (comment or checkbox) to the rolling QA issue |
-| `telegram-issues.yml` | Sends Telegram alerts for bugs, QA, sprints, releases, PR merges |
+| `telegram-issues.yml` | **Opt-in, not in a default install.** Sends Telegram alerts for bugs, QA, sprints, releases, PR merges. Add it with `npx github-delivery-os add telegram .`; a repo that already has it keeps it, and `--update` keeps refreshing it |
 | `setup-labels.yml` | One-time workflow to create all required labels |
 
 With `--with-skill`, also: `.claude/skills/delivery-ops/SKILL.md` — a [Claude Code](https://claude.com/claude-code) skill for operating this repo's Delivery OS from Claude Code (creating sprint/release/QA/bug/task issues in the shape these workflows parse, commenting as an approver with the right keyword conventions, checking status, running autonomous task tracking — identifying and filing tasks/bugs, grouping them into phases via sprints, maintaining a roadmap issue, and updating/closing issues as work progresses — turning a spec/SRS/feature description into a full phase-and-task breakdown filed as real issues, and running a cleanup sweep that finds stale/orphaned/inconsistent issues and roadmap drift for confirmation before touching anything). Optional — most repos aren't using Claude Code, so this isn't written unless asked for. It comes with `.claude/hooks/delivery-os-update-check.js` and an entry in `.claude/settings.json` that registers it, which together offer the update when a session starts in an out-of-date repo (see [Getting told when an update is out](#getting-told-when-an-update-is-out)).
@@ -367,7 +367,7 @@ npx github-delivery-os uninstall --with-skill .       # Also remove the delivery
 npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
 ```
 
-This removes the nine workflow files, optionally the issue templates and the Claude Code skill (with its update-check hook and its entry in `.claude/settings.json`, leaving your other settings alone), and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
+This removes the Delivery OS workflow files that are installed (eight in a default install, plus the Telegram one if you added it), optionally the issue templates and the Claude Code skill (with its update-check hook and its entry in `.claude/settings.json`, leaving your other settings alone), and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
 
 **Manual alternative** — delete these files from `.github/workflows/`:
 - `sprint-child-creator.yml`

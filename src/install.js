@@ -625,7 +625,12 @@ function runInstall(options) {
   const flavor = effective.flavor;
   const priorFlavor = priorEffective.flavor;
   const selected = effective;
-  const labelsChanged = Boolean(effective.excludedLabels) !== Boolean(priorEffective.excludedLabels);
+  // Switching bundles only means something when Delivery OS is already here (a
+  // manifest, or any of its workflows on disk, e.g. from scripts/install.sh).
+  // On a fresh repo there is nothing to switch from or to replace.
+  const alreadyInstalled =
+    Boolean(priorManifest) || WORKFLOWS.some((wf) => fs.existsSync(path.join(targetAbs, '.github', 'workflows', `${wf}.yml`)));
+  const labelsChanged = alreadyInstalled && Boolean(effective.excludedLabels) !== Boolean(priorEffective.excludedLabels);
   const warnings = needsWarnings(workflowSet);
 
   const pkgRoot = getPackageRoot();
@@ -686,7 +691,7 @@ function runInstall(options) {
   // They are Delivery OS's own files, and leaving the old bundle's copy in
   // place would quietly keep the old behavior (a lite authorize-deployment
   // ignoring the QA approver on a repo that now says it's full).
-  const switching = flavor !== priorFlavor;
+  const switching = alreadyInstalled && flavor !== priorFlavor;
   if (switching) {
     console.log(`Switching the release flow to the ${flavor} one: its versions of the release workflows, release form and labels replace the current ones.`);
     console.log('');

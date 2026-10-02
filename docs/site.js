@@ -67,3 +67,70 @@
   window.addEventListener('resize', onScroll, { passive: true });
   onScroll();
 })();
+
+(function () {
+  var COPY_ICON =
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  var CHECK_ICON =
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy') ? resolve() : reject();
+      } catch (e) {
+        reject(e);
+      }
+      document.body.removeChild(ta);
+    });
+  }
+
+  function addButton(block, source) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy-btn';
+    btn.setAttribute('aria-label', 'Copy to clipboard');
+    btn.title = 'Copy';
+    btn.innerHTML = COPY_ICON;
+    var timer;
+    btn.addEventListener('click', function () {
+      copyText(source.textContent.trim()).then(function () {
+        btn.innerHTML = CHECK_ICON;
+        btn.classList.add('is-copied');
+        btn.title = 'Copied';
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          btn.innerHTML = COPY_ICON;
+          btn.classList.remove('is-copied');
+          btn.title = 'Copy';
+        }, 1800);
+      }, function () {});
+    });
+    block.classList.add('has-copy');
+    block.appendChild(btn);
+  }
+
+  document.querySelectorAll('.install-block').forEach(function (block) {
+    var code = block.querySelector('code');
+    if (code) addButton(block, code);
+  });
+
+  document.querySelectorAll('pre').forEach(function (pre) {
+    var code = pre.querySelector('code') || pre;
+    var wrap = document.createElement('div');
+    wrap.className = 'pre-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    addButton(wrap, code);
+  });
+})();

@@ -695,3 +695,47 @@ pre code {
 .example-details[open] summary {
   margin-bottom: 0.25rem;
 }
+
+/* Copy buttons on command blocks (injected by site.js) */
+.has-copy {
+  position: relative;
+}
+
+.pre-wrap {
+  margin-bottom: 1rem;
+}
+
+.pre-wrap pre {
+  margin-bottom: 0;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.copy-btn:hover,
+.copy-btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.copy-btn.is-copied {
+  color: var(--accent);
+}
+
+.install-block.has-copy {
+  padding-right: 3.25rem;
+}

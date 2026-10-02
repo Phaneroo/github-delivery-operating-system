@@ -283,6 +283,33 @@ The consumer repo must allow workflows to write. In your consumer repo:
 
 ---
 
+## Adding and removing as your needs change
+
+An install isn't fixed. You can add and remove pieces at any time, without reinstalling, either a **pack** (a named group) or a **single workflow** by name:
+
+| Pack | What it adds |
+|------|--------------|
+| `qa` | The rolling QA issue (`auto-qa-request`), QA approval (`qa-rollup-approval`), QA assignment (`auto-assign-qa`), the QA Request form and QA labels, and **a release that needs a QA approver as well as the release approver** (the full release workflows and form replace lite's) |
+| `telegram` | Telegram alerts (`telegram-issues`) |
+
+```bash
+npx github-delivery-os add qa .                       # a pack
+npx github-delivery-os add auto-assign-qa .           # one workflow
+npx github-delivery-os add qa,telegram . --dry-run    # several, previewed
+npx github-delivery-os remove telegram-issues .       # take one away
+npx github-delivery-os remove auto-close-sprint .
+npx github-delivery-os list                           # packs and workflows, marked ✓ installed / ○ not
+```
+
+- Names can be packs (`qa`, `telegram`) or any workflow from `list`, on a lite or a full install. A bad name stops the whole change before anything is written, and `add`/`remove` refuse to run where Delivery OS isn't installed.
+- A workflow's supporting scripts come with it, and go only when nothing else installed needs them. If you remove one that another workflow works with (for example `sprint-child-creator`, which `auto-close-sprint` counts), you get a note; nothing is removed on your behalf.
+- The QA Request form and the QA labels follow the QA workflows: they're added with the first one and removed with the last. Forms are only copied if the repo already uses Delivery OS's issue forms; labels are created with `--with-labels` (or the Setup Labels workflow).
+- **Releases need a QA approver only when the `qa` pack is on** (lite) or on a full install. Adding single QA workflows doesn't change how releases work; `add qa` does, and `remove qa` puts lite's single-approval flow back. After `add qa`, set `QA_APPROVER` and `QA_ASSIGNEES` under Settings → Secrets and variables → Actions → Variables.
+- Your repo variables, secrets and labels already created are never touched.
+- What you have is recorded in `.github/delivery-os.json`: `"bundle"`, `"packs"`, and a `"workflows"` list only when it differs from what the bundle and packs give. A plain `install --update` keeps it; naming `--bundle` starts over from the bundle; `--only`/`--skip` replace the whole set. `status` checks exactly what you have (`Bundle: lite + qa`, or `(custom selection)`).
+
+---
+
 ## Picking individual workflows
 
 Beyond the two bundles, you can choose workflows one by one. `list` shows what exists and what each does (`--json` for tools):

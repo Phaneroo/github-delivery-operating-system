@@ -29,6 +29,9 @@ Then recommend, with a reason, and let them overrule it:
 | One person, or a very small team that doesn't want a QA step | **lite** | `--bundle lite` |
 | A team with a QA step, or they want the rolling QA checklist | **full** | (default) |
 | They want specific parts only | **hand-picked** | `--only a,b` or `--skip a,b` (optionally with `--bundle lite`) |
+| Starting small but may want QA sign-off or Telegram later | **lite now, packs later** | `--bundle lite`, then `add qa` / `add telegram` when needed |
+
+Starting small is safe because nothing is locked in: packs and single workflows can be added or removed later without reinstalling (`list --json` shows both, and what is installed in the repo).
 
 What lite is, in one breath: sprints with child tasks and burn-down, task and bug forms, and a Production Release where **one approval from them** ships it. No QA Requests, no rolling QA issue, no QA assignment, no Telegram. Say it before they choose. For a hand-picked set, name each workflow in plain words from `list`, and mention any `needs` (for example the rolling-QA approval does little without the workflow that creates the rolling QA issue).
 
@@ -57,7 +60,7 @@ Tell them, briefly:
 - If labels weren't created: Actions → **Setup Labels** → Run workflow.
 - Lite: to ship a release, open a Production Release issue and comment `approved` as the approver. There is no QA approver to configure. Full: set `RELEASE_APPROVER`, `QA_APPROVER` and `QA_ASSIGNEES` (they can be lists).
 - If the `delivery-ops` skill was added, they can now just ask Claude to create a sprint, file a bug, or request a release.
-- Changing their mind later is cheap: `install --bundle full` fills a lite repo out; `--only`/`--skip` again replaces a hand-picked set.
+- Changing their mind later is cheap. `npx github-delivery-os add qa .` (QA sign-off, with a release that needs a QA approver too) or `add telegram .` adds a pack; `add <workflow>` / `remove <workflow>` does one workflow; `remove qa .` takes a pack away. `list .` shows what is installed right now. Removing deletes only the files nothing else needs. Preview either with `--dry-run` and run it only after they confirm. `install --bundle full` fills a lite repo out to everything; `--only`/`--skip` again replaces a hand-picked set.
 
 ## Rules
 

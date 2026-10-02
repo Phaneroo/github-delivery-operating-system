@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-10-02
+
+### Fixed
+
+- **A fresh lite install no longer says it is "switching" and replacing files.** On a repo with no Delivery OS, `install --bundle lite` printed *"Switching the release flow to the lite one: its versions of the release workflows, release form and labels replace the current ones"*, though there was nothing to replace. The cause also had a real side effect: a repo with no manifest was treated as "currently full", so a file already there with one of those names (for example your own `production_release_qa_signoff.yml` issue form) was replaced without `--update`. Switching now only applies when Delivery OS is already installed (a manifest, or any of its workflows on disk). A fresh install is quiet and skips existing files, as documented. Switching an installed repo is unchanged, including one installed by `scripts/install.sh` (no manifest).
+
 ## [1.13.0] - 2026-10-02
 
 Start small and grow: a lite install for one person or a small project, and commands to add and remove pieces as needs change. Existing installs are unaffected until you ask for something new (see **Updating** below).

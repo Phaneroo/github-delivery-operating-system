@@ -2384,3 +2384,55 @@ test('isCustomSelection: opt-in workflows being present or absent is not a choic
   assert.equal(isCustomSelection(BUNDLES.lite.workflows, 'lite'), false);
   assert.equal(isCustomSelection([...BUNDLES.lite.workflows, 'telegram-issues'], 'lite'), false);
 });
+
+// ---- a fresh install is not a "switch" ----
+
+test('a fresh lite install says nothing about switching, since there is nothing to replace', () => {
+  const dir = mkTmpRepo();
+  try {
+    const out = installOutput(dir, { bundle: 'lite', withTemplates: true, setApprovers: false });
+    assert.doesNotMatch(out, /Switching/);
+    assert.doesNotMatch(out, /replace the current ones/);
+    assert.match(out, /Bundle: lite/);
+    assert.equal(readManifest(dir).bundle, 'lite');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a fresh install of either bundle (including naming --bundle full) never prints the switching line', () => {
+  for (const opts of [{}, { bundle: 'full' }, { bundle: 'lite' }]) {
+    const dir = mkTmpRepo();
+    try {
+      assert.doesNotMatch(installOutput(dir, { withTemplates: true, setApprovers: false, ...opts }), /Switching/, JSON.stringify(opts));
+    } finally {
+      rm(dir);
+    }
+  }
+});
+
+test('a fresh lite install leaves a release form that is not ours alone (nothing is replaced without --update)', () => {
+  const dir = mkTmpRepo();
+  try {
+    const mine = path.join(dir, '.github', 'ISSUE_TEMPLATE', 'production_release_qa_signoff.yml');
+    fs.mkdirSync(path.dirname(mine), { recursive: true });
+    fs.writeFileSync(mine, 'name: my own release form\n');
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
+    assert.equal(fs.readFileSync(mine, 'utf8'), 'name: my own release form\n');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a real switch still announces itself and still replaces the release files, even with no manifest (a scripts/install.sh-style install)', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    fs.unlinkSync(manifestPath(dir)); // installed by the shell script: workflows on disk, no manifest
+    const out = installOutput(dir, { bundle: 'lite', withTemplates: true, setApprovers: false });
+    assert.match(out, /Switching the release flow to the lite one/);
+    for (const [rel, , liteSrc] of VARIANT_FILES) assert.equal(repoFile(dir, rel), pkgFile(liteSrc), `${rel} is now lite's`);
+  } finally {
+    rm(dir);
+  }
+});

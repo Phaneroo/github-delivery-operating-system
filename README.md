@@ -69,7 +69,7 @@ npx github-delivery-os install --bundle lite --with-templates --with-labels --wi
 
 **Setup:** the install sets the `RELEASE_APPROVER` repo variable to your GitHub login (needs `gh`; it never overwrites an existing value and tells you what it did). Skip that with `--no-set-approvers` and set the variable yourself in Settings → Secrets and variables → Actions.
 
-**Switching:** a plain `install --update` keeps a lite repo lite. To fill it out to everything, run `install --bundle full`. Going from full to lite only records the bundle; it doesn't remove files already installed. `status` shows which bundle a repo is on.
+**Switching:** a plain `install --update` keeps a lite repo lite. To fill it out to everything, run `install --bundle full`: it adds the missing workflows and swaps lite's release workflows, release form and labels for the full ones, so QA sign-off applies from then on. Going from full to lite swaps them back, but doesn't remove the QA workflows already installed. `status` shows which bundle a repo is on.
 
 ## Delivery Ops: run it by asking Claude
 

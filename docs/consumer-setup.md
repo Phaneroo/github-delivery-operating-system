@@ -277,6 +277,12 @@ The consumer repo must allow workflows to write. In your consumer repo:
 
 ---
 
+## Letting Claude choose with you
+
+`npx github-delivery-os setup-skill` adds the `delivery-os-setup` Claude Code skill to your `~/.claude/skills` (or the current repo's `.claude/skills` with `--project`; `--update` replaces an existing copy, `--dry-run` previews). Unlike the `delivery-ops` skill, which ships inside an install, this one works before anything is installed. In Claude Code, ask it to set up Delivery OS: it checks the repo, asks a few questions, recommends lite, full or a hand-picked set, previews with `--dry-run`, and installs only after you confirm. It reads `list --json` for what's available and never edits workflow files itself. For operating a repo afterwards, use the `delivery-ops` skill.
+
+---
+
 ## Picking individual workflows
 
 Beyond the two bundles, you can choose workflows one by one. `list` shows what exists and what each does (`--json` for tools):

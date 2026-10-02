@@ -39,6 +39,16 @@ From your repo root. `--with-labels` creates labels via the `gh` CLI, `--with-sk
 
 </details>
 
+### Not sure what to install?
+
+Add the setup skill once, then ask Claude:
+
+```bash
+npx github-delivery-os setup-skill
+```
+
+It goes in your `~/.claude/skills`, so it works in any repo, including ones with no Delivery OS yet. In Claude Code, ask *"Set up Delivery OS here."* It asks a few plain questions (just you or a team? anyone testing before release?), recommends lite, full or a hand-picked set, previews with a dry run, and installs only after you say yes. Use `--project` to put it in the current repo instead. `npx github-delivery-os list` shows everything you can pick from.
+
 ## Lite install: one person, small projects
 
 Working alone? The lite bundle keeps sprints, tasks, bugs and a release approval, and leaves out the QA machinery you don't need.

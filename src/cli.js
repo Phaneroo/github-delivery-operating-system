@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { runInstall, runStatus, runUninstall, runList } = require('./install');
 const { runShellHook } = require('./shell-hook');
+const { runSetupSkill } = require('./setup-skill');
 
 const pkgPath = path.join(__dirname, '..', 'package.json');
 const version = fs.existsSync(pkgPath)
@@ -81,6 +82,16 @@ program
       withSkill: options.withSkill ?? false,
       dryRun: options.dryRun ?? false,
     });
+  });
+
+program
+  .command('setup-skill')
+  .description('Add the Claude Code skill that helps you choose what to install (your ~/.claude/skills by default, so it works before any install)')
+  .option('--project', 'Add it to this repo\'s .claude/skills instead of your user-level skills')
+  .option('-u, --update', 'Replace an existing copy with this version')
+  .option('-d, --dry-run', 'Show what would happen without changing files')
+  .action((options) => {
+    runSetupSkill({ project: options.project ?? false, update: options.update ?? false, dryRun: options.dryRun ?? false });
   });
 
 program

@@ -9,6 +9,8 @@
   --text: #ececec;
   --text-muted: #9ca3af;
   --accent: #92c83d;
+  /* The accent used as TEXT. Same green in the dark theme; a darker one in the light theme (see below) because #92c83d on white is only 2:1. */
+  --accent-text: var(--accent);
   --accent-warm: #fbbb69;
   --accent-hover: #fbbb69;
   --accent-muted: rgba(146, 200, 61, 0.2);
@@ -29,6 +31,7 @@
   --text: #1f2328;
   --text-muted: #59666e;
   --accent: #92c83d;
+  --accent-text: #4a7a0b; /* 5.2:1 on white, 4.6:1 on the code backgrounds (WCAG AA needs 4.5:1) */
   --accent-warm: #fbbb69;
   --accent-hover: #fbbb69;
   --accent-muted: rgba(146, 200, 61, 0.22);
@@ -124,7 +127,7 @@ body {
 
 .site-topbar-nav a:hover,
 .site-topbar-nav a[aria-current="page"] {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .site-topbar-nav a[aria-current="page"] {
@@ -242,7 +245,7 @@ body {
 }
 
 .doc-sidebar a[aria-current="page"] {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   background: var(--accent-muted);
 }
@@ -370,7 +373,7 @@ header.compact {
 }
 
 .doc-toc a.is-active {
-  color: var(--accent);
+  color: var(--accent-text);
   border-left-color: var(--accent-warm);
   font-weight: 500;
 }
@@ -431,7 +434,7 @@ ol li {
 }
 
 .install-block code {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .install-block--prompt code {
@@ -520,7 +523,7 @@ ol li {
 
 .workflows-table td:first-child {
   font-family: 'JetBrains Mono', monospace;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.85rem;
 }
 
@@ -533,7 +536,7 @@ ol li {
 .workflows-table a,
 .doc a,
 .doc-prose a {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 
@@ -633,13 +636,13 @@ pre {
 }
 
 pre code {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 :not(pre) > code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.88em;
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-muted);
   padding: 0.12em 0.35em;
   border-radius: 4px;
@@ -662,7 +665,7 @@ pre code {
 }
 
 .inline-links > a:not(.cta) {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
   font-size: 0.95rem;
 }
@@ -728,14 +731,55 @@ pre code {
 
 .copy-btn:hover,
 .copy-btn:focus-visible {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 
 .copy-btn.is-copied {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .install-block.has-copy {
   padding-right: 3.25rem;
+}
+
+/* Long inline tokens inside a table cell (DELIVERY_OS_AUTO_CLOSE=false, file paths)
+   couldn't wrap, so they forced the table wider than its column and hid the last
+   column. Let just those break; the workflow names in the first column are untouched. */
+.workflows-table td code {
+  overflow-wrap: anywhere;
+}
+
+/* On a phone the workflows table is too wide to read (its Purpose column was
+   pushed off-screen), so rows stack as small cards: name, trigger, purpose. */
+@media (max-width: 40rem) {
+  .workflows-table.stack thead {
+    display: none;
+  }
+  .workflows-table.stack,
+  .workflows-table.stack tbody,
+  .workflows-table.stack tr,
+  .workflows-table.stack td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .workflows-table.stack tr {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .workflows-table.stack td {
+    border: 0;
+    padding: 0.2rem 0.75rem;
+  }
+  .workflows-table.stack td::before {
+    content: attr(data-label);
+    display: block;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
 }

@@ -447,6 +447,20 @@ function writeFilteredLabels(srcDir, destDir, excluded, { overwrite, dryRun, rel
   return { copied: 1, skipped: 0 };
 }
 
+// The shortest `remove` argument for some leftover workflows: a pack's name when
+// all of its workflows are among them, single workflow names otherwise.
+function leftoverNames(leftovers) {
+  const names = [];
+  let rest = leftovers.slice();
+  for (const [pack, def] of Object.entries(PACKS)) {
+    if (def.workflows.every((wf) => rest.includes(wf))) {
+      names.push(pack);
+      rest = rest.filter((wf) => !def.workflows.includes(wf));
+    }
+  }
+  return names.concat(rest).join(',');
+}
+
 // Why `gh` can't be used against this target, or '' when it can.
 function ghUnavailableReason(targetAbs) {
   try {
@@ -607,7 +621,8 @@ function runInstall(options) {
   }
   for (const name of removeNames) {
     const members = PACKS[name] ? PACKS[name].workflows : [name];
-    const present = members.some((wf) => priorEffective.workflows.includes(wf)) || packs.includes(name);
+    const onDisk = members.some((wf) => fs.existsSync(path.join(targetAbs, '.github', 'workflows', `${wf}.yml`)));
+    const present = members.some((wf) => priorEffective.workflows.includes(wf)) || packs.includes(name) || onDisk;
     if (!present) console.log(`Note: ${name} isn't installed here.`);
     current = current.filter((wf) => !members.includes(wf));
     packs = packs.filter((p) => p !== name);
@@ -700,12 +715,34 @@ function runInstall(options) {
   // Taking something away removes the files only it needs (not ones another
   // piece still uses). Your repo variables and secrets are left alone.
   if (removeNames.length) {
-    const before = priorEffective;
-    const gone = (list, now) => list.filter((x) => !now.includes(x));
+    // Decide from what is really on disk, not only from the manifest: after a
+    // full install was switched to lite, the QA workflows are still there but the
+    // manifest no longer lists them, and `remove qa` must still clear them.
+    const removing = removeNames.flatMap((n) => (PACKS[n] ? PACKS[n].workflows : [n]));
+    const wfFile = (wf) => path.join(workflowsDest, `${wf}.yml`);
+    const leaving = WORKFLOWS.filter(
+      (wf) => !effective.workflows.includes(wf) && (priorEffective.workflows.includes(wf) || removing.includes(wf))
+    );
+    const remaining = WORKFLOWS.filter((wf) => fs.existsSync(wfFile(wf)) && !leaving.includes(wf));
+
+    // Scripts that no remaining workflow requires (read from the installed files
+    // themselves, so a lite notify that no longer runs the roll-up counts).
+    // The release workflows are about to be swapped for the new flavor's versions
+    // (later in this run), so ask what those need, not what the old files need.
+    const needed = new Set();
+    for (const wf of remaining) {
+      const required = BUNDLES.lite.liteWorkflows.includes(wf) ? scriptsForWorkflows(flavor, [wf]) : requiredScriptsFor(targetAbs, wf);
+      for (const name of required) needed.add(name);
+      if (wf === 'setup-labels') needed.add('labels');
+    }
+    const orphanScripts = SCRIPTS.filter((name) => !needed.has(name) && fs.existsSync(path.join(scriptsDest, `${name}.js`)));
+    // Forms that only the leaving workflows were for.
+    const orphanForms = templatesTiedTo(leaving).filter((t) => !templateWanted(t, remaining));
+
     const toRemove = [
-      ...gone(before.workflows, effective.workflows).map((wf) => path.join(workflowsDest, `${wf}.yml`)),
-      ...gone(before.scripts, effective.scripts).map((name) => path.join(scriptsDest, `${name}.js`)),
-      ...gone(before.templates, effective.templates).map((name) => path.join(templatesDest, name)),
+      ...leaving.map(wfFile),
+      ...orphanScripts.map((name) => path.join(scriptsDest, `${name}.js`)),
+      ...orphanForms.map((name) => path.join(templatesDest, name)),
     ];
     for (const file of toRemove) {
       if (!fs.existsSync(file)) continue;
@@ -770,9 +807,9 @@ function runInstall(options) {
     const files = fs.readdirSync(templatesSrc);
     for (const name of files) {
       if (!name.endsWith('.yml') && !name.endsWith('.yaml')) continue;
-      // Full copies every template in the directory (as it always has); other
-      // bundles copy only their own.
-      if (bundle !== DEFAULT_BUNDLE && !selected.templates.includes(name)) continue;
+      // A default full install copies every template in the directory (as it
+      // always has); anything else copies only the forms for its workflows.
+      if ((bundle !== DEFAULT_BUNDLE || customWorkflows) && !selected.templates.includes(name)) continue;
       // Lite's own wording for the release form, under the same name.
       const src = (selected.liteTemplates || []).includes(name)
         ? path.join(pkgRoot, LITE_REL_DIR, 'ISSUE_TEMPLATE', name)
@@ -975,6 +1012,18 @@ function runInstall(options) {
     fs.writeFileSync(manifestPath(targetAbs), JSON.stringify(patched, null, 2) + '\n');
   }
 
+  // Workflows from an earlier install that are still on disk but no longer part
+  // of this one (e.g. the QA workflows after full was switched to lite). We never
+  // delete on an install, so say so and how to remove them.
+  if (!removeNames.length) {
+    const leftovers = WORKFLOWS.filter((wf) => !workflowSet.includes(wf) && fs.existsSync(path.join(workflowsDest, `${wf}.yml`)));
+    if (leftovers.length) {
+      console.log('');
+      console.log(`Note: ${leftovers.join(', ')} ${leftovers.length > 1 ? 'are' : 'is'} still on disk but not part of this install, so ${leftovers.length > 1 ? 'they are' : 'it is'} not updated.`);
+      console.log(`  To remove ${leftovers.length > 1 ? 'them' : 'it'}: npx github-delivery-os remove ${leftoverNames(leftovers)} .`);
+    }
+  }
+
   // Summary
   console.log('');
   if (!dryRun && !cleanInstall && !options.packChange) {
@@ -1005,15 +1054,14 @@ function runInstall(options) {
     }
     console.log('');
     console.log('Next steps:');
-    let nextStep;
+    // Steps already done are left out, and the rest are numbered from 1.
+    let nextStep = 1;
+    if (labelsCreated === 0) {
+      console.log(`  ${nextStep}. Create labels: Actions → Setup Labels → Run workflow`);
+      if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
+      nextStep++;
+    }
     if (flavor === 'lite') {
-      // Lite: skip steps that are already done, and number what's left.
-      nextStep = 1;
-      if (labelsCreated === 0) {
-        console.log(`  ${nextStep}. Create labels: Actions → Setup Labels → Run workflow`);
-        if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
-        nextStep++;
-      }
       console.log(`  ${nextStep}. Configure the repo variable (Settings → Secrets and variables → Actions):`);
       nextStep++;
       if (approver && (approver.state === 'set' || approver.state === 'exists')) {
@@ -1025,18 +1073,17 @@ function runInstall(options) {
       }
       console.log('     No QA approver is needed: comment "approved" on a Production Release issue to ship it.');
     } else {
-      console.log('  1. Create labels: Actions → Setup Labels → Run workflow');
-      if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
-      console.log('  2. Configure repo variables (Settings → Secrets and variables → Actions):');
+      console.log(`  ${nextStep}. Configure repo variables (Settings → Secrets and variables → Actions):`);
+      nextStep++;
       console.log('     - RELEASE_APPROVER: GitHub username of release approver');
       console.log('     - QA_APPROVER: GitHub username of QA approver');
       console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
       if (workflowSet.includes('telegram-issues')) {
-        console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
+        console.log(`  ${nextStep}. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID`);
       } else {
-        console.log('  3. Telegram alerts are optional: `npx github-delivery-os add telegram .`, then add the secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID');
+        console.log(`  ${nextStep}. Telegram alerts are optional: \`npx github-delivery-os add telegram .\`, then add the secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID`);
       }
-      nextStep = 4;
+      nextStep++;
     }
     if (!withTemplates) {
       console.log(`  ${nextStep}. Copy templates: re-run with --with-templates`);
@@ -1249,11 +1296,31 @@ const PACKS = {
     templates: ['qa_request.yml'],
   },
   telegram: {
-    summary: 'Telegram alerts for bugs, QA, sprints, releases and merges',
+    summary: 'Telegram alerts for bugs, QA, sprints, releases and merges (the sprint-completed alert comes from auto-close-sprint itself, once the two secrets exist)',
     workflows: ['telegram-issues'],
     templates: [],
   },
 };
+
+// Which workflows an issue form is for. A form is installed when at least one
+// of them is; forms not listed here (config, task, bug) are always part of a
+// bundle. This is what keeps `--only` / `--skip` / `add` / `remove` from
+// leaving forms behind for workflows you don't have.
+const TEMPLATE_NEEDS = {
+  'sprint_planning.yml': ['sprint-child-creator', 'auto-close-sprint'],
+  'production_release_qa_signoff.yml': ['notify-release-approver', 'authorize-deployment'],
+  'qa_request.yml': ['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa'],
+};
+
+function templateWanted(template, workflows) {
+  const needs = TEMPLATE_NEEDS[template];
+  return !needs || needs.some((wf) => workflows.includes(wf));
+}
+
+// The forms that go with some workflows (used to find what to take away with them).
+function templatesTiedTo(workflows) {
+  return Object.keys(TEMPLATE_NEEDS).filter((t) => TEMPLATE_NEEDS[t].some((wf) => workflows.includes(wf)));
+}
 
 // The packs a manifest records (known names only; none unless it is lite).
 function manifestPacks(manifest, bundle) {
@@ -1280,8 +1347,11 @@ function effectiveFor(bundle, packs, customWorkflows) {
     ...base,
     flavor,
     workflows,
-    // The QA Request form comes with any QA workflow; the rest are the bundle's.
-    templates: bundle === DEFAULT_BUNDLE || !qa ? base.templates : [...base.templates, ...PACKS.qa.templates],
+    // The bundle's forms (plus the QA Request form once a QA workflow is there),
+    // keeping only those whose workflows are installed.
+    templates: (bundle === DEFAULT_BUNDLE || !qa ? base.templates : [...base.templates, ...PACKS.qa.templates]).filter((t) =>
+      templateWanted(t, workflows)
+    ),
     scripts: scriptsForWorkflows(flavor, workflows),
     liteWorkflows: lite ? BUNDLES.lite.liteWorkflows : undefined,
     liteTemplates: lite ? BUNDLES.lite.liteTemplates : undefined,
@@ -1542,8 +1612,17 @@ async function runStatus(options) {
     console.log('Delivery OS is not installed in this repository.');
     console.log('Run: npx github-delivery-os install --with-templates --with-labels --with-skill .');
   } else {
+    // Count only what this install is meant to have; anything else on disk is listed as left over.
+    const haveWorkflows = installedWorkflows.filter((wf) => expected.workflows.includes(wf));
+    const haveTemplates = installedTemplates.filter((t) => expected.templates.includes(t));
+    const leftovers = installedWorkflows.filter((wf) => !expected.workflows.includes(wf));
+    if (leftovers.length) {
+      console.log(`Still on disk, but not part of this install: ${leftovers.join(', ')}`);
+      console.log(`  To remove ${leftovers.length > 1 ? 'them' : 'it'}: npx github-delivery-os remove ${leftoverNames(leftovers)} .`);
+      console.log('');
+    }
     console.log(
-      `Summary: ${installedWorkflows.length}/${expected.workflows.length} workflows, ${installedTemplates.length}/${expected.templates.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
+      `Summary: ${haveWorkflows.length}/${expected.workflows.length} workflows, ${haveTemplates.length}/${expected.templates.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
     );
     if (bundle !== DEFAULT_BUNDLE || custom) {
       console.log(`Bundle: ${bundle}${packs.length ? ` + ${packs.join(', ')}` : ''}${custom ? ' (custom selection)' : ''}`);
@@ -1763,6 +1842,10 @@ module.exports = {
     hasQaWorkflows,
     isCustomSelection,
     needsWarnings,
+    TEMPLATE_NEEDS,
+    templateWanted,
+    templatesTiedTo,
+    leftoverNames,
     DEFAULT_WORKFLOWS,
     OPT_IN_WORKFLOWS,
   },

@@ -230,6 +230,10 @@ Note: a direct-push commit whose first line ends in `(#N)` looks like a squash-m
 
 Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges to main. If secrets are not set, the workflow skips sending (no error).
 
+Two pieces send alerts, and it helps to know which is which:
+- The **`telegram-issues`** workflow (added with `add telegram`, or *"turn on Telegram alerts"* to Claude) sends the alerts above.
+- **`auto-close-sprint`** sends the *Sprint Completed* alert itself when a sprint auto-closes. GitHub doesn't run other workflows for a close made by an Action, so the Telegram workflow can't see that event. It needs only the two secrets, not the `telegram-issues` workflow, and it sends nothing if the secrets are absent.
+
 ---
 
 ## Required Labels
@@ -308,7 +312,7 @@ npx github-delivery-os list                           # packs and workflows, mar
 
 - Names can be packs (`qa`, `telegram`) or any workflow from `list`, on a lite or a full install. A bad name stops the whole change before anything is written, and `add`/`remove` refuse to run where Delivery OS isn't installed.
 - A workflow's supporting scripts come with it, and go only when nothing else installed needs them. If you remove one that another workflow works with (for example `sprint-child-creator`, which `auto-close-sprint` counts), you get a note; nothing is removed on your behalf.
-- The QA Request form and the QA labels follow the QA workflows: they're added with the first one and removed with the last. Forms are only copied if the repo already uses Delivery OS's issue forms; labels are created with `--with-labels` (or the Setup Labels workflow).
+- Issue forms follow their workflows. The QA Request form comes with the first QA workflow and goes with the last; the sprint planning form goes when both sprint workflows do; the production release form goes with the release workflows. The task, bug and config forms always stay. Forms are only copied if the repo already uses Delivery OS's issue forms; labels are created with `--with-labels` (or the Setup Labels workflow).
 - **Releases need a QA approver only when the `qa` pack is on** (lite) or on a full install. Adding single QA workflows doesn't change how releases work; `add qa` does, and `remove qa` puts lite's single-approval flow back. After `add qa`, set `QA_APPROVER` and `QA_ASSIGNEES` under Settings → Secrets and variables → Actions → Variables.
 - Your repo variables, secrets and labels already created are never touched.
 - What you have is recorded in `.github/delivery-os.json`: `"bundle"`, `"packs"`, and a `"workflows"` list only when it differs from what the bundle and packs give. A plain `install --update` keeps it; naming `--bundle` starts over from the bundle; `--only`/`--skip` replace the whole set. `status` checks exactly what you have (`Bundle: lite + qa`, or `(custom selection)`).
@@ -330,7 +334,7 @@ npx github-delivery-os install --bundle lite --skip notify-release-approver .   
 - The supporting scripts each chosen workflow needs are installed with it, and nothing else.
 - Some workflows have little to do alone (`qa-rollup-approval` needs `auto-qa-request` to create the rolling QA issue; `auto-close-sprint` needs the child issues `sprint-child-creator` makes). The install tells you, and still installs what you asked for.
 - The selection is recorded in `.github/delivery-os.json`. A plain `install --update` keeps it, `status` checks only what you chose, and `--only`/`--skip` again replaces it. `--bundle full` (or `lite`) with neither flag goes back to the whole bundle.
-- Narrowing never removes files already installed, and `--with-templates` still copies the bundle's templates.
+- Narrowing never removes files already installed (see below), and `--with-templates` copies only the forms for the workflows you chose.
 
 ---
 
@@ -355,7 +359,7 @@ npx github-delivery-os install --bundle lite --with-templates --with-labels --wi
 
 **Setup.** The install sets the `RELEASE_APPROVER` variable to your GitHub login using `gh` (it needs `gh auth` and admin access to the repo). It never overwrites a value that is already set, says what it did, and skips with a message if `gh` isn't available. `--no-set-approvers` skips it; then set the variable yourself under Settings → Secrets and variables → Actions → Variables. With `--dry-run` nothing is set.
 
-**Staying lite, or moving to full.** The bundle is recorded in `.github/delivery-os.json` as `"bundle": "lite"` (a missing field means full). A plain `install --update` keeps a lite repo lite, and `status` shows the bundle and checks only what lite should have. To fill a lite repo out to everything, run `install --bundle full`: it adds the missing workflows and replaces lite's own release workflows, release form and label list with the full ones (naming a different `--bundle` is what triggers the swap; a plain re-run never overwrites your edits). Going the other way (full to lite) swaps them back to lite's but doesn't remove the QA workflows already installed, so use `uninstall` first if you want them gone.
+**Staying lite, or moving to full.** The bundle is recorded in `.github/delivery-os.json` as `"bundle": "lite"` (a missing field means full). A plain `install --update` keeps a lite repo lite, and `status` shows the bundle and checks only what lite should have. To fill a lite repo out to everything, run `install --bundle full`: it adds the missing workflows and replaces lite's own release workflows, release form and label list with the full ones (naming a different `--bundle` is what triggers the swap; a plain re-run never overwrites your edits). Going the other way (full to lite) swaps them back to lite's. It never deletes on an install, so any workflows lite doesn't include (the QA ones) stay on disk: the install prints a note listing them, `status` shows them under "Still on disk, but not part of this install", and `npx github-delivery-os remove qa .` clears them together with their scripts and the QA form.
 
 The lite release workflows live in `.github/lite/` in this package and are installed under the same file names, so they replace nothing in a full install. `scripts/install.sh` doesn't know about bundles; use the `npx` command for lite.
 

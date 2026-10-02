@@ -27,6 +27,9 @@ const {
   SKILL_ANCHOR,
   needsWarnings,
   isCustomSelection,
+  TEMPLATE_NEEDS,
+  templateWanted,
+  leftoverNames,
   DEFAULT_WORKFLOWS,
   OPT_IN_WORKFLOWS,
   PACKS,
@@ -2435,4 +2438,180 @@ test('a real switch still announces itself and still replaces the release files,
   } finally {
     rm(dir);
   }
+});
+
+// ---- follow-ups: leftovers, forms that follow workflows, labels step, Telegram wording ----
+
+const fullThenLite = () => {
+  const dir = mkTmpRepo();
+  inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+  return dir;
+};
+
+test('switching a full install to lite says which QA workflows are still on disk, and how to remove them', () => {
+  const dir = fullThenLite();
+  try {
+    const out = installOutput(dir, { bundle: 'lite', withTemplates: true, setApprovers: false });
+    assert.match(out, /Note: auto-assign-qa, auto-qa-request, qa-rollup-approval are still on disk but not part of this install/);
+    assert.match(out, /To remove them: npx github-delivery-os remove qa \./);
+    assert.ok(exists(dir, 'workflows/auto-qa-request.yml'), 'install never deletes');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a default install, and a lite install with nothing left over, print no leftovers note', () => {
+  const a = mkTmpRepo();
+  const b = mkTmpRepo();
+  try {
+    assert.doesNotMatch(installOutput(a, { withTemplates: true }), /still on disk/);
+    assert.doesNotMatch(installOutput(b, { bundle: 'lite', withTemplates: true, setApprovers: false }), /still on disk/);
+  } finally {
+    rm(a);
+    rm(b);
+  }
+});
+
+test('status lists leftovers separately and counts only what the install should have', async () => {
+  const dir = fullThenLite();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
+    const out = await statusOutput(dir);
+    assert.match(out, /Still on disk, but not part of this install: auto-assign-qa, auto-qa-request, qa-rollup-approval/);
+    assert.match(out, /remove qa \./);
+    assert.match(out, /Summary: 5\/5 workflows, 5\/5 templates/, 'not 8/5');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('remove qa clears the QA workflows left on disk after full was switched to lite, with their script, roll-up script and form', async () => {
+  const dir = fullThenLite();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
+    remove(dir, 'qa');
+    for (const f of ['workflows/auto-qa-request.yml', 'workflows/qa-rollup-approval.yml', 'workflows/auto-assign-qa.yml', 'scripts/auto-qa-request.js', 'scripts/release-rollup.js', 'ISSUE_TEMPLATE/qa_request.yml']) {
+      assert.equal(exists(dir, f), false, `${f} should be gone`);
+    }
+    assert.ok(exists(dir, 'scripts/authorize-deployment-verdict.js'), 'a script lite still uses stays');
+    const out = await statusOutput(dir);
+    assert.doesNotMatch(out, /Still on disk/);
+    assert.match(out, /Summary: 5\/5 workflows, 5\/5 templates/);
+    assert.equal(manifestBundle(readManifest(dir)), 'lite');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('remove --dry-run on leftovers lists exactly what the real run removes, and removes nothing', () => {
+  const dir = fullThenLite();
+  const lines = [];
+  const origLog = console.log;
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
+    console.log = (...a) => lines.push(a.join(' '));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      runRemove({ targetDir: '.', names: 'qa', dryRun: true });
+    } finally {
+      process.chdir(cwd);
+      console.log = origLog;
+    }
+    const planned = lines.filter((l) => /Would remove/.test(l)).length;
+    assert.equal(planned, 6);
+    assert.ok(exists(dir, 'workflows/auto-qa-request.yml'));
+    const before = fs.readdirSync(path.join(dir, '.github', 'workflows')).length;
+    remove(dir, 'qa');
+    assert.equal(before - fs.readdirSync(path.join(dir, '.github', 'workflows')).length, 3);
+  } finally {
+    console.log = origLog;
+    rm(dir);
+  }
+});
+
+test('removing one leftover workflow keeps a script another leftover still needs', () => {
+  const dir = fullThenLite();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
+    remove(dir, 'auto-assign-qa');
+    assert.equal(exists(dir, 'workflows/auto-assign-qa.yml'), false);
+    assert.ok(exists(dir, 'workflows/auto-qa-request.yml'));
+    assert.ok(exists(dir, 'scripts/auto-qa-request.js'), 'auto-qa-request.yml still requires it');
+    assert.ok(exists(dir, 'ISSUE_TEMPLATE/qa_request.yml'), 'and the QA form still has workflows');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('leftoverNames gives a pack name when a whole pack is left over, workflow names otherwise', () => {
+  assert.equal(leftoverNames(['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa']), 'qa');
+  assert.equal(leftoverNames(['auto-qa-request']), 'auto-qa-request');
+  assert.equal(leftoverNames(['telegram-issues', 'auto-close-sprint']), 'telegram,auto-close-sprint');
+  assert.equal(leftoverNames(['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa', 'telegram-issues']), 'qa,telegram');
+});
+
+test('every form in TEMPLATE_NEEDS and every workflow it names is real', () => {
+  for (const [form, needs] of Object.entries(TEMPLATE_NEEDS)) {
+    assert.ok(TEMPLATES.includes(form), form);
+    for (const wf of needs) assert.ok(WORKFLOWS.includes(wf), `${form} -> ${wf}`);
+  }
+});
+
+test('forms follow their workflows: a default install keeps all six, narrower sets drop the forms nothing uses', () => {
+  assert.deepEqual(effectiveFor('full', [], null).templates, TEMPLATES);
+  assert.deepEqual(effectiveFor('lite', [], null).templates, BUNDLES.lite.templates);
+  const noSprint = effectiveFor('full', [], DEFAULT_WORKFLOWS.filter((w) => !['sprint-child-creator', 'auto-close-sprint'].includes(w)));
+  assert.ok(!noSprint.templates.includes('sprint_planning.yml'));
+  assert.ok(noSprint.templates.includes('qa_request.yml') && noSprint.templates.includes('production_release_qa_signoff.yml'));
+  const noQa = effectiveFor('full', [], DEFAULT_WORKFLOWS.filter((w) => !['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa'].includes(w)));
+  assert.ok(!noQa.templates.includes('qa_request.yml'));
+  const justSprint = effectiveFor('full', [], ['auto-close-sprint', 'setup-labels']);
+  assert.deepEqual([...justSprint.templates].sort(), ['bug_report.yml', 'config.yml', 'sprint_planning.yml', 'task.yml']);
+  assert.ok(templateWanted('sprint_planning.yml', ['auto-close-sprint']), 'either sprint workflow is enough');
+});
+
+test('--only copies just the forms for the chosen workflows', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', only: 'auto-close-sprint,setup-labels', withTemplates: true }));
+    assert.deepEqual(fs.readdirSync(path.join(dir, '.github', 'ISSUE_TEMPLATE')).sort(), ['bug_report.yml', 'config.yml', 'sprint_planning.yml', 'task.yml']);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('removing the sprint workflows takes the sprint form with them; removing one of the two keeps it', () => {
+  const dir = liteRepo({ withTemplates: true });
+  try {
+    remove(dir, 'sprint-child-creator');
+    assert.ok(exists(dir, 'ISSUE_TEMPLATE/sprint_planning.yml'), 'auto-close-sprint still uses it');
+    remove(dir, 'auto-close-sprint');
+    assert.equal(exists(dir, 'ISSUE_TEMPLATE/sprint_planning.yml'), false);
+    assert.ok(exists(dir, 'ISSUE_TEMPLATE/task.yml') && exists(dir, 'ISSUE_TEMPLATE/bug_report.yml'), 'general forms stay');
+    add(dir, 'sprint-child-creator');
+    assert.ok(exists(dir, 'ISSUE_TEMPLATE/sprint_planning.yml'), 'and come back with the workflow');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('full next steps drop the "create labels" step once --with-labels has created them, and renumber', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, () => {
+      const out = installOutput(dir, { withLabels: true, withTemplates: true, withSkill: true });
+      assert.match(out, /Created \d+ label/);
+      const steps = out.slice(out.indexOf('Next steps:'), out.indexOf('See https://'));
+      assert.doesNotMatch(steps, /Create labels/);
+      assert.match(steps, /1\. Configure repo variables/);
+      assert.match(steps, /2\. Telegram alerts are optional/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('the Telegram pack says where the sprint-completed alert comes from', () => {
+  assert.match(PACKS.telegram.summary, /sprint-completed alert comes from auto-close-sprint itself/);
 });

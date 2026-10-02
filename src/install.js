@@ -307,11 +307,13 @@ function readManifest(targetAbs) {
 
 // `bundle` is only written when it isn't the default, so a full install's
 // manifest looks exactly as it always has.
-function writeManifest(targetAbs, version, bundle = DEFAULT_BUNDLE) {
+function writeManifest(targetAbs, version, bundle = DEFAULT_BUNDLE, workflows = null) {
   const dest = manifestPath(targetAbs);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const manifest = { version, installedAt: new Date().toISOString() };
   if (bundle !== DEFAULT_BUNDLE) manifest.bundle = bundle;
+  // Only when --only/--skip narrowed the bundle.
+  if (workflows) manifest.workflows = workflows;
   fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
 }
 
@@ -532,7 +534,21 @@ function runInstall(options) {
     process.exitCode = 1;
     return;
   }
-  const selected = BUNDLES[bundle];
+  // --only / --skip narrow the bundle's workflows. With neither flag, a repo
+  // keeps its current selection, unless --bundle was given, which resets it.
+  const selection = resolveSelection({
+    bundle,
+    only: parseNameList(options.only),
+    skip: parseNameList(options.skip),
+    keepPrior: options.bundle ? null : manifestWorkflows(priorManifest, bundle),
+  });
+  if (selection.error) {
+    console.error(selection.error);
+    process.exitCode = 1;
+    return;
+  }
+  const selected = { ...BUNDLES[bundle], workflows: selection.workflows, scripts: selection.scripts };
+  const customWorkflows = selection.custom ? selection.workflows : null;
 
   const pkgRoot = getPackageRoot();
   const workflowsSrc = path.join(pkgRoot, '.github', 'workflows');
@@ -543,6 +559,8 @@ function runInstall(options) {
   console.log('=== GitHub Delivery Operating System ===');
   console.log(`Target: ${targetAbs}`);
   if (bundle !== DEFAULT_BUNDLE) console.log(`Bundle: ${bundle}`);
+  if (selection.custom) console.log(`Workflows: ${selection.workflows.join(', ')}`);
+  for (const w of selection.warnings) console.log(`Note: ${w}`);
 
   if (overwrite) {
     console.log('');
@@ -829,14 +847,20 @@ function runInstall(options) {
     !skillPresentButNotTouched;
   if (!dryRun && cleanInstall) {
     const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
-    writeManifest(targetAbs, pkgVersion, bundle);
-  } else if (!dryRun && manifestBundle(priorManifest) !== bundle) {
+    writeManifest(targetAbs, pkgVersion, bundle, customWorkflows);
+  } else if (
+    !dryRun &&
+    (manifestBundle(priorManifest) !== bundle ||
+      JSON.stringify(manifestWorkflows(priorManifest, bundle)) !== JSON.stringify(customWorkflows))
+  ) {
     // Not a clean install, so the recorded version stays put — but which
     // bundle this repo is on is its own fact (e.g. an existing lite install
     // that was just filled out to full), and `status` reads it.
     const patched = { ...(priorManifest || {}) };
     if (bundle === DEFAULT_BUNDLE) delete patched.bundle;
     else patched.bundle = bundle;
+    if (customWorkflows) patched.workflows = customWorkflows;
+    else delete patched.workflows;
     fs.mkdirSync(path.dirname(manifestPath(targetAbs)), { recursive: true });
     fs.writeFileSync(manifestPath(targetAbs), JSON.stringify(patched, null, 2) + '\n');
   }
@@ -991,6 +1015,123 @@ function manifestBundle(manifest) {
   return manifest && Object.prototype.hasOwnProperty.call(BUNDLES, manifest.bundle) ? manifest.bundle : DEFAULT_BUNDLE;
 }
 
+// What each workflow is for, and which others it does nothing useful without
+// (a soft dependency: installing it alone works, it just never has anything to
+// act on). Read by --only/--skip warnings and by `list`.
+const WORKFLOW_INFO = {
+  'sprint-child-creator': { summary: 'Creates one child task issue per feature line when a sprint planning issue opens', needs: [] },
+  'auto-close-sprint': { summary: 'Keeps the sprint burn-down and health current, and closes the sprint at 100%', needs: ['sprint-child-creator'] },
+  'notify-release-approver': { summary: 'Pings the release approver when a Production Release issue opens', needs: [] },
+  'authorize-deployment': { summary: 'Reads approve/decline comments on a Production Release and applies ready-for-deploy / declined', needs: [] },
+  'auto-assign-qa': { summary: 'Assigns the QA team to issues labeled qa or qa-request', needs: [] },
+  'telegram-issues': { summary: 'Sends Telegram alerts for bugs, QA, sprints, releases and merges', needs: [] },
+  'setup-labels': { summary: 'One-time workflow that creates the labels Delivery OS uses', needs: [] },
+  'auto-qa-request': { summary: 'Adds each change that reaches main to the rolling QA issue (or files QA Requests)', needs: [] },
+  'qa-rollup-approval': { summary: "Applies the QA approver's approve/decline to the rolling QA issue", needs: ['auto-qa-request'] },
+};
+
+// The comma-separated names a flag was given, trimmed and de-duplicated.
+function parseNameList(value) {
+  if (value === undefined || value === null) return null;
+  const list = [].concat(value).join(',').split(',').map((n) => n.trim().replace(/\.yml$/, '')).filter(Boolean);
+  return [...new Set(list)];
+}
+
+// The workflows recorded in a manifest when the install was narrowed by
+// --only/--skip; null when it follows the bundle (or the field is unusable).
+function manifestWorkflows(manifest, bundle) {
+  const base = BUNDLES[bundle].workflows;
+  const recorded = manifest && manifest.workflows;
+  if (!Array.isArray(recorded) || recorded.length === 0) return null;
+  const kept = base.filter((wf) => recorded.includes(wf));
+  return kept.length === base.length ? null : kept.length > 0 ? kept : null;
+}
+
+// Which supporting scripts a set of workflows needs (always within the
+// bundle). The bundle's own list when nothing was narrowed, so a default
+// install is exactly what it was.
+function scriptsForWorkflows(bundle, workflows) {
+  const base = BUNDLES[bundle];
+  if (workflows.length === base.workflows.length) return base.scripts;
+  const needed = new Set();
+  for (const wf of workflows) {
+    for (const name of [].concat(REQUIRED_SCRIPT_BY_WORKFLOW[wf] || [])) needed.add(name);
+    if (wf === 'setup-labels') needed.add('labels');
+    // The full notify workflow also runs the release roll-up; lite's doesn't.
+    if (wf === 'notify-release-approver' && !(base.liteWorkflows || []).includes(wf)) {
+      for (const name of CONTENT_GATED_SCRIPT_BY_WORKFLOW[wf] || []) needed.add(name);
+    }
+  }
+  return base.scripts.filter((name) => needed.has(name));
+}
+
+// Works out which workflows to install: the bundle's, narrowed by --only
+// (just these) or --skip (all but these). With neither flag, a repo keeps
+// the selection it already has; a bare bundle choice resets it to the
+// bundle's own. Returns { workflows, scripts, custom, warnings } or { error }.
+function resolveSelection({ bundle, only, skip, keepPrior }) {
+  const base = BUNDLES[bundle].workflows;
+  if (only && skip) return { error: 'Use --only or --skip, not both.' };
+  const named = only || skip;
+  if (named) {
+    if (named.length === 0) return { error: `${only ? '--only' : '--skip'} needs at least one workflow name.` };
+    const unknown = named.filter((n) => !base.includes(n));
+    if (unknown.length) {
+      return { error: `Unknown workflow${unknown.length > 1 ? 's' : ''} for the ${bundle} bundle: ${unknown.join(', ')}. Available: ${base.join(', ')}.` };
+    }
+  }
+  let workflows = base;
+  if (only) workflows = base.filter((wf) => only.includes(wf));
+  else if (skip) workflows = base.filter((wf) => !skip.includes(wf));
+  else if (keepPrior) workflows = keepPrior;
+  if (workflows.length === 0) return { error: 'That leaves nothing to install.' };
+  const warnings = [];
+  for (const wf of workflows) {
+    for (const need of WORKFLOW_INFO[wf].needs) {
+      if (!workflows.includes(need)) warnings.push(`${wf} has little to do without ${need}.`);
+    }
+  }
+  return { workflows, scripts: scriptsForWorkflows(bundle, workflows), custom: workflows.length !== base.length, warnings };
+}
+
+// What a repo is expected to have, from its manifest: the bundle, narrowed by
+// any recorded selection. Used by status.
+function expectedFor(manifest) {
+  const bundle = manifestBundle(manifest);
+  const workflows = manifestWorkflows(manifest, bundle) || BUNDLES[bundle].workflows;
+  return { bundle, expected: { ...BUNDLES[bundle], workflows, scripts: scriptsForWorkflows(bundle, workflows) }, custom: workflows.length !== BUNDLES[bundle].workflows.length };
+}
+
+// What can be installed: the bundles and each workflow (what it does, which
+// bundles carry it, what it needs). `--json` is for tools such as the setup
+// skill, so they never hard-code this.
+function runList({ json = false } = {}) {
+  const workflows = WORKFLOWS.map((name) => ({
+    name,
+    summary: WORKFLOW_INFO[name].summary,
+    needs: WORKFLOW_INFO[name].needs,
+    bundles: Object.keys(BUNDLES).filter((b) => BUNDLES[b].workflows.includes(name)),
+  }));
+  const bundles = {};
+  for (const [name, def] of Object.entries(BUNDLES)) {
+    bundles[name] = { workflows: def.workflows, templates: def.templates };
+  }
+  if (json) {
+    console.log(JSON.stringify({ bundles, workflows }, null, 2));
+    return;
+  }
+  console.log('Bundles:');
+  console.log('  full  everything (the default)');
+  console.log('  lite  one person or a small project: sprints, tasks, bugs and a single-approver release');
+  console.log('');
+  console.log('Workflows (choose with --only a,b or leave some out with --skip a,b):');
+  for (const w of workflows) {
+    const where = w.bundles.join(', ');
+    const needs = w.needs.length ? ` (works with: ${w.needs.join(', ')})` : '';
+    console.log(`  ${w.name.padEnd(24)} [${where}]  ${w.summary}${needs}`);
+  }
+}
+
 async function runStatus(options) {
   const { targetDir = '.', checkUpdates = true } = options;
   const targetAbs = path.resolve(process.cwd(), targetDir);
@@ -1003,8 +1144,7 @@ async function runStatus(options) {
 
   // What this repo is meant to have: the bundle its manifest records (full if
   // none). Anything outside it isn't "missing" or "broken".
-  const bundle = manifestBundle(readManifest(targetAbs));
-  const expected = BUNDLES[bundle];
+  const { bundle, expected, custom } = expectedFor(readManifest(targetAbs));
 
   const installedWorkflows = WORKFLOWS.filter((wf) =>
     fs.existsSync(path.join(workflowsDest, `${wf}.yml`))
@@ -1155,7 +1295,7 @@ async function runStatus(options) {
     console.log(
       `Summary: ${installedWorkflows.length}/${expected.workflows.length} workflows, ${installedTemplates.length}/${expected.templates.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
     );
-    if (bundle !== DEFAULT_BUNDLE) console.log(`Bundle: ${bundle}`);
+    if (bundle !== DEFAULT_BUNDLE || custom) console.log(`Bundle: ${bundle}${custom ? ' (selected workflows only)' : ''}`);
   }
   console.log('');
 }
@@ -1322,6 +1462,7 @@ module.exports = {
   runInstall,
   runStatus,
   runUninstall,
+  runList,
   TEMPLATES, // also read by src/shell-hook.js
   // Exposed for tests only — not part of the CLI's public API.
   __test__: {
@@ -1352,6 +1493,11 @@ module.exports = {
     loadLabels,
     BUNDLES,
     manifestBundle,
+    resolveSelection,
+    parseNameList,
+    manifestWorkflows,
+    scriptsForWorkflows,
+    WORKFLOW_INFO,
     skillForBundle,
     SKILL_ANCHOR,
   },

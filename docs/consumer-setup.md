@@ -367,7 +367,7 @@ npx github-delivery-os uninstall --with-skill .       # Also remove the delivery
 npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
 ```
 
-This removes the nine workflow files, optionally the issue templates and the Claude Code skill (with its update-check hook and its entry in `.claude/settings.json`, leaving your other settings alone), and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
+This removes the Delivery OS workflow files that are installed (eight in a default install, plus the Telegram one if you added it), optionally the issue templates and the Claude Code skill (with its update-check hook and its entry in `.claude/settings.json`, leaving your other settings alone), and `.github/delivery-os.json` if present. It does not touch repo variables or secrets. Templates and the skill are both kept by default — pass the matching flag to remove each.
 
 **Manual alternative** — delete these files from `.github/workflows/`:
 - `sprint-child-creator.yml`

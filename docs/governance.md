@@ -79,7 +79,7 @@ Each approver's **latest** comment counts as their verdict — their own later `
 | PR opened or updated, or commit pushed to `main` | auto-qa-request | Per-change mode: files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed |
 | QA approver comments or ticks the Approved box on the rolling QA issue | qa-rollup-approval | Approve → ticks every line and closes it; decline → keeps it open (Outcome *Fail*); anyone else → ignored with a reply; with several QA approvers, one's decline stands until that same person approves |
 | PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR (reopening the PR reopens them) |
-| Bugs, QA, sprints, releases, PR merged | telegram-issues | Sends alerts (if secrets set) |
+| Bugs, QA, sprints, releases, PR merged | telegram-issues (opt-in: `add telegram`) | Sends alerts (if secrets set) |
 
 ---
 

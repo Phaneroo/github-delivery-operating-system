@@ -266,9 +266,11 @@ function computeVerdict(comments, releaseApprover, qaApprover) {
  *   declined/ready: the labels currently on the issue
  * @returns {'decline' | 'authorize' | 'clear-declined' | 'none'}
  */
-function nextReleaseAction({ releaseVerdict, qaVerdict, declined, ready }) {
+function nextReleaseAction({ releaseVerdict, qaVerdict, declined, ready, qaRequired = true }) {
   if (releaseVerdict === 'declined' || qaVerdict === 'declined') return declined ? 'none' : 'decline';
-  if (releaseVerdict === 'approved' && qaVerdict === 'approved' && !ready) return 'authorize';
+  // qaRequired=false (a repo with no separate QA approver, e.g. a one-person
+  // team) lets the release approver's approval stand on its own.
+  if (releaseVerdict === 'approved' && (qaVerdict === 'approved' || !qaRequired) && !ready) return 'authorize';
   if (declined && (releaseVerdict || qaVerdict)) return 'clear-declined';
   return 'none';
 }

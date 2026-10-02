@@ -305,13 +305,14 @@ function readManifest(targetAbs) {
   }
 }
 
-function writeManifest(targetAbs, version) {
+// `bundle` is only written when it isn't the default, so a full install's
+// manifest looks exactly as it always has.
+function writeManifest(targetAbs, version, bundle = DEFAULT_BUNDLE) {
   const dest = manifestPath(targetAbs);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(
-    dest,
-    JSON.stringify({ version, installedAt: new Date().toISOString() }, null, 2) + '\n'
-  );
+  const manifest = { version, installedAt: new Date().toISOString() };
+  if (bundle !== DEFAULT_BUNDLE) manifest.bundle = bundle;
+  fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
 }
 
 // Best-effort check against the npm registry. Never throws or rejects —
@@ -424,15 +425,28 @@ function runInstall(options) {
     dryRun = false,
   } = options;
 
+  // No --bundle given: stay on whatever bundle the repo is already on, so a
+  // plain `install --update` never quietly widens a lite install to full.
+  const targetAbs = path.resolve(process.cwd(), targetDir);
+  const priorManifest = readManifest(targetAbs);
+  const bundle = options.bundle || manifestBundle(priorManifest);
+
+  if (!Object.prototype.hasOwnProperty.call(BUNDLES, bundle)) {
+    console.error(`Unknown bundle "${bundle}". Choose one of: ${Object.keys(BUNDLES).join(', ')}.`);
+    process.exitCode = 1;
+    return;
+  }
+  const selected = BUNDLES[bundle];
+
   const pkgRoot = getPackageRoot();
   const workflowsSrc = path.join(pkgRoot, '.github', 'workflows');
   const templatesSrc = path.join(pkgRoot, '.github', 'ISSUE_TEMPLATE');
   const scriptsSrc = path.join(pkgRoot, '.github', 'scripts');
   const skillSrc = path.join(pkgRoot, SKILL_REL_PATH);
-  const targetAbs = path.resolve(process.cwd(), targetDir);
 
   console.log('=== GitHub Delivery Operating System ===');
   console.log(`Target: ${targetAbs}`);
+  if (bundle !== DEFAULT_BUNDLE) console.log(`Bundle: ${bundle}`);
 
   if (overwrite) {
     console.log('');
@@ -449,7 +463,6 @@ function runInstall(options) {
 
   // Ensure target structure
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
-  const priorManifest = readManifest(targetAbs);
   const migrationNote = overwrite
     ? rollingQaMigrationNote(
         priorManifest && priorManifest.version,
@@ -474,7 +487,7 @@ function runInstall(options) {
 
   // Copy workflows (always on — not optional)
   ({ copied: workflowsCopied, skipped: workflowsSkipped } = copyManagedFiles(
-    WORKFLOWS,
+    selected.workflows,
     '.yml',
     workflowsSrc,
     workflowsDest,
@@ -484,7 +497,7 @@ function runInstall(options) {
   // Copy the scripts the workflows above require() at runtime — required,
   // not optional, so (unlike templates/skill) this always runs too.
   ({ copied: scriptsCopied, skipped: scriptsSkipped } = copyManagedFiles(
-    SCRIPTS,
+    selected.scripts,
     '.js',
     scriptsSrc,
     scriptsDest,
@@ -515,6 +528,9 @@ function runInstall(options) {
     const files = fs.readdirSync(templatesSrc);
     for (const name of files) {
       if (!name.endsWith('.yml') && !name.endsWith('.yaml')) continue;
+      // Full copies every template in the directory (as it always has); other
+      // bundles copy only their own.
+      if (bundle !== DEFAULT_BUNDLE && !selected.templates.includes(name)) continue;
       const src = path.join(templatesSrc, name);
       const dest = path.join(templatesDest, name);
       if (!fs.statSync(src).isFile()) continue;
@@ -683,7 +699,16 @@ function runInstall(options) {
     !skillPresentButNotTouched;
   if (!dryRun && cleanInstall) {
     const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
-    writeManifest(targetAbs, pkgVersion);
+    writeManifest(targetAbs, pkgVersion, bundle);
+  } else if (!dryRun && manifestBundle(priorManifest) !== bundle) {
+    // Not a clean install, so the recorded version stays put — but which
+    // bundle this repo is on is its own fact (e.g. an existing lite install
+    // that was just filled out to full), and `status` reads it.
+    const patched = { ...(priorManifest || {}) };
+    if (bundle === DEFAULT_BUNDLE) delete patched.bundle;
+    else patched.bundle = bundle;
+    fs.mkdirSync(path.dirname(manifestPath(targetAbs)), { recursive: true });
+    fs.writeFileSync(manifestPath(targetAbs), JSON.stringify(patched, null, 2) + '\n');
   }
 
   // Summary
@@ -720,10 +745,14 @@ function runInstall(options) {
     if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
     console.log('  2. Configure repo variables (Settings → Secrets and variables → Actions):');
     console.log('     - RELEASE_APPROVER: GitHub username of release approver');
-    console.log('     - QA_APPROVER: GitHub username of QA approver');
-    console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
-    console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
-    let nextStep = 4;
+    if (bundle === 'lite') {
+      console.log('     - DELIVERY_OS_QA_REQUIRED: false  (no separate QA sign-off; the release approver alone authorizes a release)');
+    } else {
+      console.log('     - QA_APPROVER: GitHub username of QA approver');
+      console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
+      console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
+    }
+    let nextStep = bundle === 'lite' ? 3 : 4;
     if (!withTemplates) {
       console.log(`  ${nextStep}. Copy templates: re-run with --with-templates`);
       nextStep++;
@@ -757,7 +786,7 @@ function runInstall(options) {
 // --update, or the recorded version never advances and `status` keeps
 // suggesting the same command forever. Build the hint from what's actually
 // on disk so it's never wrong.
-function buildUpdateCommand({ hasTemplates, hasSkill }) {
+function buildUpdateCommand({ hasTemplates, hasSkill, bundle = DEFAULT_BUNDLE }) {
   // --with-labels is unconditional, unlike --with-templates/--with-skill —
   // those add a whole category of files a repo may have deliberately never
   // wanted, but label sync is idempotent (skips anything that already
@@ -770,6 +799,7 @@ function buildUpdateCommand({ hasTemplates, hasSkill }) {
   const flags = [
     hasTemplates ? '--with-templates' : null,
     hasSkill ? '--with-skill' : null,
+    bundle !== DEFAULT_BUNDLE ? `--bundle ${bundle}` : null,
     '--with-labels',
     '--update',
   ]
@@ -787,6 +817,26 @@ const TEMPLATES = [
   'bug_report.yml',
 ];
 
+// Named subsets of the above. `full` is everything (the default, and what a
+// manifest with no `bundle` field means). `lite` is for one-person teams and
+// small projects: sprints, tasks, bugs and a release approval, without the
+// rolling QA machinery (auto-qa-request, qa-rollup-approval, auto-assign-qa,
+// Telegram). A bundle must stay a subset of full.
+const BUNDLES = {
+  full: { workflows: WORKFLOWS, scripts: SCRIPTS, templates: TEMPLATES },
+  lite: {
+    workflows: ['setup-labels', 'sprint-child-creator', 'auto-close-sprint', 'notify-release-approver', 'authorize-deployment'],
+    scripts: ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'labels'],
+    templates: ['config.yml', 'sprint_planning.yml', 'task.yml', 'bug_report.yml', 'production_release_qa_signoff.yml'],
+  },
+};
+const DEFAULT_BUNDLE = 'full';
+
+// The bundle a manifest records; anything missing or unrecognised is full.
+function manifestBundle(manifest) {
+  return manifest && Object.prototype.hasOwnProperty.call(BUNDLES, manifest.bundle) ? manifest.bundle : DEFAULT_BUNDLE;
+}
+
 async function runStatus(options) {
   const { targetDir = '.', checkUpdates = true } = options;
   const targetAbs = path.resolve(process.cwd(), targetDir);
@@ -796,6 +846,11 @@ async function runStatus(options) {
   console.log('=== GitHub Delivery Operating System — Status ===');
   console.log(`Target: ${targetAbs}`);
   console.log('');
+
+  // What this repo is meant to have: the bundle its manifest records (full if
+  // none). Anything outside it isn't "missing" or "broken".
+  const bundle = manifestBundle(readManifest(targetAbs));
+  const expected = BUNDLES[bundle];
 
   const installedWorkflows = WORKFLOWS.filter((wf) =>
     fs.existsSync(path.join(workflowsDest, `${wf}.yml`))
@@ -824,6 +879,7 @@ async function runStatus(options) {
         return { wf, missing: setupLabelsMissingFiles(targetAbs, setupLabelsOnCurrentFormat) };
       }
       const missing = requiredScriptsFor(targetAbs, wf)
+        .filter((name) => expected.scripts.includes(name))
         .map((name) => `${name}.js`)
         .filter((file) => !fs.existsSync(path.join(targetAbs, '.github', 'scripts', file)));
       return { wf, missing };
@@ -840,7 +896,7 @@ async function runStatus(options) {
   // condition is hit, not an immediate break.
   const scriptsRequiringPkgJson = installedWorkflows.some((wf) => {
     if (wf === 'setup-labels') return setupLabelsOnCurrentFormat;
-    return requiredScriptsFor(targetAbs, wf).length > 0;
+    return requiredScriptsFor(targetAbs, wf).some((name) => expected.scripts.includes(name));
   });
   const scriptsPkgJsonMissing =
     scriptsRequiringPkgJson &&
@@ -854,7 +910,7 @@ async function runStatus(options) {
     } else {
       console.log('Installed version: unknown (installed before version tracking was added)');
       console.log(
-        `  Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+        `  Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
       );
     }
 
@@ -867,7 +923,7 @@ async function runStatus(options) {
       } else if (manifest && manifest.version) {
         console.log(`⬆️  Update available: ${manifest.version} → ${latest}`);
         console.log(
-          `    Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+          `    Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
         );
       } else {
         console.log(`Latest published version: ${latest}`);
@@ -891,7 +947,7 @@ async function runStatus(options) {
     });
     console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
     console.log(
-      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
     );
     console.log('');
   }
@@ -902,7 +958,7 @@ async function runStatus(options) {
     console.log('  require()s a script under .github/scripts will fail with "module is not');
     console.log('  defined in ES module scope" the next time it runs.');
     console.log(
-      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled })}`
+      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
     );
     console.log('');
   }
@@ -913,7 +969,7 @@ async function runStatus(options) {
     console.log('');
   }
 
-  const missingWorkflows = WORKFLOWS.filter((wf) => !installedWorkflows.includes(wf));
+  const missingWorkflows = expected.workflows.filter((wf) => !installedWorkflows.includes(wf));
   if (missingWorkflows.length > 0) {
     console.log('Missing workflows:');
     missingWorkflows.forEach((wf) => console.log(`  ○ ${wf}.yml`));
@@ -932,7 +988,7 @@ async function runStatus(options) {
       console.log(
         hookReady
           ? '  ✓ update-check hook (offers updates when a session starts)'
-          : `  ○ update-check hook (not set up — run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: true })})`
+          : `  ○ update-check hook (not set up — run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: true, bundle })})`
       );
     }
     console.log('');
@@ -943,8 +999,9 @@ async function runStatus(options) {
     console.log('Run: npx github-delivery-os install --with-templates --with-labels --with-skill .');
   } else {
     console.log(
-      `Summary: ${installedWorkflows.length}/${WORKFLOWS.length} workflows, ${installedTemplates.length}/${TEMPLATES.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
+      `Summary: ${installedWorkflows.length}/${expected.workflows.length} workflows, ${installedTemplates.length}/${expected.templates.length} templates, skill: ${skillInstalled ? 'yes' : 'no'}`
     );
+    if (bundle !== DEFAULT_BUNDLE) console.log(`Bundle: ${bundle}`);
   }
   console.log('');
 }
@@ -1139,5 +1196,7 @@ module.exports = {
     CONTENT_GATED_SCRIPT_BY_WORKFLOW,
     setupLabelsMissingFiles,
     loadLabels,
+    BUNDLES,
+    manifestBundle,
   },
 };

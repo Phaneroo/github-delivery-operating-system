@@ -304,6 +304,13 @@ test('nextReleaseAction: decline once (from either side), then nothing until the
   assert.equal(nextReleaseAction({ releaseVerdict: 'declined', qaVerdict: null, declined: true, ready: false }), 'none');
 });
 
+test('nextReleaseAction: qaRequired=false authorizes on the release approval alone, but a QA decline still blocks', () => {
+  assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: null, declined: false, ready: false, qaRequired: false }), 'authorize');
+  assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: null, declined: false, ready: true, qaRequired: false }), 'none');
+  assert.equal(nextReleaseAction({ releaseVerdict: null, qaVerdict: null, declined: false, ready: false, qaRequired: false }), 'none');
+  assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: 'declined', declined: false, ready: false, qaRequired: false }), 'decline');
+});
+
 test('nextReleaseAction: authorize needs the release verdict AND QA, and only once', () => {
   assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: 'approved', declined: false, ready: false }), 'authorize');
   assert.equal(nextReleaseAction({ releaseVerdict: 'approved', qaVerdict: 'approved', declined: true, ready: false }), 'authorize', 'a re-approval after a decline authorizes and clears the label');

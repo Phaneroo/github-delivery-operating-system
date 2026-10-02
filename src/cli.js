@@ -28,6 +28,9 @@ program
   // `install --overwrite` don't break — --update is the documented name now.
   .addOption(new Option('-o, --overwrite').hideHelp())
   .addOption(new Option('--no-overwrite').hideHelp())
+  .addOption(
+    new Option('-b, --bundle <name>', 'Which set to install: full (everything) or lite (sprints, tasks, bugs and a release approval, without the QA machinery). Defaults to the repo\'s current bundle, or full.').choices(['full', 'lite'])
+  )
   .option('-d, --dry-run', 'Show what would happen without changing files')
   .action((target, options) => {
     const targetDir = target || '.';
@@ -38,6 +41,7 @@ program
       withSkill: options.withSkill ?? false,
       overwrite: options.update ?? options.overwrite ?? false,
       dryRun: options.dryRun ?? false,
+      bundle: options.bundle,
     });
   });
 

@@ -37,6 +37,7 @@ jobs:
           RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
           QA_APPROVER: ${{ vars.QA_APPROVER || 'qa-approver' }}
           DELIVERY_OS_AUTO_CLOSE: ${{ vars.DELIVERY_OS_AUTO_CLOSE }}
+          DELIVERY_OS_QA_REQUIRED: ${{ vars.DELIVERY_OS_QA_REQUIRED }}
         with:
           script: |
             // Pure verdict logic lives in a real, unit-tested module (see
@@ -50,6 +51,8 @@ jobs:
             const repo = context.repo.repo;
             const releaseApprover = process.env.RELEASE_APPROVER;
             const qaApprover = process.env.QA_APPROVER;
+            // DELIVERY_OS_QA_REQUIRED=false: no separate QA sign-off needed (solo repos).
+            const qaRequired = String(process.env.DELIVERY_OS_QA_REQUIRED || "").trim().toLowerCase() !== "false";
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
@@ -82,7 +85,8 @@ jobs:
               releaseVerdict,
               qaVerdict,
               declined: alreadyDeclined,
-              ready: alreadyReady
+              ready: alreadyReady,
+              qaRequired
             });
 
             // Nobody's latest verdict is a decline any more (the decliner approved),
@@ -153,7 +157,9 @@ jobs:
                 owner,
                 repo,
                 issue_number: issueNumber,
-                body: "🟢🚀 **Deployment Authorized**\n\nDual approval received. This release is cleared for production deployment."
+                body: qaRequired
+                  ? "🟢🚀 **Deployment Authorized**\n\nDual approval received. This release is cleared for production deployment."
+                  : "🟢🚀 **Deployment Authorized**\n\nRelease approval received. This release is cleared for production deployment."
               });
 
               // Close what auto-qa-request filed for work that's in this

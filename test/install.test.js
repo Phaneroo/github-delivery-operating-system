@@ -21,6 +21,9 @@ const {
   LABELS_TSV,
   setupLabelsMissingFiles,
   loadLabels,
+  BUNDLES,
+  manifestBundle,
+  REQUIRED_SCRIPT_BY_WORKFLOW,
 } = __test__;
 
 const packageRoot = path.join(__dirname, '..');
@@ -1155,6 +1158,151 @@ test('templates are only installed with --with-templates', () => {
       assert.equal(fs.existsSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', t)), false, `${t} should not be installed`);
     }
   } finally {
+    rm(dir);
+  }
+});
+
+// ---- bundles (full / lite) ----
+
+function statusOutput(dir) {
+  const lines = [];
+  const origLog = console.log;
+  const origCwd = process.cwd();
+  console.log = (...args) => lines.push(args.join(' '));
+  return (async () => {
+    try {
+      process.chdir(dir);
+      await runStatus({ targetDir: '.', checkUpdates: false });
+      return lines.join('\n');
+    } finally {
+      console.log = origLog;
+      process.chdir(origCwd);
+    }
+  })();
+}
+
+test('the lite bundle is a strict subset of full, and full is everything', () => {
+  assert.deepEqual(BUNDLES.full.workflows, WORKFLOWS);
+  assert.deepEqual(BUNDLES.full.scripts, SCRIPTS);
+  assert.deepEqual(BUNDLES.full.templates, TEMPLATES);
+  for (const kind of ['workflows', 'scripts', 'templates']) {
+    for (const item of BUNDLES.lite[kind]) assert.ok(BUNDLES.full[kind].includes(item), `lite ${kind} has ${item}, which full doesn't`);
+    assert.ok(BUNDLES.lite[kind].length < BUNDLES.full[kind].length, `lite should drop some ${kind}`);
+  }
+});
+
+test('lite ships every script its workflows require (apart from the QA ones it leaves out), and every template exists', () => {
+  for (const wf of BUNDLES.lite.workflows) {
+    const required = [].concat(REQUIRED_SCRIPT_BY_WORKFLOW[wf] || []);
+    for (const script of required) assert.ok(BUNDLES.lite.scripts.includes(script), `${wf} requires ${script}.js, which lite doesn't ship`);
+  }
+  for (const t of BUNDLES.lite.templates) assert.ok(fs.existsSync(path.join(packageRoot, '.github', 'ISSUE_TEMPLATE', t)), `${t} is missing`);
+});
+
+test('notify-release-approver skips the roll-up when its script is not installed (lite leaves it out)', () => {
+  const yml = fs.readFileSync(path.join(packageRoot, '.github', 'workflows', 'notify-release-approver.yml'), 'utf8');
+  assert.match(yml, /hashFiles\('\.github\/scripts\/release-rollup\.js'\) != ''/);
+});
+
+test('install --bundle lite installs only the lite set and records the bundle', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    const have = (sub) => fs.readdirSync(path.join(dir, '.github', sub)).sort();
+    assert.deepEqual(have('workflows'), BUNDLES.lite.workflows.map((w) => `${w}.yml`).sort());
+    assert.deepEqual(have('ISSUE_TEMPLATE'), [...BUNDLES.lite.templates].sort());
+    for (const s of BUNDLES.lite.scripts) assert.ok(fs.existsSync(path.join(dir, '.github', 'scripts', `${s}.js`)));
+    assert.equal(fs.existsSync(path.join(dir, '.github', 'scripts', 'auto-qa-request.js')), false);
+    assert.equal(readManifest(dir).bundle, 'lite');
+    assert.equal(readManifest(dir).version, pkgVersion);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a default install is unchanged: every workflow, and no bundle field in the manifest', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.' }));
+    for (const wf of WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
+    assert.equal('bundle' in readManifest(dir), false);
+    assert.equal(manifestBundle(readManifest(dir)), 'full');
+    assert.equal(manifestBundle(null), 'full');
+    assert.equal(manifestBundle({ bundle: 'bogus' }), 'full');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('status on a lite install reports 5/5 and flags nothing as missing or broken', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    const output = await statusOutput(dir);
+    assert.match(output, /Summary: 5\/5 workflows, 5\/5 templates/);
+    assert.match(output, /Bundle: lite/);
+    assert.doesNotMatch(output, /Missing workflows/);
+    assert.doesNotMatch(output, /Broken install detected/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('status still flags a lite install whose own script is missing', async () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    fs.unlinkSync(path.join(dir, '.github', 'scripts', 'sprint-child-creator.js'));
+    const output = await statusOutput(dir);
+    assert.match(output, /Broken install detected/);
+    assert.match(output, /sprint-child-creator\.js/);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('the update command a lite install is pointed at keeps it lite; a full one is unchanged', () => {
+  assert.match(buildUpdateCommand({ hasTemplates: true, hasSkill: false, bundle: 'lite' }), /--bundle lite/);
+  assert.doesNotMatch(buildUpdateCommand({ hasTemplates: true, hasSkill: false }), /--bundle/);
+});
+
+test('a plain --update on a lite install stays lite', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', overwrite: true }));
+    assert.equal(fs.existsSync(path.join(dir, '.github', 'workflows', 'auto-qa-request.yml')), false);
+    assert.equal(readManifest(dir).bundle, 'lite');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--bundle full on a lite install fills it out and drops the bundle field', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+    for (const wf of WORKFLOWS) assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', `${wf}.yml`)), wf);
+    assert.equal(manifestBundle(readManifest(dir)), 'full');
+    assert.equal(readManifest(dir).version, pkgVersion, 'the recorded version is kept');
+  } finally {
+    rm(dir);
+  }
+});
+
+test('an unknown bundle installs nothing and sets a failing exit code', () => {
+  const dir = mkTmpRepo();
+  const origErr = console.error;
+  const origExit = process.exitCode;
+  try {
+    console.error = () => {};
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'bogus' }));
+    assert.equal(process.exitCode, 1);
+    assert.equal(fs.existsSync(path.join(dir, '.github')), false);
+  } finally {
+    process.exitCode = origExit;
+    console.error = origErr;
     rm(dir);
   }
 });

@@ -120,12 +120,12 @@
     block.appendChild(btn);
   }
 
-  document.querySelectorAll('.install-block').forEach(function (block) {
+  document.querySelectorAll('.install-block:not(.no-copy)').forEach(function (block) {
     var code = block.querySelector('code');
     if (code) addButton(block, code);
   });
 
-  document.querySelectorAll('pre').forEach(function (pre) {
+  document.querySelectorAll('pre:not(.no-copy)').forEach(function (pre) {
     var code = pre.querySelector('code') || pre;
     var wrap = document.createElement('div');
     wrap.className = 'pre-wrap';

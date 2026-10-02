@@ -132,7 +132,7 @@
 
         <h3 id="conversation">What a session looks like</h3>
         <p>Illustrative, on a repo called <code>acme/storefront</code>. Claude checks the repo, shows exactly what it will create, and waits for your yes:</p>
-        <div class="install-block install-block--prompt">
+        <div class="install-block install-block--prompt no-copy">
           <div class="install-label">Claude Code</div>
           <code>You:    Create a sprint called Sprint 14 for the checkout revamp, running
         Oct 1 to Oct 14, with features: guest checkout, saved cards,
@@ -211,7 +211,7 @@ Claude: You're logged in as jkaweesi22, which matches RELEASE_APPROVER.
         <details class="example-details">
           <summary>Full example: shipping a feature end-to-end</summary>
           <p>A realistic Claude Code session, run from inside the consumer repo (the skill defaults to it since it was installed with <code>--with-skill</code> there). <code>RELEASE_APPROVER</code>, <code>QA_APPROVER</code>, and <code>QA_ASSIGNEES</code> are already configured.</p>
-          <pre><code>You: Create a sprint called "Sprint 14 - Checkout Revamp", running 2026-09-16 to
+          <pre class="no-copy"><code>You: Create a sprint called "Sprint 14 - Checkout Revamp", running 2026-09-16 to
      2026-09-30, goal is shipping the new checkout flow, features:
      - Redesign cart summary
      - Add saved payment methods

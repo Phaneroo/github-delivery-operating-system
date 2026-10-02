@@ -31,6 +31,8 @@ program
   .addOption(
     new Option('-b, --bundle <name>', 'Which set to install: full (everything) or lite (sprints, tasks, bugs and a release approval, without the QA machinery). Defaults to the repo\'s current bundle, or full.').choices(['full', 'lite'])
   )
+  .option('--set-approvers', 'Set the RELEASE_APPROVER repo variable to your GitHub login via gh (never overwrites an existing value). On by default for --bundle lite')
+  .option('--no-set-approvers', 'Do not set the approver variable')
   .option('-d, --dry-run', 'Show what would happen without changing files')
   .action((target, options) => {
     const targetDir = target || '.';
@@ -42,6 +44,7 @@ program
       overwrite: options.update ?? options.overwrite ?? false,
       dryRun: options.dryRun ?? false,
       bundle: options.bundle,
+      setApprovers: options.setApprovers,
     });
   });
 

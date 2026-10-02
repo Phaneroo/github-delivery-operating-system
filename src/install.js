@@ -400,6 +400,90 @@ function copySingleManagedFile(fullName, srcDir, destDir, opts) {
   return copyManagedFiles([name], ext, srcDir, destDir, opts);
 }
 
+// labels.tsv for a bundle that leaves some labels out: the same file, minus
+// those lines. Same skip/overwrite/dry-run rules as copyManagedFiles.
+function writeFilteredLabels(srcDir, destDir, excluded, { overwrite, dryRun, relDir }) {
+  const label = `${relDir}/${LABELS_TSV}`;
+  const src = path.join(srcDir, LABELS_TSV);
+  const dest = path.join(destDir, LABELS_TSV);
+  if (!fs.existsSync(src)) {
+    console.log(`  Warning: source not found: ${label}`);
+    return { copied: 0, skipped: 1 };
+  }
+  if (fs.existsSync(dest) && !overwrite) {
+    console.log(`  Skipped (exists): ${label}`);
+    return { copied: 0, skipped: 1 };
+  }
+  if (dryRun) {
+    console.log(`  [dry-run] Would create: ${label}`);
+    return { copied: 1, skipped: 0 };
+  }
+  const kept = fs.readFileSync(src, 'utf8').split('\n').filter((line) => !excluded.includes(line.split('\t')[0]));
+  fs.writeFileSync(dest, kept.join('\n'));
+  console.log(`  Created: ${label}`);
+  return { copied: 1, skipped: 0 };
+}
+
+// Why `gh` can't be used against this target, or '' when it can.
+function ghUnavailableReason(targetAbs) {
+  try {
+    execFileSync('gh', ['--version'], { stdio: 'ignore' });
+  } catch {
+    return 'gh CLI not installed. Install from https://cli.github.com/';
+  }
+  if (!fs.existsSync(path.join(targetAbs, '.git'))) return 'Target is not a git repository.';
+  try {
+    execFileSync('gh', ['auth', 'status'], { cwd: targetAbs, stdio: 'ignore' });
+  } catch {
+    return 'gh CLI not authenticated. Run: gh auth login';
+  }
+  try {
+    execFileSync('gh', ['repo', 'view'], { cwd: targetAbs, stdio: 'ignore' });
+  } catch {
+    return 'Target repo not on GitHub or no push access.';
+  }
+  return '';
+}
+
+// Makes the person running the install the release approver: sets the
+// RELEASE_APPROVER repo variable to their GitHub login, and says so. Never
+// replaces a value that's already there. Returns { state: 'set' | 'exists' |
+// 'skipped' | 'dry-run', login?, reason? }.
+function setReleaseApprover(targetAbs, { dryRun }) {
+  const NAME = 'RELEASE_APPROVER';
+  if (dryRun) {
+    console.log(`  [dry-run] Would set ${NAME} to your GitHub login (unless it is already set)`);
+    return { state: 'dry-run' };
+  }
+  const reason = ghUnavailableReason(targetAbs);
+  if (reason) {
+    console.log(`  Skipped ${NAME}: ${reason}`);
+    return { state: 'skipped', reason };
+  }
+  try {
+    const existing = execFileSync('gh', ['variable', 'list', '--json', 'name', '--jq', '.[].name'], {
+      cwd: targetAbs,
+      stdio: 'pipe',
+    })
+      .toString()
+      .split('\n')
+      .map((n) => n.trim());
+    if (existing.includes(NAME)) {
+      console.log(`  Left ${NAME} as it is (already set).`);
+      return { state: 'exists' };
+    }
+    const login = execFileSync('gh', ['api', 'user', '--jq', '.login'], { cwd: targetAbs, stdio: 'pipe' }).toString().trim();
+    execFileSync('gh', ['variable', 'set', NAME, '--body', login], { cwd: targetAbs, stdio: 'pipe' });
+    console.log(`  Set ${NAME} to @${login}: you approve releases in this repo.`);
+    console.log('    Change it any time: Settings → Secrets and variables → Actions → Variables.');
+    return { state: 'set', login };
+  } catch (err) {
+    const msg = (err.stderr && err.stderr.toString().trim()) || err.message || '';
+    console.log(`  Skipped ${NAME}: ${msg}`);
+    return { state: 'skipped', reason: msg };
+  }
+}
+
 function getPackageRoot() {
   // When installed via npm, __dirname is node_modules/github-delivery-os/src
   const possibleRoots = [
@@ -486,13 +570,20 @@ function runInstall(options) {
   let scriptsSkipped;
 
   // Copy workflows (always on — not optional)
+  const ownWorkflows = selected.workflows.filter((wf) => !(selected.liteWorkflows || []).includes(wf));
+  const workflowOpts = { overwrite, dryRun, relDir: '.github/workflows' };
   ({ copied: workflowsCopied, skipped: workflowsSkipped } = copyManagedFiles(
-    selected.workflows,
+    ownWorkflows,
     '.yml',
     workflowsSrc,
     workflowsDest,
-    { overwrite, dryRun, relDir: '.github/workflows' }
+    workflowOpts
   ));
+  if (selected.liteWorkflows) {
+    const lite = copyManagedFiles(selected.liteWorkflows, '.yml', path.join(pkgRoot, LITE_REL_DIR, 'workflows'), workflowsDest, workflowOpts);
+    workflowsCopied += lite.copied;
+    workflowsSkipped += lite.skipped;
+  }
 
   // Copy the scripts the workflows above require() at runtime — required,
   // not optional, so (unlike templates/skill) this always runs too.
@@ -511,11 +602,11 @@ function runInstall(options) {
   // scripts/install.sh reuses copy_managed_files for these exact files
   // rather than hand-rolling the copy).
   for (const extra of [SCRIPTS_PACKAGE_JSON, LABELS_TSV]) {
-    const result = copySingleManagedFile(extra, scriptsSrc, scriptsDest, {
-      overwrite,
-      dryRun,
-      relDir: '.github/scripts',
-    });
+    const opts = { overwrite, dryRun, relDir: '.github/scripts' };
+    const result =
+      extra === LABELS_TSV && selected.excludedLabels
+        ? writeFilteredLabels(scriptsSrc, scriptsDest, selected.excludedLabels, opts)
+        : copySingleManagedFile(extra, scriptsSrc, scriptsDest, opts);
     scriptsCopied += result.copied;
     scriptsSkipped += result.skipped;
   }
@@ -531,7 +622,10 @@ function runInstall(options) {
       // Full copies every template in the directory (as it always has); other
       // bundles copy only their own.
       if (bundle !== DEFAULT_BUNDLE && !selected.templates.includes(name)) continue;
-      const src = path.join(templatesSrc, name);
+      // Lite's own wording for the release form, under the same name.
+      const src = (selected.liteTemplates || []).includes(name)
+        ? path.join(pkgRoot, LITE_REL_DIR, 'ISSUE_TEMPLATE', name)
+        : path.join(templatesSrc, name);
       const dest = path.join(templatesDest, name);
       if (!fs.statSync(src).isFile()) continue;
 
@@ -642,7 +736,7 @@ function runInstall(options) {
       let labelDefs = [];
       if (!labelsSkipReason) {
         try {
-          labelDefs = loadLabels(pkgRoot);
+          labelDefs = loadLabels(pkgRoot).filter(([name]) => !(selected.excludedLabels || []).includes(name));
         } catch (err) {
           labelsSkipReason = `Could not read label definitions: ${err.message}`;
           console.log(`  Skipped labels: ${labelsSkipReason}`);
@@ -672,6 +766,11 @@ function runInstall(options) {
       }
     }
   }
+
+  // Lite's release gate is one approver, so make it the person installing —
+  // by default for lite, or when asked for; --no-set-approvers opts out.
+  const wantApprovers = options.setApprovers === undefined ? bundle === 'lite' : options.setApprovers;
+  const approver = wantApprovers ? setReleaseApprover(targetAbs, { dryRun }) : null;
 
   // Record what got installed so `status` can report a version and detect
   // drift. Only claim a version when the on-disk files actually match it.
@@ -744,10 +843,15 @@ function runInstall(options) {
     console.log('  1. Create labels: Actions → Setup Labels → Run workflow');
     if (labelsSkipReason) console.log(`     (Labels skipped: ${labelsSkipReason})`);
     console.log('  2. Configure repo variables (Settings → Secrets and variables → Actions):');
-    console.log('     - RELEASE_APPROVER: GitHub username of release approver');
     if (bundle === 'lite') {
-      console.log('     - QA_APPROVER: set this to the same username (a release needs both approvals; one person can give both)');
+      if (approver && (approver.state === 'set' || approver.state === 'exists')) {
+        console.log('     - RELEASE_APPROVER: done (see above)');
+      } else {
+        console.log('     - RELEASE_APPROVER: your GitHub username (or re-run with --set-approvers)');
+      }
+      console.log('     No QA approver is needed: comment "approved" on a Production Release issue to ship it.');
     } else {
+      console.log('     - RELEASE_APPROVER: GitHub username of release approver');
       console.log('     - QA_APPROVER: GitHub username of QA approver');
       console.log('     - QA_ASSIGNEES: Comma-separated usernames for QA assignment');
       console.log('  3. Add secrets (optional, for Telegram): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID');
@@ -828,8 +932,15 @@ const BUNDLES = {
     workflows: ['setup-labels', 'sprint-child-creator', 'auto-close-sprint', 'notify-release-approver', 'authorize-deployment'],
     scripts: ['authorize-deployment-verdict', 'auto-close-sprint', 'sprint-child-creator', 'labels'],
     templates: ['config.yml', 'sprint_planning.yml', 'task.yml', 'bug_report.yml', 'production_release_qa_signoff.yml'],
+    // Lite's own versions of these (no QA approver, no QA roll-up, plain
+    // wording), shipped under .github/lite/ and installed under the same names.
+    // Full is never touched by them.
+    liteWorkflows: ['authorize-deployment', 'notify-release-approver'],
+    liteTemplates: ['production_release_qa_signoff.yml'],
+    excludedLabels: ['qa-request', 'qa-rollup'],
   },
 };
+const LITE_REL_DIR = path.join('.github', 'lite');
 const DEFAULT_BUNDLE = 'full';
 
 // The bundle a manifest records; anything missing or unrecognised is full.

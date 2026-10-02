@@ -80,9 +80,6 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Post release roll-up
-        # Skipped when the roll-up script isn't installed (the lite bundle
-        # leaves out the QA machinery it reads).
-        if: hashFiles('.github/scripts/release-rollup.js') != ''
         uses: actions/github-script@v9
         env:
           RELEASE_ISSUE: ${{ github.event.inputs.release_issue || github.event.issue.number }}

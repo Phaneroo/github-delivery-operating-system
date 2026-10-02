@@ -1199,9 +1199,48 @@ test('lite ships every script its workflows require (apart from the QA ones it l
   for (const t of BUNDLES.lite.templates) assert.ok(fs.existsSync(path.join(packageRoot, '.github', 'ISSUE_TEMPLATE', t)), `${t} is missing`);
 });
 
-test('notify-release-approver skips the roll-up when its script is not installed (lite leaves it out)', () => {
-  const yml = fs.readFileSync(path.join(packageRoot, '.github', 'workflows', 'notify-release-approver.yml'), 'utf8');
-  assert.match(yml, /hashFiles\('\.github\/scripts\/release-rollup\.js'\) != ''/);
+test('the full release workflows are untouched by lite, and lite ships its own with no QA approver or roll-up', () => {
+  const lite = (f) => fs.readFileSync(path.join(packageRoot, '.github', 'lite', 'workflows', f), 'utf8');
+  assert.doesNotMatch(lite('authorize-deployment.yml'), /QA_APPROVER|qa-approver/);
+  assert.doesNotMatch(lite('notify-release-approver.yml'), /release-rollup|qa-request/);
+  assert.match(lite('authorize-deployment.yml'), /authorize-deployment-verdict\.js/);
+  const full = fs.readFileSync(path.join(packageRoot, '.github', 'workflows', 'authorize-deployment.yml'), 'utf8');
+  assert.match(full, /QA_APPROVER/);
+});
+
+test('install --bundle lite puts the lite release workflows, release template and label list in place', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true }));
+    const read = (...p) => fs.readFileSync(path.join(dir, '.github', ...p), 'utf8');
+    assert.doesNotMatch(read('workflows', 'authorize-deployment.yml'), /QA_APPROVER/);
+    assert.doesNotMatch(read('workflows', 'notify-release-approver.yml'), /release-rollup/);
+    assert.doesNotMatch(read('ISSUE_TEMPLATE', 'production_release_qa_signoff.yml'), /QA Recommendation/);
+    const labels = read('scripts', LABELS_TSV);
+    assert.doesNotMatch(labels, /^qa-request\t/m);
+    assert.doesNotMatch(labels, /^qa-rollup\t/m);
+    assert.match(labels, /^production\t/m);
+    assert.match(labels, /^ready-for-deploy\t/m);
+  } finally {
+    rm(dir);
+  }
+});
+
+test('a default install copies the full release workflows and labels byte for byte', () => {
+  const dir = mkTmpRepo();
+  try {
+    inRepoQuietly(dir, () => runInstall({ targetDir: '.', withTemplates: true }));
+    for (const [rel, src] of [
+      ['workflows/authorize-deployment.yml', '.github/workflows/authorize-deployment.yml'],
+      ['workflows/notify-release-approver.yml', '.github/workflows/notify-release-approver.yml'],
+      ['scripts/labels.tsv', '.github/scripts/labels.tsv'],
+      ['ISSUE_TEMPLATE/production_release_qa_signoff.yml', '.github/ISSUE_TEMPLATE/production_release_qa_signoff.yml'],
+    ]) {
+      assert.equal(fs.readFileSync(path.join(dir, '.github', rel), 'utf8'), fs.readFileSync(path.join(packageRoot, src), 'utf8'), rel);
+    }
+  } finally {
+    rm(dir);
+  }
 });
 
 test('install --bundle lite installs only the lite set and records the bundle', () => {
@@ -1303,6 +1342,128 @@ test('an unknown bundle installs nothing and sets a failing exit code', () => {
   } finally {
     process.exitCode = origExit;
     console.error = origErr;
+    rm(dir);
+  }
+});
+
+// ---- --set-approvers (a stubbed `gh` on PATH; nothing touches GitHub) ----
+
+// Runs fn with a fake `gh` first on PATH. FAKE_GH_VARS = variables that
+// already exist, FAKE_GH_LOGIN = who `gh api user` says you are,
+// FAKE_GH_UNAUTH=1 = `gh auth status` fails. Every call is appended to the log.
+function withFakeGh({ vars = '', unauth = false, login = 'solo-dev' } = {}, fn) {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'delivery-os-gh-'));
+  const log = path.join(bin, 'calls.log');
+  fs.writeFileSync(
+    path.join(bin, 'gh'),
+    [
+      '#!/bin/sh',
+      'echo "$@" >> "$FAKE_GH_LOG"',
+      'case "$1 $2" in',
+      '  "auth status") [ -n "$FAKE_GH_UNAUTH" ] && exit 1 ;;',
+      '  "variable list") printf "%s\\n" $FAKE_GH_VARS ;;',
+      '  "api user") echo "$FAKE_GH_LOGIN" ;;',
+      'esac',
+      'exit 0',
+    ].join('\n'),
+    { mode: 0o755 }
+  );
+  const saved = { PATH: process.env.PATH };
+  Object.assign(process.env, {
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    FAKE_GH_LOG: log,
+    FAKE_GH_VARS: vars,
+    FAKE_GH_LOGIN: login,
+  });
+  if (unauth) process.env.FAKE_GH_UNAUTH = '1';
+  try {
+    return fn(() => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : ''));
+  } finally {
+    process.env.PATH = saved.PATH;
+    for (const k of ['FAKE_GH_LOG', 'FAKE_GH_VARS', 'FAKE_GH_LOGIN', 'FAKE_GH_UNAUTH']) delete process.env[k];
+    rm(bin);
+  }
+}
+
+function gitRepo() {
+  const dir = mkTmpRepo();
+  fs.mkdirSync(path.join(dir, '.git'));
+  return dir;
+}
+
+test('a lite install sets RELEASE_APPROVER to the person installing, and says so', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, (calls) => {
+      const lines = [];
+      const origLog = console.log;
+      console.log = (...a) => lines.push(a.join(' '));
+      try {
+        const cwd = process.cwd();
+        process.chdir(dir);
+        runInstall({ targetDir: '.', bundle: 'lite' });
+        process.chdir(cwd);
+      } finally {
+        console.log = origLog;
+      }
+      assert.match(calls(), /variable set RELEASE_APPROVER --body solo-dev/);
+      assert.doesNotMatch(calls(), /QA_APPROVER/);
+      assert.match(lines.join('\n'), /Set RELEASE_APPROVER to @solo-dev/);
+      assert.match(lines.join('\n'), /RELEASE_APPROVER: done/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--set-approvers never overwrites an approver that is already set', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({ vars: 'RELEASE_APPROVER QA_APPROVER' }, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+      assert.doesNotMatch(calls(), /variable set/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--set-approvers skips cleanly when gh is not signed in, and the install still completes', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({ unauth: true }, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite' }));
+      assert.doesNotMatch(calls(), /variable set/);
+      assert.equal(readManifest(dir).bundle, 'lite');
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--dry-run and --no-set-approvers set nothing; a full install does not set approvers by default', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', dryRun: true }));
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', setApprovers: false }));
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'full' }));
+      assert.doesNotMatch(calls(), /variable set/);
+      assert.doesNotMatch(calls(), /variable list/);
+    });
+  } finally {
+    rm(dir);
+  }
+});
+
+test('--set-approvers can be asked for on a full install', () => {
+  const dir = gitRepo();
+  try {
+    withFakeGh({}, (calls) => {
+      inRepoQuietly(dir, () => runInstall({ targetDir: '.', setApprovers: true }));
+      assert.match(calls(), /variable set RELEASE_APPROVER --body solo-dev/);
+    });
+  } finally {
     rm(dir);
   }
 });

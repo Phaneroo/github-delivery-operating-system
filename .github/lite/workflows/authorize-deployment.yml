@@ -1,0 +1,209 @@
+# Lite variant of authorize-deployment.yml, installed under the same name by
+# `install --bundle lite`. There is no QA approver: the release approver's
+# approval alone authorizes a release. Everything else (phrases, decline
+# handling, labels, closing what the skill filed) uses the same verdict module.
+name: Authorize Release (Lite)
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  authorize:
+    if: github.event.issue && contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read # to check a filing's PR has merged before closing it on release
+      contents: read # needed for actions/checkout, so the verdict script can be required from the repo
+    # Serialize per-issue: two comments posted seconds apart (e.g. a decline
+    # immediately corrected with an approval) can trigger overlapping runs.
+    # Both would recompute the same final verdict correctly, but each reads
+    # its "already posted?" check from the stale label snapshot on its own
+    # triggering event, so without this they could both post a status
+    # comment. Scoped per issue (not per repo) so unrelated releases still
+    # process concurrently.
+    concurrency:
+      group: authorize-deployment-${{ github.event.issue.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check Dual Approval (Flexible + Decline)
+        uses: actions/github-script@v9
+        env:
+          RELEASE_APPROVER: ${{ vars.RELEASE_APPROVER || 'release-approver' }}
+          DELIVERY_OS_AUTO_CLOSE: ${{ vars.DELIVERY_OS_AUTO_CLOSE }}
+        with:
+          script: |
+            // Pure verdict logic lives in a real, unit-tested module (see
+            // .github/scripts/authorize-deployment-verdict.js and
+            // test/authorize-deployment-verdict.test.js) rather than inline here,
+            // so it isn't only verified by hand whenever it changes.
+            const { computeVerdict, nextReleaseAction, selectFilingsToCloseOnRelease, parseFilingPrNumber } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+
+            const issueNumber = context.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const releaseApprover = process.env.RELEASE_APPROVER;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+              per_page: 100
+            });
+
+            const { releaseVerdict } = computeVerdict(comments, releaseApprover, "");
+
+            // No verdict from the release approver yet: routine discussion,
+            // nothing to act on. Return before the live label fetch below, which
+            // only matters once there is a verdict to check against current state.
+            if (!releaseVerdict) return;
+
+            // Fetch labels live rather than trusting context.payload.issue.labels:
+            // that's a snapshot fixed at the triggering event's delivery time.
+            // Two comments posted seconds apart queue under the concurrency
+            // group above and run sequentially, but each was still delivered
+            // (and its label snapshot captured) before either job actually ran
+            // — serializing execution order doesn't refresh an already-stale
+            // snapshot. A live re-fetch is what actually lets the second
+            // (queued) run see what the first one just did.
+            const { data: liveIssue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            const currentLabels = (liveIssue.labels || []).map((l) => (typeof l === "string" ? l : l.name));
+            const alreadyDeclined = currentLabels.includes("declined");
+            const alreadyReady = currentLabels.includes("ready-for-deploy");
+
+            const action = nextReleaseAction({
+              releaseVerdict,
+              // No QA approver in lite: the release approval stands alone.
+              qaVerdict: releaseVerdict === "approved" ? "approved" : null,
+              declined: alreadyDeclined,
+              ready: alreadyReady
+            });
+
+            // Nobody's latest verdict is a decline any more (the decliner approved),
+            // but the release isn't fully signed off yet: just lift the stale
+            // `declined` label.
+            if (action === "clear-declined") {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name: "declined" });
+              } catch (e) {}
+              return;
+            }
+
+            if (action === "decline") {
+              try {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: ["declined"]
+                });
+              } catch (e) {
+                console.log(`Failed to add 'declined' label: ${e.message || e}`);
+              }
+
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  name: "ready-for-deploy"
+                });
+              } catch (e) {}
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: "🔴 **Release Declined**\n\nThis release requires additional fixes before production deployment. Approve it again once they land to lift the decline."
+              });
+
+              return;
+            }
+
+            if (action === "authorize") {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  name: "declined"
+                });
+              } catch (e) {}
+
+              try {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  labels: ["ready-for-deploy"]
+                });
+              } catch (e) {
+                console.log(`Failed to add 'ready-for-deploy' label: ${e.message || e}`);
+              }
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body: "🟢🚀 **Deployment Authorized**\n\nRelease approval received. This release is cleared for production deployment."
+              });
+
+              // Close what the delivery-ops skill filed for work that's in this
+              // release, so it doesn't sit "In Progress" forever. Opt out
+              // with the DELIVERY_OS_AUTO_CLOSE=false repo variable.
+              if ((process.env.DELIVERY_OS_AUTO_CLOSE || '').trim().toLowerCase() !== 'false') {
+                const openFilings = await github.paginate(github.rest.issues.listForRepo, {
+                  owner, repo, state: "open", labels: "delivery-ops-filed", per_page: 100
+                });
+                const candidates = openFilings.filter((i) =>
+                  selectFilingsToCloseOnRelease(openFilings, liveIssue.created_at).includes(i.number));
+
+                // A filing for a PR that hasn't merged isn't in this release —
+                // leave it open so the release that does ship it covers it.
+                const mergedByPr = new Map();
+                const toClose = [];
+                for (const issue of candidates) {
+                  const prNumber = parseFilingPrNumber(issue.body);
+                  if (prNumber) {
+                    if (!mergedByPr.has(prNumber)) {
+                      try {
+                        const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+                        mergedByPr.set(prNumber, Boolean(pr.merged));
+                      } catch (e) {
+                        console.log(`Couldn't check PR #${prNumber} (${e.message || e}) — leaving its filings open.`);
+                        mergedByPr.set(prNumber, false);
+                      }
+                    }
+                    if (!mergedByPr.get(prNumber)) continue;
+                  }
+                  toClose.push(issue.number);
+                }
+
+                for (const n of toClose) {
+                  try {
+                    await github.rest.issues.createComment({
+                      owner, repo, issue_number: n,
+                      body: `Covered by release #${issueNumber}, which was just authorized for production — closing automatically. Reopen if this work wasn't actually part of it.`
+                    });
+                    await github.rest.issues.update({ owner, repo, issue_number: n, state: "closed", state_reason: "completed" });
+                  } catch (e) {
+                    console.log(`Failed to close #${n}: ${e.message || e}`);
+                  }
+                }
+                if (toClose.length) {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: issueNumber,
+                    body: `🧹 Closed ${toClose.length} auto-filed issue(s) covered by this release: ${toClose.map((n) => `#${n}`).join(", ")}`
+                  });
+                }
+              }
+            }

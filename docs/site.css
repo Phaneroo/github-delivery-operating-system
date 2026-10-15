@@ -320,6 +320,29 @@ body {
   max-width: 50rem;
 }
 
+.downloads-stat {
+  margin-top: 0.85rem;
+  font-size: 0.95rem;
+}
+
+.downloads-stat[hidden] {
+  display: none;
+}
+
+.downloads-stat a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.downloads-stat a:hover {
+  color: var(--accent-text);
+}
+
+.downloads-stat strong {
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
 .doc-lead {
   font-size: 1.05rem;
   color: var(--text-muted);

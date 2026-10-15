@@ -175,3 +175,34 @@
     addButton(wrap, code);
   });
 })();
+
+// Live npm download counts in the hero. npm's public API allows cross-origin reads,
+// so there is nothing to host or refresh. If the request fails the line stays hidden.
+(function () {
+  var stat = document.getElementById('downloads-stat');
+  if (!stat) return;
+  var api = 'https://api.npmjs.org/downloads/point/';
+  var pkg = '/github-delivery-os';
+  var fmt = new Intl.NumberFormat('en-US');
+
+  function get(range) {
+    return fetch(api + range + pkg).then(function (r) {
+      if (!r.ok) throw new Error('npm ' + r.status);
+      return r.json();
+    }).then(function (d) {
+      if (typeof d.downloads !== 'number') throw new Error('bad payload');
+      return d.downloads;
+    });
+  }
+
+  get('last-year').then(function (year) {
+    document.getElementById('downloads-year').textContent = fmt.format(year);
+    return get('last-month').then(function (month) {
+      document.getElementById('downloads-month').textContent = fmt.format(month);
+    }, function () {
+      document.getElementById('downloads-month-wrap').hidden = true;
+    }).then(function () {
+      stat.hidden = false;
+    });
+  }).catch(function () {});
+})();

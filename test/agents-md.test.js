@@ -70,3 +70,16 @@ test('uninstall deletes an AGENTS.md that held only our section; --dry-run touch
     assert.ok(!fs.existsSync(file));
   });
 });
+
+test('a lite install gets the lite addendum in the AGENTS.md section; full does not', () => {
+  inRepo((dir, file) => {
+    runInstall({ targetDir: '.', withAgents: true, bundle: 'lite' });
+    const lite = fs.readFileSync(file, 'utf8');
+    assert.match(lite, /## Which install is this\? \(full or lite\)/);
+    assert.doesNotMatch(lite, /Claude/);
+    fs.unlinkSync(file);
+    fs.rmSync(path.join(dir, '.github'), { recursive: true, force: true });
+    runInstall({ targetDir: '.', withAgents: true });
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /Which install is this\?/);
+  });
+});

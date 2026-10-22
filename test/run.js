@@ -17,6 +17,7 @@ require('./release-rollup.test.js');
 require('./lite-release.test.js');
 require('./lite-drift.test.js');
 require('./setup-skill.test.js');
+require('./agents-md.test.js');
 require('./rolling-qa.test.js');
 require('./workflows-e2e.test.js');
 

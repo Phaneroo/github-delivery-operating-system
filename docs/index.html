@@ -229,6 +229,7 @@ Claude: A dry run of `add qa` shows what comes
         <h2>Delivery Ops: run it by asking Claude</h2>
         <p>Two Claude Code skills work as one assistant. The <strong>setup skill</strong> is the front door, used once: it helps you choose what to install and installs it. The <strong>delivery-ops</strong> skill, which the install puts in your repo, handles everything after: sprints, bugs, releases, approvals, status, and changing what's installed. You never choose between them. Ask in plain words and Claude picks the right one.</p>
         <p>Installing with <code>--with-skill</code> (recommended) drops a <code>.claude/skills/delivery-ops/SKILL.md</code> skill into the repo, scoped to that repo's Delivery OS install. It lets anyone using <a href="https://claude.com/claude-code" target="_blank" rel="noopener noreferrer">Claude Code</a> drive the workflows above by asking in plain language, instead of hand-building <code>gh issue create</code> calls and remembering each template's exact field names.</p>
+        <p><strong>Not using Claude?</strong> Install with <code>--with-agents</code> instead (or as well). It writes the same instructions into <code>AGENTS.md</code>, which opencode, Aider, Cline, Continue, Cursor, Codex and most other coding agents read, so people running DeepSeek or any other model can operate Delivery OS the same way. It needs <code>gh</code> logged in and nothing else. An existing <code>AGENTS.md</code> keeps its text; Delivery OS only owns its marked section.</p>
         <p>Before doing anything, it checks the target repo — confirms Delivery OS is installed, labels exist, and approvers/QA assignees are configured — and always shows the exact issue or comment content for confirmation before creating or posting for real. It can also run a task's whole lifecycle on its own (notice, classify, file, keep in sync, close) — acting without asking when the outcome is clear and always posting a one-line notice so nothing happens invisibly — or turn a spec/feature description into a full phase-and-task breakdown, always shown for confirmation first since that creates many issues at once.</p>
 
         <h3 id="conversation">What a session looks like</h3>
@@ -573,6 +574,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td><code>install --with-templates .</code></td><td>First install — workflows + issue templates</td></tr>
               <tr><td><code>install --with-templates --with-labels .</code></td><td>Also create labels immediately via <code>gh</code> CLI</td></tr>
               <tr><td><code>install --with-templates --with-skill .</code></td><td>You'll operate this repo's Delivery OS from Claude Code</td></tr>
+              <tr><td><code>install --with-templates --with-agents .</code></td><td>You'll operate this repo's Delivery OS from DeepSeek or another agent that reads <code>AGENTS.md</code></td></tr>
               <tr><td><code>install --with-templates --with-labels --with-skill .</code></td><td>Everything at once, in one command</td></tr>
               <tr><td><code>install --bundle lite --with-templates --with-labels --with-skill .</code></td><td>One person or a small project — sprints, tasks, bugs and a single-approver release, without the QA machinery. Sets you as the release approver</td></tr>
               <tr><td><code>install --only a,b …</code> / <code>--skip a,b</code></td><td>Pick individual workflows (names from <code>list</code>) instead of a whole bundle</td></tr>
@@ -584,7 +586,7 @@ Claude: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td><code>install --update …</code></td><td>Update an existing install, or add a flag you skipped earlier</td></tr>
               <tr><td><code>status .</code></td><td>Check what's installed, its version, and for broken installs</td></tr>
               <tr><td><code>shell-hook --install</code></td><td>Get a reminder in your terminal when you <code>cd</code> into an out-of-date repo</td></tr>
-              <tr><td><code>uninstall --with-templates --with-skill .</code></td><td>Remove everything, including templates and the skill</td></tr>
+              <tr><td><code>uninstall --with-templates --with-skill --with-agents .</code></td><td>Remove everything, including templates, the skill and the <code>AGENTS.md</code> section</td></tr>
             </tbody>
           </table>
         </div>

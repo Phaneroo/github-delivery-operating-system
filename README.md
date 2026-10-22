@@ -35,7 +35,9 @@ With several approvers, a decline from any one of them stands until that same pe
 npx github-delivery-os install --with-templates --with-labels --with-skill .
 ```
 
-From your repo root. `--with-labels` creates labels via the `gh` CLI, `--with-skill` adds the Claude Code skill, `--dry-run` previews first. Drop `--with-skill` if you don't use Claude Code. See the [landing page](https://phaneroo.github.io/github-delivery-operating-system/#install) for every flag combination and when to use it, or [Consumer Setup](docs/consumer-setup.md) for the clone-and-run alternative, configuration, and troubleshooting.
+From your repo root. `--with-labels` creates labels via the `gh` CLI, `--with-skill` adds the Claude Code skill, `--dry-run` previews first. Drop `--with-skill` if you don't use Claude Code.
+
+**Using DeepSeek (or another model) instead of Claude?** Add `--with-agents` instead of `--with-skill`. It writes the same instructions into `AGENTS.md`, which opencode, Aider, Cline, Continue, Cursor, Codex and most other coding agents read, whichever model sits behind them. An existing `AGENTS.md` keeps its text; Delivery OS only owns its marked section, and `uninstall --with-agents` removes just that. The agent needs `gh` logged in and nothing else. See the [landing page](https://phaneroo.github.io/github-delivery-operating-system/#install) for every flag combination and when to use it, or [Consumer Setup](docs/consumer-setup.md) for the clone-and-run alternative, configuration, and troubleshooting.
 
 </details>
 

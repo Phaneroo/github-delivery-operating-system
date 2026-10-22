@@ -5,6 +5,8 @@ const { execFileSync } = require('child_process');
 
 const MANIFEST_FILE = 'delivery-os.json'; // written to .github/delivery-os.json in the target repo
 const SKILL_REL_PATH = path.join('.claude', 'skills', 'delivery-ops', 'SKILL.md'); // opt-in via --with-skill
+const AGENTS_REL_PATH = 'AGENTS.md'; // opt-in via --with-agents: the same skill, for any agent that reads AGENTS.md
+const agentsMd = require('./agents-md');
 
 // Travels with the skill: a Claude Code SessionStart hook that offers the
 // update when the repo's install is behind npm (#90). Registered in the
@@ -171,6 +173,14 @@ function loadLabels(pkgRoot) {
 
 function manifestPath(targetAbs) {
   return path.join(targetAbs, '.github', MANIFEST_FILE);
+}
+
+function hasAgentsBlock(targetAbs) {
+  try {
+    return fs.readFileSync(path.join(targetAbs, AGENTS_REL_PATH), 'utf8').includes(agentsMd.BEGIN);
+  } catch {
+    return false;
+  }
 }
 
 function skillPath(targetAbs) {
@@ -542,6 +552,7 @@ function runInstall(options) {
     withTemplates = false,
     withLabels = false,
     withSkill = false,
+    withAgents = false,
     overwrite = false,
     dryRun = false,
   } = options;
@@ -855,6 +866,24 @@ function runInstall(options) {
     }
   }
 
+  // AGENTS.md section (opt-in): the skill for non-Claude agents. It lives in a
+  // marked block so the repo's own AGENTS.md text is kept as it is.
+  if (withAgents && fs.existsSync(skillSrc)) {
+    const agentsDest = path.join(targetAbs, AGENTS_REL_PATH);
+    const existing = fs.existsSync(agentsDest) ? fs.readFileSync(agentsDest, 'utf8') : '';
+    const hasBlock = existing.includes(agentsMd.BEGIN);
+    if (hasBlock && !overwrite) {
+      console.log(`  Skipped (exists): Delivery OS section in ${AGENTS_REL_PATH}`);
+    } else if (dryRun) {
+      console.log(`  [dry-run] Would ${hasBlock ? 'update' : existing ? 'append to' : 'create'}: ${AGENTS_REL_PATH}`);
+    } else {
+      const base = fs.readFileSync(skillSrc, 'utf8');
+      const text = bundle === DEFAULT_BUNDLE ? base : skillForBundle(base, path.join(pkgRoot, LITE_REL_DIR, 'skill-addendum.md'));
+      fs.writeFileSync(agentsDest, agentsMd.mergeAgentsMd(existing, agentsMd.agentsSection(text)));
+      console.log(`  ${hasBlock ? 'Updated' : existing ? 'Added a section to' : 'Created'}: ${AGENTS_REL_PATH}`);
+    }
+  }
+
   // The update-check hook travels with the skill (same flag, same skip/
   // overwrite rule), plus its registration in .claude/settings.json.
   const hookSrc = path.join(pkgRoot, UPDATE_HOOK_REL_PATH);
@@ -982,13 +1011,15 @@ function runInstall(options) {
     !withTemplates && TEMPLATES.some((t) => fs.existsSync(path.join(templatesDest, t)));
   const skillPresentButNotTouched =
     !withSkill && (fs.existsSync(skillPath(targetAbs)) || fs.existsSync(updateHookPath(targetAbs)));
+  const agentsPresentButNotTouched = !withAgents && hasAgentsBlock(targetAbs);
   const cleanInstall =
     workflowsSkipped === 0 &&
     templatesSkipped === 0 &&
     scriptsSkipped === 0 &&
     skillSkipped === 0 &&
     !templatesPresentButNotTouched &&
-    !skillPresentButNotTouched;
+    !skillPresentButNotTouched &&
+    !agentsPresentButNotTouched;
   if (!dryRun && cleanInstall) {
     const pkgVersion = require(path.join(pkgRoot, 'package.json')).version;
     writeManifest(targetAbs, pkgVersion, bundle, customWorkflows, packs);
@@ -1118,7 +1149,7 @@ function runInstall(options) {
 // --update, or the recorded version never advances and `status` keeps
 // suggesting the same command forever. Build the hint from what's actually
 // on disk so it's never wrong.
-function buildUpdateCommand({ hasTemplates, hasSkill, bundle = DEFAULT_BUNDLE }) {
+function buildUpdateCommand({ hasTemplates, hasSkill, hasAgents = false, bundle = DEFAULT_BUNDLE }) {
   // --with-labels is unconditional, unlike --with-templates/--with-skill —
   // those add a whole category of files a repo may have deliberately never
   // wanted, but label sync is idempotent (skips anything that already
@@ -1131,6 +1162,7 @@ function buildUpdateCommand({ hasTemplates, hasSkill, bundle = DEFAULT_BUNDLE })
   const flags = [
     hasTemplates ? '--with-templates' : null,
     hasSkill ? '--with-skill' : null,
+    hasAgents ? '--with-agents' : null,
     bundle !== DEFAULT_BUNDLE ? `--bundle ${bundle}` : null,
     '--with-labels',
     '--update',
@@ -1473,6 +1505,7 @@ async function runStatus(options) {
     fs.existsSync(path.join(templatesDest, t))
   );
   const skillInstalled = fs.existsSync(skillPath(targetAbs));
+  const agentsInstalled = hasAgentsBlock(targetAbs);
 
   // Read setup-labels.yml's content (if installed) exactly once and reuse
   // the result below — both brokenWorkflowDetails and scriptsRequiringPkgJson
@@ -1524,7 +1557,7 @@ async function runStatus(options) {
     } else {
       console.log('Installed version: unknown (installed before version tracking was added)');
       console.log(
-        `  Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
+        `  Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, hasAgents: agentsInstalled, bundle })}`
       );
     }
 
@@ -1537,7 +1570,7 @@ async function runStatus(options) {
       } else if (manifest && manifest.version) {
         console.log(`⬆️  Update available: ${manifest.version} → ${latest}`);
         console.log(
-          `    Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
+          `    Run: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, hasAgents: agentsInstalled, bundle })}`
         );
       } else {
         console.log(`Latest published version: ${latest}`);
@@ -1561,7 +1594,7 @@ async function runStatus(options) {
     });
     console.log('  That workflow will fail with MODULE_NOT_FOUND the next time it runs.');
     console.log(
-      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
+      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, hasAgents: agentsInstalled, bundle })}`
     );
     console.log('');
   }
@@ -1572,7 +1605,7 @@ async function runStatus(options) {
     console.log('  require()s a script under .github/scripts will fail with "module is not');
     console.log('  defined in ES module scope" the next time it runs.');
     console.log(
-      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, bundle })}`
+      `  Fix: ${buildUpdateCommand({ hasTemplates: installedTemplates.length > 0, hasSkill: skillInstalled, hasAgents: agentsInstalled, bundle })}`
     );
     console.log('');
   }
@@ -1608,6 +1641,12 @@ async function runStatus(options) {
     console.log('');
   }
 
+  if (agentsInstalled) {
+    console.log('AGENTS.md (other coding agents):');
+    console.log('  ✓ delivery-ops section');
+    console.log('');
+  }
+
   if (installedWorkflows.length === 0 && installedTemplates.length === 0 && !skillInstalled) {
     console.log('Delivery OS is not installed in this repository.');
     console.log('Run: npx github-delivery-os install --with-templates --with-labels --with-skill .');
@@ -1632,7 +1671,7 @@ async function runStatus(options) {
 }
 
 function runUninstall(options) {
-  const { targetDir = '.', withTemplates = false, withSkill = false, dryRun = false } = options;
+  const { targetDir = '.', withTemplates = false, withSkill = false, withAgents = false, dryRun = false } = options;
   const targetAbs = path.resolve(process.cwd(), targetDir);
   const workflowsDest = path.join(targetAbs, '.github', 'workflows');
   const templatesDest = path.join(targetAbs, '.github', 'ISSUE_TEMPLATE');
@@ -1708,6 +1747,18 @@ function runUninstall(options) {
   }
 
   let skillRemoved = 0;
+  if (withAgents && hasAgentsBlock(targetAbs)) {
+    const agentsDest = path.join(targetAbs, AGENTS_REL_PATH);
+    const rest = agentsMd.removeAgentsBlock(fs.readFileSync(agentsDest, 'utf8'));
+    if (dryRun) {
+      console.log(`  [dry-run] Would remove the Delivery OS section from ${AGENTS_REL_PATH}${rest === null ? ' (and the now-empty file)' : ''}`);
+    } else {
+      if (rest === null) fs.unlinkSync(agentsDest);
+      else fs.writeFileSync(agentsDest, rest);
+      console.log(`  Removed the Delivery OS section from ${AGENTS_REL_PATH}`);
+    }
+    skillRemoved++;
+  }
   if (withSkill) {
     const skillDest = skillPath(targetAbs);
     if (fs.existsSync(skillDest)) {

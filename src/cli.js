@@ -23,6 +23,7 @@ program
   .option('-t, --with-templates', 'Copy issue templates (sprint, task, bug, QA, production release)')
   .option('-l, --with-labels', 'Create labels via gh CLI (requires gh auth)')
   .option('-s, --with-skill', 'Add the delivery-ops Claude Code skill (.claude/skills/delivery-ops/SKILL.md)')
+  .option('-a, --with-agents', 'Add the delivery-ops instructions to AGENTS.md, for any coding agent that reads it (DeepSeek in opencode/Aider/Cline/Cursor, Codex, ...)')
   .option('-u, --update', 'Replace existing workflow/template files with the latest version')
   .option('--no-update', 'Skip existing files (default)')
   // Pre-1.5.0 names, kept working silently so existing scripts/CI calling
@@ -44,6 +45,7 @@ program
       withTemplates: options.withTemplates ?? false,
       withLabels: options.withLabels ?? false,
       withSkill: options.withSkill ?? false,
+      withAgents: options.withAgents ?? false,
       overwrite: options.update ?? options.overwrite ?? false,
       dryRun: options.dryRun ?? false,
       bundle: options.bundle,
@@ -91,12 +93,14 @@ program
   .description('Remove Delivery OS workflows (and optionally templates)')
   .option('-t, --with-templates', 'Also remove issue templates')
   .option('-s, --with-skill', 'Also remove the delivery-ops Claude Code skill')
+  .option('-a, --with-agents', 'Also remove the Delivery OS section from AGENTS.md')
   .option('-d, --dry-run', 'Show what would be removed without deleting')
   .action((target, options) => {
     runUninstall({
       targetDir: target || '.',
       withTemplates: options.withTemplates ?? false,
       withSkill: options.withSkill ?? false,
+      withAgents: options.withAgents ?? false,
       dryRun: options.dryRun ?? false,
     });
   });

@@ -1,8 +1,8 @@
 'use strict';
 
 // `install --with-agents`: the delivery-ops skill as an AGENTS.md section, for
-// any coding agent that reads that file (opencode, Aider, Cline, Continue,
-// Cursor, Codex, ...) and so for any model behind it, DeepSeek included. It is
+// any coding agent that reads that file (Codex, Cursor, GitHub Copilot, Cline,
+// opencode, ...) and so for any model behind it. It is
 // generated from the one skill, never a second copy to maintain. The section
 // sits between markers so a repo's own AGENTS.md text is never touched.
 

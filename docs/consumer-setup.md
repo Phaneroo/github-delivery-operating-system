@@ -55,7 +55,7 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `-t, --with-templates` | Copy issue templates |
 | `-l, --with-labels` | Create labels via `gh` CLI |
-| `-a, --with-agents` | Add the `delivery-ops` instructions to `AGENTS.md` for any coding agent that reads it (DeepSeek in opencode/Aider/Cline/Cursor, Codex, ...) |
+| `-a, --with-agents` | Add the `delivery-ops` instructions to `AGENTS.md` for any AI coding agent that reads it (Codex, Cursor, GitHub Copilot, Cline, opencode and others; a few, like Aider, need to be pointed at the file) |
 | `-s, --with-skill` | Add the `delivery-ops` Claude Code skill and its update-check hook |
 | `-u, --update` | Replace existing files |
 | `-b, --bundle <full\|lite>` | Which set to install. `full` (default) is everything; `lite` is for one person or a small project — see [Lite install](#lite-install). With no `--bundle`, a repo keeps the bundle it's already on |

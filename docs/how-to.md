@@ -225,7 +225,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Update install | Add `--update` |
 | Start small | `npx github-delivery-os install --bundle lite --with-templates .` (see [Consumer Setup](consumer-setup.md#lite-install)) |
 | Add or remove a piece | `npx github-delivery-os add qa .` / `remove qa .` / `list .` |
-| Use DeepSeek or another non-Claude agent | Install with `--with-agents`; it writes the instructions into `AGENTS.md` (opencode, Aider, Cline, Cursor, Codex and others read it) |
+| Use an AI tool other than Claude Code | Install with `--with-agents`; it writes the instructions into `AGENTS.md`, which most coding agents read (Codex, Cursor, GitHub Copilot, Cline, opencode and others; a few, like Aider, need to be pointed at the file) |
 | Get update reminders | Claude Code: install with `--with-skill`. Terminal: `npx github-delivery-os@latest shell-hook --install` |
 | Create sprint | New issue → SPRINT PLANNING |
 | Request release | New issue → PRODUCTION RELEASE & QA SIGN-OFF |

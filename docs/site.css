@@ -939,3 +939,114 @@ pre code {
 #tab-none:focus-visible ~ .tab-labels label[for="tab-none"] {
   outline: 2px solid var(--accent-text);
 }
+
+/* Motion. Everything below is switched off for prefers-reduced-motion. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: 0 0 26px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
+@keyframes caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+
+.doc-hero > * {
+  animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.doc-hero > :nth-child(2) { animation-delay: 0.08s; }
+.doc-hero > :nth-child(3) { animation-delay: 0.16s; }
+
+.marquee {
+  overflow: hidden;
+  margin: -0.5rem 0 2rem;
+  padding: 0.7rem 0;
+  border-block: 1px solid var(--border);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  gap: 2.25rem;
+  padding-right: 2.25rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  animation: marquee 38s linear infinite;
+}
+
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+.tab-panel {
+  animation: panel-in 0.28s ease both;
+}
+
+#install .tabs .install-block {
+  animation: breathe 4.5s ease-in-out infinite;
+}
+
+.tabs .install-block code::after {
+  content: '▍';
+  margin-left: 2px;
+  animation: caret 1.1s steps(1) infinite;
+}
+
+.js-reveal .reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.js-reveal .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+.feature,
+.cta {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.feature:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-hero > *,
+  .tab-panel,
+  #install .tabs .install-block,
+  .tabs .install-block code::after,
+  .marquee-track {
+    animation: none;
+  }
+
+  .js-reveal .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .feature:hover {
+    transform: none;
+  }
+}

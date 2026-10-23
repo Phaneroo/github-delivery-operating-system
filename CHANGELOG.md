@@ -14,7 +14,7 @@ Delivery OS for AI coding tools other than Claude Code. Nothing changes in a rep
 - **`install --with-agents`: the delivery-ops instructions as an `AGENTS.md` section.** Most AI coding agents read `AGENTS.md` whichever model runs behind them (Codex, Cursor, GitHub Copilot, Cline, opencode and others; a few, like Aider, need to be pointed at the file), so people who don't use Claude Code can create sprints, file bugs, request and approve releases, and check status the same way. The agent needs `gh` logged in and nothing else.
   - It is generated from the one `delivery-ops` skill, not a second copy to keep in step: the frontmatter and Claude-only wording are dropped and a short preamble is added (one step at a time, run the exact commands, confirm before anything visible, stop on unexpected output). A lite install gets the lite addendum, as with the skill.
   - The section sits between `<!-- BEGIN/END github-delivery-os:delivery-ops -->` markers. A repo's existing `AGENTS.md` keeps its text; the section is appended, and a plain re-run leaves it alone while `--update` refreshes it in place.
-  - `uninstall --with-agents` removes only that section (and deletes `AGENTS.md` only if nothing else was in it). `status` shows it, and the update hint adds `--with-agents` when it is installed.
+  - The short form is `-a`. `uninstall --with-agents` removes only that section (and deletes `AGENTS.md` only if nothing else was in it). `status` shows it, and the update hint adds `--with-agents` when it is installed.
 
 ### Changed
 

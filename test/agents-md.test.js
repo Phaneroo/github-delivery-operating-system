@@ -83,3 +83,38 @@ test('a lite install gets the lite addendum in the AGENTS.md section; full does 
     assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /Which install is this\?/);
   });
 });
+
+test('a skipped AGENTS.md section keeps the recorded version from advancing', () => {
+  inRepo((dir, file) => {
+    runInstall({ targetDir: '.', withAgents: true });
+    const manifest = path.join(dir, '.github', 'delivery-os.json');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, JSON.stringify({ version: '0.0.1' }));
+    runInstall({ targetDir: '.', withAgents: true }); // section exists, no --update: skipped
+    assert.equal(JSON.parse(fs.readFileSync(manifest, 'utf8')).version, '0.0.1');
+  });
+});
+
+test('uninstall without --with-agents keeps delivery-os.json while the section is still there', () => {
+  inRepo((dir) => {
+    runInstall({ targetDir: '.', withTemplates: true, withAgents: true });
+    runUninstall({ targetDir: '.', withTemplates: true });
+    assert.ok(fs.existsSync(path.join(dir, '.github', 'delivery-os.json')));
+    runUninstall({ targetDir: '.', withAgents: true });
+    assert.ok(!fs.existsSync(path.join(dir, '.github', 'delivery-os.json')));
+  });
+});
+
+test('a section missing its END marker is not treated as installed', () => {
+  inRepo((dir, file) => {
+    fs.writeFileSync(file, `intro\n${BEGIN}\nhalf a section\n`);
+    runUninstall({ targetDir: '.', withAgents: true });
+    assert.match(fs.readFileSync(file, 'utf8'), /half a section/, 'nothing is cut out of a broken block');
+  });
+});
+
+test('CRLF skill text still loses its frontmatter and gets the demoted heading', () => {
+  const section = agentsSection(skillText.replace(/\n/g, '\r\n'));
+  assert.doesNotMatch(section, /^name: delivery-ops/m);
+  assert.match(section, /^## Operate Delivery OS$/m);
+});

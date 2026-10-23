@@ -177,7 +177,7 @@ function manifestPath(targetAbs) {
 
 function hasAgentsBlock(targetAbs) {
   try {
-    return fs.readFileSync(path.join(targetAbs, AGENTS_REL_PATH), 'utf8').includes(agentsMd.BEGIN);
+    return agentsMd.hasBlock(fs.readFileSync(path.join(targetAbs, AGENTS_REL_PATH), 'utf8'));
   } catch {
     return false;
   }
@@ -871,9 +871,10 @@ function runInstall(options) {
   if (withAgents && fs.existsSync(skillSrc)) {
     const agentsDest = path.join(targetAbs, AGENTS_REL_PATH);
     const existing = fs.existsSync(agentsDest) ? fs.readFileSync(agentsDest, 'utf8') : '';
-    const hasBlock = existing.includes(agentsMd.BEGIN);
+    const hasBlock = agentsMd.hasBlock(existing);
     if (hasBlock && !overwrite) {
       console.log(`  Skipped (exists): Delivery OS section in ${AGENTS_REL_PATH}`);
+      skillSkipped++;
     } else if (dryRun) {
       console.log(`  [dry-run] Would ${hasBlock ? 'update' : existing ? 'append to' : 'create'}: ${AGENTS_REL_PATH}`);
     } else {
@@ -882,6 +883,9 @@ function runInstall(options) {
       fs.writeFileSync(agentsDest, agentsMd.mergeAgentsMd(existing, agentsMd.agentsSection(text)));
       console.log(`  ${hasBlock ? 'Updated' : existing ? 'Added a section to' : 'Created'}: ${AGENTS_REL_PATH}`);
     }
+  } else if (withAgents) {
+    console.log(`  Warning: could not add ${AGENTS_REL_PATH}; the skill source is missing from this package.`);
+    skillSkipped++;
   }
 
   // The update-check hook travels with the skill (same flag, same skip/
@@ -1647,7 +1651,7 @@ async function runStatus(options) {
     console.log('');
   }
 
-  if (installedWorkflows.length === 0 && installedTemplates.length === 0 && !skillInstalled) {
+  if (installedWorkflows.length === 0 && installedTemplates.length === 0 && !skillInstalled && !agentsInstalled) {
     console.log('Delivery OS is not installed in this repository.');
     console.log('Run: npx github-delivery-os install --with-templates --with-labels --with-skill .');
   } else {
@@ -1747,6 +1751,7 @@ function runUninstall(options) {
   }
 
   let skillRemoved = 0;
+  let agentsRemoved = 0;
   if (withAgents && hasAgentsBlock(targetAbs)) {
     const agentsDest = path.join(targetAbs, AGENTS_REL_PATH);
     const rest = agentsMd.removeAgentsBlock(fs.readFileSync(agentsDest, 'utf8'));
@@ -1757,7 +1762,7 @@ function runUninstall(options) {
       else fs.writeFileSync(agentsDest, rest);
       console.log(`  Removed the Delivery OS section from ${AGENTS_REL_PATH}`);
     }
-    skillRemoved++;
+    agentsRemoved++;
   }
   if (withSkill) {
     const skillDest = skillPath(targetAbs);
@@ -1803,7 +1808,8 @@ function runUninstall(options) {
     fs.existsSync(path.join(scriptsDest, SCRIPTS_PACKAGE_JSON)) ||
     fs.existsSync(path.join(scriptsDest, LABELS_TSV));
   const skillRemains = fs.existsSync(skillPath(targetAbs)) || fs.existsSync(updateHookPath(targetAbs));
-  const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains;
+  const agentsRemains = hasAgentsBlock(targetAbs);
+  const nothingLeft = !anyWorkflowsRemain && !anyTemplatesRemain && !anyScriptsRemain && !skillRemains && !agentsRemains;
 
   const manifestDest = manifestPath(targetAbs);
   if (nothingLeft && fs.existsSync(manifestDest)) {
@@ -1816,9 +1822,9 @@ function runUninstall(options) {
   }
 
   console.log('');
-  if (workflowsRemoved > 0 || templatesRemoved > 0 || skillRemoved > 0) {
+  if (workflowsRemoved > 0 || templatesRemoved > 0 || skillRemoved > 0 || agentsRemoved > 0) {
     const templateNote = withTemplates ? `, ${templatesRemoved} template(s)` : '';
-    const skillNote = withSkill ? `, ${skillRemoved} skill file(s)` : '';
+    const skillNote = (withSkill ? `, ${skillRemoved} skill file(s)` : '') + (withAgents ? `, the ${AGENTS_REL_PATH} section` : '');
     if (dryRun) {
       console.log(`Would remove ${workflowsRemoved} workflow(s)${templateNote}${skillNote}.`);
     } else {
@@ -1828,6 +1834,9 @@ function runUninstall(options) {
       }
       if (!withSkill) {
         console.log('Claude Code skill (if installed) was kept. Re-run with --with-skill to remove it.');
+      }
+      if (!withAgents && agentsRemains) {
+        console.log('The AGENTS.md section was kept. Re-run with --with-agents to remove it.');
       }
       if (!nothingLeft) {
         console.log('delivery-os.json was kept — something Delivery-OS-related is still on disk.');

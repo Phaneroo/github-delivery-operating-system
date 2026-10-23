@@ -878,3 +878,64 @@ pre code {
     scroll-margin-top: calc(var(--topbar-height) + var(--mobile-nav-height) + 0.75rem);
   }
 }
+
+/* Install tabs: radio inputs drive which panel shows, no script needed. */
+.tabs > input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tab-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0;
+}
+
+.tab-labels label {
+  cursor: pointer;
+  padding: 0.4rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.tab-labels label:hover {
+  color: var(--text);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-note {
+  margin-top: -0.75rem;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+#tab-any:checked ~ .panel-any,
+#tab-claude:checked ~ .panel-claude,
+#tab-none:checked ~ .panel-none {
+  display: block;
+}
+
+#tab-any:checked ~ .tab-labels label[for="tab-any"],
+#tab-claude:checked ~ .tab-labels label[for="tab-claude"],
+#tab-none:checked ~ .tab-labels label[for="tab-none"] {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+  font-weight: 600;
+}
+
+.tabs > input:focus-visible ~ .tab-labels label {
+  outline-offset: 2px;
+}
+
+#tab-any:focus-visible ~ .tab-labels label[for="tab-any"],
+#tab-claude:focus-visible ~ .tab-labels label[for="tab-claude"],
+#tab-none:focus-visible ~ .tab-labels label[for="tab-none"] {
+  outline: 2px solid var(--accent-text);
+}

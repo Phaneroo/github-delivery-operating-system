@@ -65,6 +65,7 @@ npx github-delivery-os install --bundle lite --with-templates --with-labels --wi
 | Task, bug and production release issue forms | ✓ | ✓ |
 | Release approval | one approver, you | release approver + QA approver |
 | Rolling QA issue, QA Requests, QA assignment, Telegram | none (add them later as packs) | ✓ |
+| `AGENTS.md` for other AI coding agents (`--with-agents`) | ✓ (skips QA guidance) | ✓ |
 | Claude Code skill (`--with-skill`) | ✓ (skips QA guidance) | ✓ |
 
 **Shipping a release:** open a Production Release issue. It pings you, and you comment `approved` to authorize it (the issue gets `ready-for-deploy`) or `declined` to hold it back. Approving again lifts a decline. There is no QA approver to set up.
@@ -134,6 +135,7 @@ Full workflow table, quick start, and Claude Code walkthroughs are on the [landi
 | **Dual approval gates** | Release approver + QA sign-off required before deploy; a decline from either side blocks it until that same person approves |
 | **Rolling QA reminder** | Every change that reaches `main` is added to one open *"QA REQUEST - Changes awaiting QA"* issue; the QA approver approves or declines it with a comment or a checkbox |
 | **Auto-assign QA** | QA-labeled issues get assigned automatically |
+| **`AGENTS.md` section** (`--with-agents`) | The same instructions for any AI coding agent that reads `AGENTS.md`, not just Claude Code |
 | **Claude Code skill** (`--with-skill`) | Operate it all in plain language — see [Delivery Ops](#delivery-ops-run-it-by-asking-claude) |
 
 **Telegram alerts are opt-in.** Alerts for bugs, QA, sprints, releases and merges need a bot and two secrets to do anything, so a default install doesn't include them. Add them with `npx github-delivery-os add telegram .` (an install that already has them keeps them and keeps them updated).

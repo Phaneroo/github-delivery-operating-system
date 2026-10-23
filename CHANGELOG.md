@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-10-22
+
+Delivery OS for AI coding tools other than Claude Code. Nothing changes in a repo unless you pass the new flag.
+
+### Added
+
+- **`install --with-agents`: the delivery-ops instructions as an `AGENTS.md` section.** Most AI coding agents read `AGENTS.md` whichever model runs behind them (Codex, Cursor, GitHub Copilot, Cline, opencode and others; a few, like Aider, need to be pointed at the file), so people who don't use Claude Code can create sprints, file bugs, request and approve releases, and check status the same way. The agent needs `gh` logged in and nothing else.
+  - It is generated from the one `delivery-ops` skill, not a second copy to keep in step: the frontmatter and Claude-only wording are dropped and a short preamble is added (one step at a time, run the exact commands, confirm before anything visible, stop on unexpected output). A lite install gets the lite addendum, as with the skill.
+  - The section sits between `<!-- BEGIN/END github-delivery-os:delivery-ops -->` markers. A repo's existing `AGENTS.md` keeps its text; the section is appended, and a plain re-run leaves it alone while `--update` refreshes it in place.
+  - The short form is `-a`. `uninstall --with-agents` removes only that section (and deletes `AGENTS.md` only if nothing else was in it). `status` shows it, and the update hint adds `--with-agents` when it is installed.
+
+### Changed
+
+- **Docs:** the landing page, README, `consumer-setup.md`, `how-to.md` and the PRFAQ pages document `--with-agents`, listed before the Claude-specific `--with-skill`.
+
 ## [1.13.2] - 2026-10-02
 
 Tidies the rough edges left after 1.13 (tracked in #119). Nothing here changes what a default full install puts in a repo.

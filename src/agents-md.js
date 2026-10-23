@@ -21,6 +21,12 @@ Working rules, whatever model you are:
 - If a command fails or the output is not what you expected, say so and stop; do not guess.
 `;
 
+// True only for a complete block: both markers, BEGIN first.
+function hasBlock(text) {
+  const from = text.indexOf(BEGIN);
+  return from !== -1 && text.indexOf(END, from) !== -1;
+}
+
 function stripFrontmatter(text) {
   return text.replace(/^---\n[\s\S]*?\n---\n+/, '');
 }
@@ -34,7 +40,7 @@ function neutralise(text) {
 }
 
 function agentsSection(skillText) {
-  const body = neutralise(stripFrontmatter(skillText)).replace(/^# Operate Delivery OS\n+/, '## Operate Delivery OS\n\n');
+  const body = neutralise(stripFrontmatter(skillText.replace(/\r\n/g, '\n'))).replace(/^# Operate Delivery OS\n+/, '## Operate Delivery OS\n\n');
   return `${BEGIN}\n${PREAMBLE}\n${body.trimEnd()}\n${END}\n`;
 }
 
@@ -43,18 +49,18 @@ function agentsSection(skillText) {
 function mergeAgentsMd(existing, section) {
   if (!existing) return section;
   const from = existing.indexOf(BEGIN);
-  const to = existing.indexOf(END);
-  if (from !== -1 && to > from) return existing.slice(0, from) + section.trimEnd() + existing.slice(to + END.length);
+  const to = existing.indexOf(END, from);
+  if (hasBlock(existing)) return existing.slice(0, from) + section.trimEnd() + existing.slice(to + END.length);
   return existing.trimEnd() + '\n\n' + section;
 }
 
 // Take our block out, leaving the rest. Returns null if nothing else is left.
 function removeAgentsBlock(existing) {
+  if (!hasBlock(existing)) return existing;
   const from = existing.indexOf(BEGIN);
-  const to = existing.indexOf(END);
-  if (from === -1 || to < from) return existing;
+  const to = existing.indexOf(END, from);
   const rest = (existing.slice(0, from).trimEnd() + '\n\n' + existing.slice(to + END.length).trimStart()).trim();
   return rest ? rest + '\n' : null;
 }
 
-module.exports = { BEGIN, END, agentsSection, mergeAgentsMd, removeAgentsBlock };
+module.exports = { BEGIN, END, hasBlock, agentsSection, mergeAgentsMd, removeAgentsBlock };

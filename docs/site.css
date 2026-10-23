@@ -1023,7 +1023,7 @@ pre code {
 
 .feature,
 .cta {
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.15s, color 0.15s;
 }
 
 .feature:hover {
@@ -1049,4 +1049,15 @@ pre code {
   .feature:hover {
     transform: none;
   }
+}
+
+.hero-actions {
+  margin-top: 1.25rem;
+}
+
+.star-count {
+  margin-left: 0.4rem;
+  padding-left: 0.6rem;
+  border-left: 1px solid currentColor;
+  font-variant-numeric: tabular-nums;
 }

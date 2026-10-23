@@ -202,3 +202,20 @@
     io.observe(el);
   });
 })();
+
+// Star count on the "Star on GitHub" button. One public GitHub API call;
+// if it fails, is rate-limited or the count is still small, the button shows without a number.
+(function () {
+  var el = document.querySelector('.star-count');
+  if (!el || !window.fetch) return;
+  fetch('https://api.github.com/repos/Phaneroo/github-delivery-operating-system')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (repo) {
+      if (!repo || typeof repo.stargazers_count !== 'number') return;
+      var n = repo.stargazers_count;
+      if (n < 10) return; // a small number reads as the opposite of social proof
+      el.textContent = n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+      el.hidden = false;
+    })
+    .catch(function () {});
+})();

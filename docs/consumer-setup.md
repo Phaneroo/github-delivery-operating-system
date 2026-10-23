@@ -55,8 +55,8 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `-t, --with-templates` | Copy issue templates |
 | `-l, --with-labels` | Create labels via `gh` CLI |
-| `-s, --with-skill` | Add the `delivery-ops` Claude Code skill and its update-check hook |
 | `-a, --with-agents` | Add the `delivery-ops` instructions to `AGENTS.md` for any coding agent that reads it (DeepSeek in opencode/Aider/Cline/Cursor, Codex, ...) |
+| `-s, --with-skill` | Add the `delivery-ops` Claude Code skill and its update-check hook |
 | `-u, --update` | Replace existing files |
 | `-b, --bundle <full\|lite>` | Which set to install. `full` (default) is everything; `lite` is for one person or a small project — see [Lite install](#lite-install). With no `--bundle`, a repo keeps the bundle it's already on |
 | `--only <names>` / `--skip <names>` | Install just these workflows, or the bundle without these (comma-separated names; run `npx github-delivery-os list` for them). See [Picking individual workflows](#picking-individual-workflows) |
@@ -69,8 +69,8 @@ From your repo root. Add `--with-labels` to create labels via `gh` CLI.
 |------|-------------|
 | `--with-templates` | Copy issue templates (sprint, task, bug, QA, production release) |
 | `--with-labels` | Create labels via `gh` CLI (requires `gh auth` and GitHub remote) |
-| `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status — plus `.claude/hooks/delivery-os-update-check.js`, registered in `.claude/settings.json`, which offers the update when a session starts in an out-of-date repo |
 | `--with-agents` | Add a marked Delivery OS section to `AGENTS.md` (created if missing, appended if the file exists; your own text is never touched). Same instructions as the Claude Code skill, without Claude-only wording; lite installs get the lite addendum. Re-run with `--update` to refresh it |
+| `--with-skill` | Add `.claude/skills/delivery-ops/SKILL.md` — a Claude Code skill scoped to this repo for creating issues, commenting as an approver, and checking status — plus `.claude/hooks/delivery-os-update-check.js`, registered in `.claude/settings.json`, which offers the update when a session starts in an out-of-date repo |
 | `--bundle <full\|lite>` | Install the full system (default) or the lite set — see [Lite install](#lite-install). `npx github-delivery-os` only; `scripts/install.sh` always installs full |
 | `--only <names>` / `--skip <names>` | Choose individual workflows — see [Picking individual workflows](#picking-individual-workflows) |
 | `--set-approvers` | Set `RELEASE_APPROVER` to your GitHub login via `gh` (default for `--bundle lite`; `--no-set-approvers` turns it off) |
@@ -374,8 +374,8 @@ The lite release workflows live in `.github/lite/` in this package and are insta
 ```bash
 npx github-delivery-os uninstall .                    # Remove workflows only
 npx github-delivery-os uninstall --with-templates .   # Also remove issue templates
-npx github-delivery-os uninstall --with-skill .       # Also remove the delivery-ops Claude Code skill
 npx github-delivery-os uninstall --with-agents .      # Also remove the Delivery OS section from AGENTS.md (the rest of the file stays)
+npx github-delivery-os uninstall --with-skill .       # Also remove the delivery-ops Claude Code skill
 npx github-delivery-os uninstall --dry-run .          # Preview (no changes)
 ```
 

@@ -54,8 +54,8 @@ Common flags:
 | `--with-templates` | Copy issue templates (recommended for sprint and release forms). |
 | `--with-labels` | Create labels using the GitHub CLI (`gh`); requires authentication. |
 | `--bundle lite` | Install the small set (single-approver release, no QA machinery) instead of the full system. Packs can be added later. |
-| `--with-skill` | Add a Claude Code skill for operating this repo's Delivery OS from Claude Code. Optional. |
 | `--with-agents` | Add the same instructions to `AGENTS.md`, for DeepSeek and other agents that aren't Claude Code. Optional. |
+| `--with-skill` | Add a Claude Code skill for operating this repo's Delivery OS from Claude Code. Optional. |
 | `--dry-run` | Show planned changes without writing files. |
 | `--update` | Replace existing Delivery OS files (use when upgrading; prefer `--dry-run` first). |
 

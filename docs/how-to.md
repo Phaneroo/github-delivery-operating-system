@@ -174,8 +174,8 @@ Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges 
 ```bash
 npx github-delivery-os uninstall .                    # Remove workflows only
 npx github-delivery-os uninstall --with-templates .    # Remove workflows + templates
-npx github-delivery-os uninstall --with-skill .        # Also remove the delivery-ops Claude Code skill and its update-check hook
 npx github-delivery-os uninstall --with-agents .       # Also remove the Delivery OS section from AGENTS.md
+npx github-delivery-os uninstall --with-skill .        # Also remove the delivery-ops Claude Code skill and its update-check hook
 npx github-delivery-os uninstall --dry-run .           # Preview
 ```
 

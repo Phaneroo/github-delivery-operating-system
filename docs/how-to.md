@@ -174,6 +174,7 @@ Alerts are sent for: bugs, QA requests, sprints, production releases, PR merges 
 ```bash
 npx github-delivery-os uninstall .                    # Remove workflows only
 npx github-delivery-os uninstall --with-templates .    # Remove workflows + templates
+npx github-delivery-os uninstall --with-agents .       # Also remove the Delivery OS section from AGENTS.md
 npx github-delivery-os uninstall --with-skill .        # Also remove the delivery-ops Claude Code skill and its update-check hook
 npx github-delivery-os uninstall --dry-run .           # Preview
 ```
@@ -224,6 +225,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Update install | Add `--update` |
 | Start small | `npx github-delivery-os install --bundle lite --with-templates .` (see [Consumer Setup](consumer-setup.md#lite-install)) |
 | Add or remove a piece | `npx github-delivery-os add qa .` / `remove qa .` / `list .` |
+| Use an AI tool other than Claude Code | Install with `--with-agents`; it writes the instructions into `AGENTS.md`, which most coding agents read (Codex, Cursor, GitHub Copilot, Cline, opencode and others; a few, like Aider, need to be pointed at the file) |
 | Get update reminders | Claude Code: install with `--with-skill`. Terminal: `npx github-delivery-os@latest shell-hook --install` |
 | Create sprint | New issue → SPRINT PLANNING |
 | Request release | New issue → PRODUCTION RELEASE & QA SIGN-OFF |

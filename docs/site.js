@@ -175,3 +175,30 @@
     addButton(wrap, code);
   });
 })();
+
+// Fade sections in as they scroll into view. Content stays visible without
+// this script, and for anyone who asks for reduced motion.
+(function () {
+  if (!('IntersectionObserver' in window)) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  var items = document.querySelectorAll(
+    '.doc-main section > h2, .doc-main section > h3, .doc-main section > p, .doc-main .table-wrap, .doc-main .features .feature, .doc-main section > .install-block, .doc-main section > .tabs, .doc-main .example-details'
+  );
+  if (!items.length) return;
+
+  document.documentElement.classList.add('js-reveal');
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+
+  items.forEach(function (el, i) {
+    el.classList.add('reveal');
+    if (el.classList.contains('feature')) el.style.transitionDelay = (i % 4) * 70 + 'ms';
+    io.observe(el);
+  });
+})();

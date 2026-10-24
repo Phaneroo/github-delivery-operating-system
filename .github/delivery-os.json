@@ -1,4 +1,15 @@
 {
-  "version": "1.12.2",
-  "installedAt": "2026-09-24T08:12:52.546Z"
+  "version": "1.14.0",
+  "installedAt": "2026-10-24T20:27:14.785Z",
+  "workflows": [
+    "sprint-child-creator",
+    "auto-close-sprint",
+    "notify-release-approver",
+    "authorize-deployment",
+    "auto-assign-qa",
+    "telegram-issues",
+    "setup-labels",
+    "auto-qa-request",
+    "qa-rollup-approval"
+  ]
 }

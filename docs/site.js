@@ -183,7 +183,7 @@
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   var items = document.querySelectorAll(
-    '.doc-main section > h2, .doc-main .flow li, .doc-main section > h3, .doc-main section > p, .doc-main .table-wrap, .doc-main .features .feature, .doc-main section > .install-block, .doc-main section > .tabs, .doc-main .example-details'
+    '.doc-main section > h2, .doc-main .flow li, .doc-main .shot, .doc-main section > h3, .doc-main section > p, .doc-main .table-wrap, .doc-main .features .feature, .doc-main section > .install-block, .doc-main section > .tabs, .doc-main .example-details'
   );
   if (!items.length) return;
 

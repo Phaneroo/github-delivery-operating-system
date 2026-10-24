@@ -3,8 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="GitHub Delivery Operating System — A GitHub-native framework for structured sprint execution, QA review, and collaborative production release control.">
-  <title>GitHub Delivery Operating System</title>
+  <meta name="description" content="Sprints, QA and release approvals built into your GitHub repo. Run it from any AI coding agent, or by hand. Free and open source.">
+  <title>GitHub Delivery OS: sprints, QA and release sign-off in GitHub</title>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Delivery OS">
+  <meta property="og:title" content="GitHub Delivery OS: sprints, QA and release sign-off in GitHub">
+  <meta property="og:description" content="Sprints, QA and release approvals built into your GitHub repo. Run it from any AI coding agent, or by hand. Free and open source.">
+  <meta property="og:url" content="https://phaneroo.github.io/github-delivery-operating-system/">
+  <meta property="og:image" content="https://phaneroo.github.io/github-delivery-operating-system/logo.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="GitHub Delivery OS: sprints, QA and release sign-off in GitHub">
+  <meta name="twitter:description" content="Sprints, QA and release approvals built into your GitHub repo. Run it from any AI coding agent, or by hand. Free and open source.">
+  <meta name="twitter:image" content="https://phaneroo.github.io/github-delivery-operating-system/logo.png">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -44,6 +54,7 @@
       <ul>
         <li><a href="#overview">Overview</a></li>
         <li><a href="#install">Get started</a></li>
+        <li><a href="#see-it">See it running</a></li>
         <li><a href="#start-small">Lite or full</a></li>
         <li><a href="#change">Change it any time</a></li>
         <li><a href="#delivery-ops">Ask your agent</a></li>
@@ -63,7 +74,7 @@
       <div class="doc-hero" id="overview">
         <h1>GitHub Delivery OS</h1>
         <p class="tagline">Sprints, QA and release approvals, built into your GitHub repo. Run it from any AI coding agent, or by hand.</p>
-        <p class="doc-lead"><strong>New in 1.14:</strong> works with any AI coding agent, not just Claude Code.</p>
+        <p class="doc-lead"><strong>New in 1.14:</strong> works with any AI coding agent, not just Claude Code. Not technical? <a href="why.html">Start here →</a></p>
         <p class="hero-actions"><a class="cta star-btn" href="https://github.com/Phaneroo/github-delivery-operating-system" target="_blank" rel="noopener noreferrer">★ Star on GitHub <span class="star-count" hidden></span></a></p>
       </div>
 
@@ -127,6 +138,15 @@
           </div>
           <p>On Claude Code you can also add a permanent setup assistant that works in any repo: <code>npx github-delivery-os setup-skill</code></p>
         </details>
+      </section>
+
+      <section id="see-it">
+        <h2>See it running</h2>
+        <p>A real sprint from this repo: one issue per feature, a burn-down that updates itself, and the sprint closing on its own at 100%.</p>
+        <figure class="shot">
+          <img src="img/sprint-burndown.png" width="917" height="1141" loading="lazy" alt="A closed GitHub sprint issue for release 1.14.0, showing Sprint Status with 100% progress, green health and a full burn-down bar.">
+          <figcaption><a href="https://github.com/Phaneroo/github-delivery-operating-system/issues/134" target="_blank" rel="noopener noreferrer">Open this sprint on GitHub →</a></figcaption>
+        </figure>
       </section>
 
       <section id="start-small">
@@ -562,6 +582,7 @@ Agent: Posted. authorize-deployment will add ready-for-deploy once both
       <ul>
         <li><a href="#overview">Overview</a></li>
         <li><a href="#install">Get started</a></li>
+        <li><a href="#see-it">See it running</a></li>
         <li><a href="#start-small">Lite or full</a></li>
         <li><a href="#change">Change it any time</a></li>
         <li><a href="#delivery-ops">Ask your agent</a></li>

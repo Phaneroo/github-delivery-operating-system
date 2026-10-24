@@ -1128,3 +1128,22 @@ pre code {
     transform: none;
   }
 }
+
+.shot {
+  margin: 1.25rem 0 1.5rem;
+  max-width: 30rem;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.shot figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}

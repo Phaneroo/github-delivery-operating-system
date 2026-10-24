@@ -1061,3 +1061,70 @@ pre code {
   border-left: 1px solid currentColor;
   font-variant-numeric: tabular-nums;
 }
+
+/* Why page: the problem lines and the release flow. */
+.problem {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+
+.flow {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  margin: 1.25rem 0 1.5rem;
+  padding: 0;
+}
+
+.flow li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-code);
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.flow li strong {
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.flow .flow-n {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--accent-text);
+}
+
+.flow li:not(:last-child)::after {
+  content: '→';
+  position: absolute;
+  right: -0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent-text);
+  font-size: 0.9rem;
+  z-index: 1;
+}
+
+@media (max-width: 720px) {
+  .flow {
+    grid-template-columns: 1fr;
+  }
+
+  .flow li:not(:last-child)::after {
+    content: '↓';
+    right: auto;
+    left: 1rem;
+    top: auto;
+    bottom: -0.85rem;
+    transform: none;
+  }
+}

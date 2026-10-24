@@ -183,7 +183,7 @@
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   var items = document.querySelectorAll(
-    '.doc-main section > h2, .doc-main section > h3, .doc-main section > p, .doc-main .table-wrap, .doc-main .features .feature, .doc-main section > .install-block, .doc-main section > .tabs, .doc-main .example-details'
+    '.doc-main section > h2, .doc-main .flow li, .doc-main section > h3, .doc-main section > p, .doc-main .table-wrap, .doc-main .features .feature, .doc-main section > .install-block, .doc-main section > .tabs, .doc-main .example-details'
   );
   if (!items.length) return;
 
@@ -198,7 +198,7 @@
 
   items.forEach(function (el, i) {
     el.classList.add('reveal');
-    if (el.classList.contains('feature')) el.style.transitionDelay = (i % 4) * 70 + 'ms';
+    if (el.classList.contains('feature') || el.parentNode.classList.contains('flow')) el.style.transitionDelay = (i % 5) * 70 + 'ms';
     io.observe(el);
   });
 })();

@@ -12,6 +12,9 @@ permissions:
 
 jobs:
   update-sprint:
+    # Only a sprint child carries a "Parent Sprint: #N" line (the script's own
+    # test); skipping here means closing an ordinary issue bills no minute.
+    if: contains(github.event.issue.body, 'Parent Sprint:')
     runs-on: ubuntu-latest
     permissions:
       issues: write

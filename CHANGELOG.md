@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Fewer billed Actions minutes. Actions bills each job rounded up to a whole minute, so a workflow that starts, finds nothing to do and exits still costs a minute; a job skipped by `if:` costs nothing. Behaviour is unchanged: the same events produce the same messages and updates.
+
+### Changed
+
+- **`telegram-issues`** only starts for events it can send an alert for (a merged PR to `main`, or an issue or comment with one of the labels it reports on). Comments on unlabelled issues used to bill a minute each for no message.
+- **`auto-close-sprint`** only starts when the closed or reopened issue has a `Parent Sprint:` line, so closing an ordinary issue no longer runs it.
+- **`pages`** only deploys when `docs/` (or the workflow itself) changed.
+
 ## [1.14.0] - 2026-10-22
 
 Delivery OS for AI coding tools other than Claude Code. Nothing changes in a repo unless you pass the new flag.

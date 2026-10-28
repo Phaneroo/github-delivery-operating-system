@@ -14,6 +14,8 @@ Fewer billed Actions minutes. Actions bills each job rounded up to a whole minut
 - **`telegram-issues`** only starts for events it can send an alert for (a merged PR to `main`, or an issue or comment with one of the labels it reports on). Comments on unlabelled issues used to bill a minute each for no message.
 - **`auto-close-sprint`** only starts when the closed or reopened issue has a `Parent Sprint:` line, so closing an ordinary issue no longer runs it.
 - **`pages`** only deploys when `docs/` (or the workflow itself) changed.
+- **`auto-qa-request`** skips a push to `main` when every changed file is on the default quiet list (docs, licences, editor settings, issue templates, `dependabot.yml`), with a `paths-ignore` filter, so those pushes bill nothing. What gets filed doesn't change: the script already filed nothing for them. A repo that narrowed `DELIVERY_OS_AUTO_QA_QUIET_PATHS` below the default (say, to QA docs changes) must also edit the list in the workflow, because a workflow filter can't read a variable; one that left it alone, or widened it, sees no difference.
+- **`install --update`** now ends with a tip to put `[skip ci]` in the commit message for the update. Installing only writes files, so the commit is yours; rolling an update out to many repos at once otherwise re-runs every push workflow in each of them.
 
 ## [1.14.0] - 2026-10-22
 

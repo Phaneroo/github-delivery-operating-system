@@ -19,6 +19,7 @@ require('./lite-drift.test.js');
 require('./setup-skill.test.js');
 require('./agents-md.test.js');
 require('./telegram-gate.test.js');
+require('./auto-qa-gate.test.js');
 require('./rolling-qa.test.js');
 require('./workflows-e2e.test.js');
 

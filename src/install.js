@@ -1142,6 +1142,14 @@ function runInstall(options) {
     console.log('');
     console.log(migrationNote);
   }
+  if (overwrite && !dryRun && (workflowsCopied > 0 || templatesCopied > 0 || scriptsCopied > 0 || skillCopied > 0)) {
+    // Installing only writes files, so it is whoever commits the update who can
+    // keep it from re-running every workflow in the repo (and, across many
+    // repos, from using a lot of Actions minutes).
+    console.log('');
+    console.log('Tip: put [skip ci] in the commit message for this update. Commits that only');
+    console.log('     refresh Delivery OS files then skip the workflows that run on push.');
+  }
   console.log('');
   console.log('=== Installation complete ===');
 }

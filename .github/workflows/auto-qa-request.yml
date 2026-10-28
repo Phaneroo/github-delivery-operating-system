@@ -31,6 +31,26 @@ on:
     types: [opened, ready_for_review, reopened, synchronize, closed]
   push:
     branches: [main]
+    # A push where every changed file is on the default quiet list files
+    # nothing (see DEFAULT_QUIET_PATHS in .github/scripts/auto-qa-request.js),
+    # and a run skipped here bills no Actions minute, while one that starts and
+    # then exits still bills a whole one. Kept in step with that list by
+    # test/auto-qa-gate.test.js. A repo that narrows
+    # DELIVERY_OS_AUTO_QA_QUIET_PATHS below this default (say, to QA docs
+    # changes) must also edit this list, because a workflow filter can't read
+    # a variable.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE*'
+      - '.gitignore'
+      - '.gitattributes'
+      - '.editorconfig'
+      - '.vscode/**'
+      - '.idea/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/CODEOWNERS'
+      - '.github/dependabot.yml'
 
 permissions:
   issues: write

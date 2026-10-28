@@ -6,6 +6,9 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # The site is built from docs/ alone, so a push that doesn't touch it has
+    # nothing to deploy.
+    paths: ['docs/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:

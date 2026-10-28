@@ -194,7 +194,7 @@ These apply in both modes. In rolling mode they decide what goes on the rolling 
 
 - **Link the push to an issue in its commit message.** `Closes #27`, `Refs #27`, or a bare `#27` in any commit of the push links the change to #27 (on its rolling line, or as the per-change QA Request's related issue), and no new Task is filed. (References to pull requests, other repos, or issues that don't exist are ignored.)
 - **Skip a trivial push** by putting `[skip qa-request]` in its commit message. It opts out that commit, not the whole push: a push is skipped only when every commit in it is marked, so a marked typo fix can't hide real changes pushed with it. Only this workflow honors it — `[skip ci]` would skip every workflow.
-- **Docs- and settings-only changes file nothing.** A push or PR that only touches paths matching `DELIVERY_OS_AUTO_QA_QUIET_PATHS` (README edits, `docs/`, editor config…) is skipped. Anything else — code, workflows, `package.json` — still files.
+- **Docs- and settings-only changes file nothing.** A push or PR that only touches paths matching `DELIVERY_OS_AUTO_QA_QUIET_PATHS` (README edits, `docs/`, editor config…) is skipped (for a direct push that is a `paths-ignore` filter in `auto-qa-request.yml`, so it doesn't even start and uses no Actions minutes; if you narrow the variable below the default, edit that list too). Anything else — code, workflows, `package.json` — still files.
 - **Turn it down repo-wide** with `DELIVERY_OS_AUTO_QA_MODE` / `DELIVERY_OS_AUTO_QA` / `DELIVERY_OS_AUTO_TASK` above. These are repo variables, not workflow edits, so `install --update` keeps them.
 
 #### Plain-English changelog on every QA Request

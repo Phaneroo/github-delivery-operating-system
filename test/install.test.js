@@ -2615,3 +2615,29 @@ test('full next steps drop the "create labels" step once --with-labels has creat
 test('the Telegram pack says where the sprint-completed alert comes from', () => {
   assert.match(PACKS.telegram.summary, /sprint-completed alert comes from auto-close-sprint itself/);
 });
+
+test('install --update suggests [skip ci] when it rewrote files; a fresh install does not', () => {
+  const dir = mkTmpRepo();
+  const lines = [];
+  const origLog = console.log;
+  const origCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    console.log = (...args) => lines.push(args.join(' '));
+    runInstall({ targetDir: '.' });
+    assert.doesNotMatch(lines.join('\n'), /\[skip ci\]/);
+
+    fs.appendFileSync(path.join(dir, '.github', 'workflows', 'setup-labels.yml'), '\n# stale\n');
+    lines.length = 0;
+    runInstall({ targetDir: '.', overwrite: true });
+    assert.match(lines.join('\n'), /\[skip ci\]/);
+
+    lines.length = 0;
+    runInstall({ targetDir: '.', overwrite: true, dryRun: true });
+    assert.doesNotMatch(lines.join('\n'), /\[skip ci\]/);
+  } finally {
+    console.log = origLog;
+    process.chdir(origCwd);
+    rm(dir);
+  }
+});

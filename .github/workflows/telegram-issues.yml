@@ -20,11 +20,11 @@ jobs:
     # minute. Mirrors the cases the script below can send a message for.
     if: >-
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') ||
+      (github.event_name == 'issues' && github.event.action != 'closed' && contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint') && contains(github.event.issue.labels.*.name || fromJSON('[]'), 'planning')) ||
       (github.event_name != 'pull_request' && (
         contains(github.event.issue.labels.*.name || fromJSON('[]'), 'bug') ||
         contains(github.event.issue.labels.*.name || fromJSON('[]'), 'qa') ||
         contains(github.event.issue.labels.*.name || fromJSON('[]'), 'qa-request') ||
-        contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint') ||
         contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-child') ||
         contains(github.event.issue.labels.*.name || fromJSON('[]'), 'sprint-active') ||
         contains(github.event.issue.labels.*.name || fromJSON('[]'), 'production')))

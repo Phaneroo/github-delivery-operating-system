@@ -78,6 +78,7 @@ Each approver's **latest** comment counts as their verdict — their own later `
 | Commit pushed to `main` (a direct push, or a PR merged into `main`) | auto-qa-request | Rolling mode (default): adds a line to the open rolling QA issue, opening one if none — unless only docs/settings changed |
 | PR opened or updated, or commit pushed to `main` | auto-qa-request | Per-change mode: files a QA Request (and a backing Task, if none is linked) unless only docs/settings changed |
 | QA approver comments or ticks the Approved box on the rolling QA issue | qa-rollup-approval | Approve → ticks every line and closes it; decline → keeps it open (Outcome *Fail*); anyone else → ignored with a reply; with several QA approvers, one's decline stands until that same person approves |
+| Feature approver comments on a `feature` issue | feature-approval | `approved` / ✅ → `approved` label (replaces `needs-approval`); `declined` / ❌ → `declined`; the issue stays open to track the work |
 | PR closed without merging | auto-qa-request | Closes the Task/QA Request it auto-filed for that PR (reopening the PR reopens them) |
 | Bugs, QA, sprints, releases, PR merged | telegram-issues (opt-in: `add telegram`) | Sends alerts (if secrets set) |
 
@@ -94,4 +95,5 @@ Each approver's **latest** comment counts as their verdict — their own later `
 | auto-assign-qa | `issues.opened` or `labeled` (label `qa` or `qa-request`) |
 | auto-qa-request | `pull_request.opened`/`ready_for_review`/`reopened`/`synchronize`/`closed`, `push` to `main` |
 | qa-rollup-approval | `issue_comment.created`, `issues.edited` (on the `qa-rollup` issue) |
+| feature-approval | `issue_comment.created` (on a `feature` issue) |
 | telegram-issues | `issues`, `issue_comment`, `pull_request` |

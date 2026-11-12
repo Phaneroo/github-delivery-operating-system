@@ -492,6 +492,7 @@ Agent: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td data-label="Workflow">auto-qa-request<br><em>Full · pack: qa</em></td><td data-label="Trigger">Push to <code>main</code></td><td data-label="What it does">Adds each change to one rolling QA issue (tune with <code>DELIVERY_OS_AUTO_QA_MODE</code>)</td></tr>
               <tr><td data-label="Workflow">qa-rollup-approval<br><em>Full · pack: qa</em></td><td data-label="Trigger">Comment on the rolling QA issue</td><td data-label="What it does">QA approver approves (closes it) or declines (keeps it open)</td></tr>
               <tr><td data-label="Workflow">auto-assign-qa<br><em>Full · pack: qa</em></td><td data-label="Trigger">Issue labeled <code>qa</code> or <code>qa-request</code></td><td data-label="What it does">Assigns <code>QA_ASSIGNEES</code></td></tr>
+              <tr><td data-label="Workflow">feature-approval<br><em>Full · pack: features</em></td><td data-label="Trigger">Comment on a <code>feature</code> issue</td><td data-label="What it does">Feature approver approves (<code>approved</code>) or declines (<code>declined</code>); the same issue then tracks the work</td></tr>
               <tr><td data-label="Workflow">telegram-issues<br><em>Opt-in · pack: telegram</em></td><td data-label="Trigger">Issue, comment and PR events</td><td data-label="What it does">Sends Telegram alerts when the two secrets are set</td></tr>
             </tbody>
           </table>

@@ -15,3 +15,6 @@ declined	B60205
 risk	B60205
 delivery-ops-filed	D6336C	Filed automatically by Delivery OS automation or its Claude Code skill — not typed by a human
 qa-rollup	C5DEF5	The rolling QA issue: one open list of changes awaiting QA approval
+feature	A5D6A7	A proposed feature: its requirements, what it satisfies and its expected tests
+needs-approval	FBCA04	Waiting for the feature approver to approve or decline
+approved	0E8A16	Approved by the feature approver; the work can start

@@ -179,3 +179,52 @@ test('sprint flow: unreadable sprint dates do not stop the burn-down, auto-close
   const reopened = await sprintEvent(fx, 'reopened', 6);
   assert.equal(reopened.state, 'open');
 });
+
+// ---------------------------------------------------------------------------
+// feature-approval.yml
+// ---------------------------------------------------------------------------
+
+const FEATURE = extractScript('feature-approval.yml', 'verdict');
+
+async function featureVerdict(login, body, { labels = ['feature', 'needs-approval'], approver = 'apprA, apprB' } = {}) {
+  const fx = createFakeRepo({ issues: [{ number: 9, title: '[FEATURE] x', labels, created_at: '2026-09-20T00:00:00Z' }] });
+  const context = { repo, payload: { issue: { number: 9 }, comment: { user: { login }, body } } };
+  await runScript(FEATURE, { github: fx.github, context, env: { FEATURE_APPROVER: approver } });
+  return {
+    labels: fx.store.issues[0].labels.map((l) => (typeof l === 'string' ? l : l.name)).sort(),
+    comments: fx.store.comments.filter((c) => c.user.login === 'github-actions[bot]'),
+    state: fx.store.issues[0].state,
+  };
+}
+
+test('feature flow: the approver approving swaps needs-approval for approved and leaves the issue open', async () => {
+  const r = await featureVerdict('apprA', 'approved');
+  assert.deepEqual(r.labels, ['approved', 'feature']);
+  assert.match(r.comments[0].body, /Feature approved/);
+  assert.equal(r.state, 'open');
+});
+
+test('feature flow: a ✅ from an approver approves, a ❌ declines', async () => {
+  assert.deepEqual((await featureVerdict('apprB', '✅')).labels, ['approved', 'feature']);
+  const d = await featureVerdict('apprA', '❌ missing edge cases');
+  assert.deepEqual(d.labels, ['declined', 'feature']);
+  assert.match(d.comments[0].body, /Feature declined/);
+});
+
+test('feature flow: approving lifts an earlier decline', async () => {
+  const r = await featureVerdict('apprA', 'go ahead', { labels: ['feature', 'declined'] });
+  assert.deepEqual(r.labels, ['approved', 'feature']);
+});
+
+test('feature flow: a non-approver, or ordinary discussion, changes nothing', async () => {
+  for (const [login, body] of [['dev', 'approved'], ['apprA', 'can you add a note on rollout?']]) {
+    const r = await featureVerdict(login, body);
+    assert.deepEqual(r.labels, ['feature', 'needs-approval']);
+    assert.equal(r.comments.length, 0);
+  }
+});
+
+test('feature flow: a repeat approval does not announce twice', async () => {
+  const r = await featureVerdict('apprA', 'approved', { labels: ['feature', 'approved'] });
+  assert.equal(r.comments.length, 0);
+});

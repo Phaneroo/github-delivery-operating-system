@@ -213,6 +213,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Task | task | Priority, status, acceptance criteria |
 | Bug Report | bug, qa | Platform, severity, steps |
 | QA REQUEST | qa-request | Related issue, what to test |
+| Feature Request | feature, needs-approval | Requirements, what it satisfies, acceptance criteria, expected tests |
 | PRODUCTION RELEASE & QA SIGN-OFF | release, production, approval | Sprint ref, version, QA recommendation |
 
 ---
@@ -232,5 +233,6 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Approve release | Comment `approved` (dual: both approvers) |
 | Report bug | New issue → Bug Report |
 | QA request | New issue → QA REQUEST |
+| Propose a feature | New issue → Feature Request; the approver comments `approved` to start it |
 | Enable Telegram | `npx github-delivery-os add telegram .`, then add TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID |
 | Uninstall | Delete workflow files |

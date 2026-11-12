@@ -122,7 +122,7 @@ mkdir -p "${TARGET_ABS}/.github/ISSUE_TEMPLATE"
 mkdir -p "${TARGET_ABS}/.github/scripts"
 
 # 2. Copy workflows
-WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa setup-labels auto-qa-request qa-rollup-approval"
+WORKFLOWS="sprint-child-creator auto-close-sprint notify-release-approver authorize-deployment auto-assign-qa setup-labels auto-qa-request qa-rollup-approval feature-approval"
 copy_managed_files "$WORKFLOWS" ".yml" "$WORKFLOWS_SRC" "${TARGET_ABS}/.github/workflows" ".github/workflows"
 WORKFLOWS_COPIED=$COPIED
 

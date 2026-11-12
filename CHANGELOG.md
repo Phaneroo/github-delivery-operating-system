@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Feature Request form** (`feature_request.yml`): a feature's requirements, what it is meant to satisfy, acceptance criteria and the tests to carry out, filed with the `feature` and `needs-approval` labels.
+- **`feature-approval` workflow**: the feature approver (`FEATURE_APPROVER`, falling back to `RELEASE_APPROVER`) comments `approved` (or ✅) and the issue moves from `needs-approval` to `approved`; `declined` (or ❌) adds `declined`, and approving again lifts it. The same issue then tracks the work. Part of a new `features` pack (`add features`), included in a full install; lite doesn't get it unless added.
+- Labels `feature`, `needs-approval` and `approved` (run Setup Labels, or `--with-labels`, to create them).
+- The `delivery-ops` skill knows the Feature Request form and its approval flow.
+
 ## [1.14.1] - 2026-10-27
 
 Fewer billed Actions minutes. Actions bills each job rounded up to a whole minute, so a workflow that starts, finds nothing to do and exits still costs a minute; a job skipped by `if:` costs nothing. Behaviour is unchanged: the same events produce the same messages and updates.

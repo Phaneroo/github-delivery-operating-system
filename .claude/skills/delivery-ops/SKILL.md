@@ -156,6 +156,12 @@ This confirm-first default is for issues created **on explicit request** ("file 
 - Labels: `bug`, `qa`
 - Body: mirror `bug_report.yml`'s fields (`Platform(s) Affected`, `Severity`, `Build / Version`, `Bug Summary`, `Steps to Reproduce`, `Expected Result`, `Actual Result`, `Test Environment`) as `### <label>` / answer pairs.
 
+**Feature Request** — proposed before work starts; triggers `feature-approval` on the approver's comment:
+- Title: `[FEATURE] <one-line summary>`
+- Labels: `feature`, `needs-approval`
+- Body: mirror `feature_request.yml`'s fields (`Feature Summary`, `What It Is Meant to Satisfy`, `Requirements`, `Acceptance Criteria`, `Expected Tests`, `Platform(s) Affected`, `Priority`, `Designs / Links`) as `### <label>` / answer pairs.
+- Don't approve it on the user's behalf. The approver (`FEATURE_APPROVER`, falling back to `RELEASE_APPROVER`) comments an approve word (`approved`, `approve`, `ok`, `go ahead`, ✅) and the workflow swaps `needs-approval` for `approved`; `declined`/`rejected`/❌ adds `declined`, and approving again lifts it. Once `approved`, track the work on that same issue: link PRs, comment progress, close it when the feature ships. Before approval, only refine the requirements and tests; don't start the work.
+
 **Task** — no automation trigger, just structured tracking:
 - Title: `TASK - <one-line summary>`
 - Labels: `task`
@@ -232,6 +238,7 @@ Add the `delivery-ops-filed` label alongside the type label (`task`, `bug`, etc.
 
 - Bug reproduced or reported while working → **Bug Report**
 - Scoped, actionable follow-up (including things deliberately deferred, like [Phaneroo/github-delivery-operating-system#12](https://github.com/Phaneroo/github-delivery-operating-system/issues/12)) → **Task**
+- A new capability that needs requirements and sign-off before building → **Feature Request**
 - A batch of related work with a start/end date → **Sprint** (see "Phases" below)
 - Something that blocks a release or needs sign-off → **Production Release** / **QA Request** (rare mid-session; only when it's actually that, not just "important")
 

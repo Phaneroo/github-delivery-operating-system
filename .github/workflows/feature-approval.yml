@@ -1,0 +1,89 @@
+name: Feature Approval
+
+# Approves or declines a Feature Request (label `feature`) before work starts.
+# Only FEATURE_APPROVER counts (falls back to RELEASE_APPROVER, then
+# 'feature-approver'); either variable may be a comma-separated list of logins.
+#   approve  a comment starting with an approval word (approved, ok, go ahead)
+#            or ✅ 👍 ✔️  → `approved` added, `needs-approval`/`declined` removed
+#   decline  a comment starting with declined / rejected / not approved or
+#            ❌ 👎 🚫      → `declined` added, `needs-approval`/`approved` removed
+# The latest verdict from an approver wins. The issue stays open: after
+# approval the same issue tracks the work. The word lists are the release
+# gate's (.github/scripts/authorize-deployment-verdict.js).
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  verdict:
+    if: >-
+      contains(github.event.issue.labels.*.name || fromJSON('[]'), 'feature') &&
+      !github.event.issue.pull_request &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read # needed for actions/checkout, so this workflow's script can be required from the repo
+    concurrency:
+      group: feature-approval-${{ github.event.issue.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Apply the approver's verdict
+        uses: actions/github-script@v9
+        env:
+          FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER || vars.RELEASE_APPROVER || 'feature-approver' }}
+        with:
+          script: |
+            const { matchVerdict, phraseRegex, RELEASE_APPROVE_PHRASES, RELEASE_DECLINE_PHRASES } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issueNumber = context.payload.issue.number;
+            const approverNames = (process.env.FEATURE_APPROVER || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
+            const isApprover = (login) => approverNames.some((a) => a.toLowerCase() === (login || '').toLowerCase());
+
+            const vocab = {
+              approve: phraseRegex(RELEASE_APPROVE_PHRASES),
+              decline: phraseRegex(RELEASE_DECLINE_PHRASES),
+              approveEmoji: ['✅', '👍', '✔️', '✔'],
+              declineEmoji: ['❌', '👎', '🚫'],
+            };
+
+            const actor = context.payload.comment.user.login;
+            if (!isApprover(actor)) return;
+            const verdict = matchVerdict(context.payload.comment.body, vocab);
+            if (!verdict) return;
+
+            // Live labels, not the event snapshot: comments seconds apart queue
+            // under the concurrency group and must see each other's changes.
+            const { data: live } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+            const labels = live.labels.map((l) => (typeof l === 'string' ? l : l.name));
+            const add = verdict === 'approved' ? 'approved' : 'declined';
+            const drop = verdict === 'approved' ? ['needs-approval', 'declined'] : ['needs-approval', 'approved'];
+
+            for (const name of drop) {
+              if (!labels.includes(name)) continue;
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+            }
+            if (labels.includes(add)) return; // already in this state: no second announcement
+            await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [add] });
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: issueNumber,
+              body: verdict === 'approved'
+                ? `✅ **Feature approved** by @${actor}. This issue now tracks the work: link PRs to it and close it when the feature ships.`
+                : `🔴 **Feature declined** by @${actor}. It needs changes before it can be approved; update the requirements, then the approver can approve again.`,
+            });

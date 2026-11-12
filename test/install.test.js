@@ -2013,7 +2013,7 @@ test('add and remove refuse unknown names, and an empty repo, and change nothing
     process.exitCode = 0;
     add(lite, 'nope');
     assert.equal(process.exitCode, 1);
-    assert.match(errors.join('\n'), /Unknown name: nope\. Packs: qa, telegram\. Workflows: /);
+    assert.match(errors.join('\n'), /Unknown name: nope\. Packs: qa, features, telegram\. Workflows: /);
     assert.equal('packs' in readManifest(lite), false);
 
     process.exitCode = 0;
@@ -2093,7 +2093,7 @@ test('list --json describes the packs', () => {
     console.log = origLog;
   }
   const out = JSON.parse(lines.join('\n'));
-  assert.deepEqual(Object.keys(out.packs).sort(), ['qa', 'telegram']);
+  assert.deepEqual(Object.keys(out.packs).sort(), ['features', 'qa', 'telegram']);
   assert.ok(out.packs.qa.workflows.includes('auto-qa-request'));
 });
 
@@ -2452,8 +2452,8 @@ test('switching a full install to lite says which QA workflows are still on disk
   const dir = fullThenLite();
   try {
     const out = installOutput(dir, { bundle: 'lite', withTemplates: true, setApprovers: false });
-    assert.match(out, /Note: auto-assign-qa, auto-qa-request, qa-rollup-approval are still on disk but not part of this install/);
-    assert.match(out, /To remove them: npx github-delivery-os remove qa \./);
+    assert.match(out, /Note: auto-assign-qa, auto-qa-request, qa-rollup-approval, feature-approval are still on disk but not part of this install/);
+    assert.match(out, /To remove them: npx github-delivery-os remove qa,features \./);
     assert.ok(exists(dir, 'workflows/auto-qa-request.yml'), 'install never deletes');
   } finally {
     rm(dir);
@@ -2477,8 +2477,8 @@ test('status lists leftovers separately and counts only what the install should 
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
     const out = await statusOutput(dir);
-    assert.match(out, /Still on disk, but not part of this install: auto-assign-qa, auto-qa-request, qa-rollup-approval/);
-    assert.match(out, /remove qa \./);
+    assert.match(out, /Still on disk, but not part of this install: auto-assign-qa, auto-qa-request, qa-rollup-approval, feature-approval/);
+    assert.match(out, /remove qa,features \./);
     assert.match(out, /Summary: 5\/5 workflows, 5\/5 templates/, 'not 8/5');
   } finally {
     rm(dir);
@@ -2489,7 +2489,7 @@ test('remove qa clears the QA workflows left on disk after full was switched to 
   const dir = fullThenLite();
   try {
     inRepoQuietly(dir, () => runInstall({ targetDir: '.', bundle: 'lite', withTemplates: true, setApprovers: false }));
-    remove(dir, 'qa');
+    remove(dir, 'qa,features');
     for (const f of ['workflows/auto-qa-request.yml', 'workflows/qa-rollup-approval.yml', 'workflows/auto-assign-qa.yml', 'scripts/auto-qa-request.js', 'scripts/release-rollup.js', 'ISSUE_TEMPLATE/qa_request.yml']) {
       assert.equal(exists(dir, f), false, `${f} should be gone`);
     }
@@ -2558,7 +2558,7 @@ test('every form in TEMPLATE_NEEDS and every workflow it names is real', () => {
   }
 });
 
-test('forms follow their workflows: a default install keeps all six, narrower sets drop the forms nothing uses', () => {
+test('forms follow their workflows: a default install keeps all seven, narrower sets drop the forms nothing uses', () => {
   assert.deepEqual(effectiveFor('full', [], null).templates, TEMPLATES);
   assert.deepEqual(effectiveFor('lite', [], null).templates, BUNDLES.lite.templates);
   const noSprint = effectiveFor('full', [], DEFAULT_WORKFLOWS.filter((w) => !['sprint-child-creator', 'auto-close-sprint'].includes(w)));

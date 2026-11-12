@@ -35,7 +35,10 @@ flowchart LR
 | QA | `qa`, `qa-request` | QA testing requested |
 | Production | `production`, `release`, `approval` | Release candidate (template auto-applies) |
 | Ready | `ready-for-deploy` | Dual approval received (workflow adds) |
-| Declined | `declined` | Release declined (workflow adds) |
+| Declined | `declined` | Release or feature declined (workflow adds) |
+| Feature | `feature` | A Feature Request (template auto-applies) |
+| Needs approval | `needs-approval` | Feature awaiting the feature approver (template applies; workflow removes on a verdict) |
+| Approved | `approved` | Feature approved; the same issue tracks the work (workflow adds) |
 
 ---
 

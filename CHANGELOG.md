@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Feature Request form** (`feature_request.yml`): a feature's requirements, what it is meant to satisfy, acceptance criteria and the tests to carry out, filed with the `feature` and `needs-approval` labels.
-- **`feature-approval` workflow**: the feature approver (`FEATURE_APPROVER`, falling back to `RELEASE_APPROVER`) comments `approved` (or ✅) and the issue moves from `needs-approval` to `approved`; `declined` (or ❌) adds `declined`, and approving again lifts it. The same issue then tracks the work. Part of a new `features` pack (`add features`), included in a full install; lite doesn't get it unless added.
+- **`feature-approval` workflow**: the feature approver (`FEATURE_APPROVER`, falling back to `RELEASE_APPROVER`) comments `approved` (or ✅; `ok` and `approve` count only as the whole comment, so "ok, but..." in a discussion doesn't approve) and the issue moves from `needs-approval` to `approved`; `declined` (or ❌) adds `declined`. With several approvers a decline stands until the same person approves, as in the release gate. Only open issues are acted on. The same issue then tracks the work. Part of a new `features` pack (`add features`), included in a full install; lite doesn't get it unless added.
 - Labels `feature`, `needs-approval` and `approved` (run Setup Labels, or `--with-labels`, to create them).
 - The `delivery-ops` skill knows the Feature Request form and its approval flow.
 

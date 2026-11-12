@@ -34,7 +34,7 @@ Then recommend, with a reason, and let them overrule it:
 | One person, or a very small team that doesn't want a QA step | **lite** | `--bundle lite` |
 | A team with a QA step, or they want the rolling QA checklist | **full** | (default) |
 | They want specific parts only | **hand-picked** | `--only a,b` or `--skip a,b` (optionally with `--bundle lite`) |
-| Starting small but may want QA sign-off or Telegram later | **lite now, packs later** | `--bundle lite`, then `add qa` / `add telegram` when needed |
+| Starting small but may want QA sign-off, feature approval or Telegram later | **lite now, packs later** | `--bundle lite`, then `add qa` / `add features` / `add telegram` when needed |
 
 Starting small is safe because nothing is locked in: packs and single workflows can be added or removed later without reinstalling (`list --json` shows both, and what is installed in the repo).
 

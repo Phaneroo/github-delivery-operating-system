@@ -317,6 +317,7 @@ function parseFilingPrNumber(body) {
 
 module.exports = {
   phraseRegex,
+  wholeCommentRegex,
   matchVerdict,
   matchRollingQaVerdict,
   nextRollingQaAction,

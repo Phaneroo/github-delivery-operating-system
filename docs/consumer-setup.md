@@ -158,7 +158,7 @@ Each line under "Sprint Features" becomes a child issue with `Parent Sprint: #N`
 
 | Variable | Description |
 |----------|-------------|
-| `FEATURE_APPROVER` | GitHub username(s) who approve or decline Feature Requests (comma-separated list allowed). Falls back to `RELEASE_APPROVER` if unset |
+| `FEATURE_APPROVER` | GitHub username(s) who approve or decline Feature Requests (comma-separated list allowed). **Set it yourself**: it is separate from `RELEASE_APPROVER` and has no fallback, so feature and release sign-off can be different people. While it is unset, a new Feature Request gets a comment saying so and nothing can be approved. A new Feature Request pings these people; after a decline, the author comments `ready for review` to send it back to them |
 | `RELEASE_APPROVER` | GitHub username of release approver, or a comma-separated list (for notify + authorize). A decline from any of them blocks the release until that same person approves |
 | `QA_APPROVER` | GitHub username of QA approver, or a comma-separated list (for dual approval and the rolling QA issue). QA can decline too; a decline stands until that same person approves |
 | `QA_ASSIGNEES` | Comma-separated usernames for QA auto-assignment (e.g. `user1,user2`) |

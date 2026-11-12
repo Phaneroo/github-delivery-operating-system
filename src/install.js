@@ -1237,7 +1237,7 @@ const WORKFLOW_INFO = {
   'setup-labels': { summary: 'One-time workflow that creates the labels Delivery OS uses', needs: [] },
   'auto-qa-request': { summary: 'Adds each change that reaches main to the rolling QA issue (or files QA Requests)', needs: [] },
   'qa-rollup-approval': { summary: "Applies the QA approver's approve/decline to the rolling QA issue", needs: ['auto-qa-request'] },
-  'feature-approval': { summary: "Applies the feature approver's approve/decline to a Feature Request (approved / declined labels)", needs: [] },
+  'feature-approval': { summary: "Pings the feature approver on a new Feature Request, and applies their approve/decline (approved / declined labels); the author's \"ready for review\" re-queues a declined one", needs: [] },
 };
 
 // The comma-separated names a flag was given, trimmed and de-duplicated.

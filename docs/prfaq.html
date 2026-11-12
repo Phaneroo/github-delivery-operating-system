@@ -157,7 +157,7 @@
         <ul>
           <li><code>RELEASE_APPROVER</code> — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.</li>
           <li><code>QA_APPROVER</code> — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios (full, or lite with the <code>qa</code> pack). QA can decline too, and a decline stands until that same person approves.</li>
-          <li><code>FEATURE_APPROVER</code> — GitHub username (or comma-separated list) who approves or declines Feature Requests. Falls back to <code>RELEASE_APPROVER</code> if unset.</li>
+          <li><code>FEATURE_APPROVER</code> — GitHub username (or comma-separated list) who approves or declines Feature Requests. Required for features, and separate from <code>RELEASE_APPROVER</code> (the two can be different people); while it is unset the workflow says so on the issue and approves nothing.</li>
           <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment (full, or lite with the <code>qa</code> pack).</li>
           <li><code>PROJECT_NAME</code> — Optional display name in notifications.</li>
         </ul>

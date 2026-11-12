@@ -277,3 +277,66 @@ test('feature flow: only open issues are acted on', () => {
   const yml = require('fs').readFileSync(require('path').join(__dirname, '..', '.github', 'workflows', 'feature-approval.yml'), 'utf8');
   assert.match(yml, /github\.event\.issue\.state == 'open'/);
 });
+
+// feature-approval: notify and re-review
+
+const FEATURE_NOTIFY = extractScript('feature-approval.yml', 'notify');
+
+async function notifyFeature(approver) {
+  const fx = createFakeRepo({ issues: [{ number: 9, title: '[FEATURE] x', labels: ['feature', 'needs-approval'], created_at: '2026-09-20T00:00:00Z' }] });
+  const context = { repo, payload: { issue: { number: 9 } } };
+  await runScript(FEATURE_NOTIFY, { github: fx.github, context, env: { FEATURE_APPROVER: approver } });
+  return fx.store.comments.filter((c) => c.user.login === 'github-actions[bot]');
+}
+
+test('feature notify: a new Feature Request pings every feature approver', async () => {
+  const [c] = await notifyFeature('apprA, @apprB');
+  assert.match(c.body, /@apprA @apprB/);
+  assert.match(c.body, /waiting for your approval/);
+});
+
+test('feature notify: with FEATURE_APPROVER unset it says so, and does not fall back to the release approver', async () => {
+  const [c] = await notifyFeature('');
+  assert.match(c.body, /`FEATURE_APPROVER` is not set/);
+  assert.match(c.body, /separate from `RELEASE_APPROVER`/);
+});
+
+async function rereview(login, body, { labels = ['feature', 'declined'], author = 'dev', approver = 'apprA' } = {}) {
+  const fx = createFakeRepo({ issues: [{ number: 9, title: '[FEATURE] x', labels, created_at: '2026-09-20T00:00:00Z' }] });
+  const context = { repo, payload: { issue: { number: 9, user: { login: author } }, comment: { user: { login }, body } } };
+  await runScript(FEATURE, { github: fx.github, context, env: { FEATURE_APPROVER: approver } });
+  return {
+    labels: fx.store.issues[0].labels.map((l) => (typeof l === 'string' ? l : l.name)).sort(),
+    bot: fx.store.comments.filter((c) => c.user.login === 'github-actions[bot]'),
+  };
+}
+
+test('feature re-review: the author commenting "ready for review" after a decline re-queues it and pings the approver', async () => {
+  const r = await rereview('dev', 'Ready for review: added the edge cases');
+  assert.deepEqual(r.labels, ['feature', 'needs-approval']);
+  assert.match(r.bot[0].body, /@apprA please take another look/);
+});
+
+test('feature re-review: someone else, an ordinary reply, or a feature that is not declined changes nothing', async () => {
+  for (const [login, body, opts] of [
+    ['stranger', 'ready for review', {}],
+    ['dev', 'I updated the requirements', {}],
+    ['dev', 'ready for review', { labels: ['feature', 'needs-approval'] }],
+    ['dev', 'ready for review', { labels: ['feature', 'approved'] }],
+  ]) {
+    const before = opts.labels || ['feature', 'declined'];
+    const r = await rereview(login, body, opts);
+    assert.deepEqual(r.labels, [...before].sort(), `${login}: ${body}`);
+    assert.equal(r.bot.length, 0);
+  }
+});
+
+test('feature approval: with FEATURE_APPROVER unset nobody can approve, even a release approver', async () => {
+  const r = await featureVerdict('release-approver', 'approved', { approver: '' });
+  assert.deepEqual(r.labels, ['feature', 'needs-approval']);
+});
+
+test('feature approval: the workflow no longer reads RELEASE_APPROVER', () => {
+  const yml = require('fs').readFileSync(require('path').join(__dirname, '..', '.github', 'workflows', 'feature-approval.yml'), 'utf8');
+  assert.doesNotMatch(yml, /vars\.RELEASE_APPROVER/);
+});

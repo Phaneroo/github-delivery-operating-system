@@ -1,0 +1,94 @@
+name: ✨ Feature Request
+description: Propose a feature with its requirements and expected tests, for approval before work starts
+title: "[FEATURE] "
+labels:
+  - feature
+  - needs-approval
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ✨ Feature Request
+        The approver reviews this before any work starts. Once they comment
+        **approved** (or ✅), the issue is labelled `approved` and the same issue
+        is used to track the work. A comment starting with **declined** or
+        **rejected** declines it.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: One clear sentence describing the feature
+    validations:
+      required: true
+
+  - type: textarea
+    id: satisfies
+    attributes:
+      label: What It Is Meant to Satisfy
+      description: The user need, business goal or problem this addresses, and who it is for
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: What the feature must do
+      placeholder: |
+        - [ ] Requirement 1
+        - [ ] Requirement 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What "done" looks like
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Expected Tests
+      description: The tests to carry out before this can be called done (normal, edge and failure cases)
+      placeholder: |
+        - [ ] Happy path: ...
+        - [ ] Edge case: ...
+        - [ ] Failure case: ...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platform
+    attributes:
+      label: Platform(s) Affected
+      options:
+        - label: Android
+        - label: iOS
+        - label: Web
+        - label: Backend / API
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - Critical
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: Designs / Links (Optional)
+      description: Specs, designs, related issues

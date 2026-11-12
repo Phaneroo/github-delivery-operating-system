@@ -33,6 +33,7 @@ const TEMPLATES = [
   'qa_request.yml',
   'production_release_qa_signoff.yml',
   'bug_report.yml',
+  'feature_request.yml',
 ];
 const SKILL_REL_PATH = path.join('.claude', 'skills', 'delivery-ops', 'SKILL.md');
 

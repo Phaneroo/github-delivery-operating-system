@@ -25,6 +25,7 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | `authorize-deployment` | `issue_comment.created` (label `production`) | Dual approval → `ready-for-deploy`; a decline from any release or QA approver → `declined`, lifted only by that same person approving; closes the Tasks/QA Requests `auto-qa-request` filed before the release was requested (skipping ones whose PR hasn't merged) |
 | `auto-assign-qa` | `issues.opened/labeled` (label `qa` or `qa-request`) | Assign QA team |
 | `auto-qa-request` | `pull_request.opened/ready_for_review/reopened/synchronize/closed`, `push` to `main` | QA reminder for every change that reaches `main` and isn't docs/settings-only — safety net, not a gate. Default **rolling**: adds a line to the one open rolling QA issue, from the push to `main` (direct pushes, and PRs merged into `main`, including from forks). **per-change**: files a QA Request (+ Task if none is linked) per PR/push, and closes them if the PR is closed unmerged |
+| `feature-approval` | `issue_comment.created` (label `feature`) | `FEATURE_APPROVER` (falls back to `RELEASE_APPROVER`) approves → `approved`; declines → `declined`; the latest verdict wins and the issue stays open to track the work |
 | `qa-rollup-approval` | `issue_comment.created`, `issues.edited` (label `qa-rollup`) | `QA_APPROVER` approves (phrase/emoji comment or the Approved box) → closes the rolling issue; declines → keeps it open; with several QA approvers a decline stands until that same person approves |
 | `telegram-issues` | `issues`, `issue_comment`, `pull_request` | Send Telegram alerts (opt-in: `add telegram`) |
 | `setup-labels` | `workflow_dispatch` | Create required labels |
@@ -37,6 +38,7 @@ The GitHub Delivery Operating System is a **direct-copy** governance layer. Work
 | `task` | `task` | Structured tasks with priority, status, acceptance criteria |
 | `bug_report` | `bug`, `qa` | Bug reports with platform, severity, steps |
 | `qa_request` | `qa-request` | QA testing request |
+| `feature_request` | `feature`, `needs-approval` | Feature with requirements, what it satisfies and expected tests, approved before work starts |
 | `production_release_qa_signoff` | `release`, `production`, `approval` | Production release & QA sign-off |
 | `config` | — | Blank issues, contact links |
 

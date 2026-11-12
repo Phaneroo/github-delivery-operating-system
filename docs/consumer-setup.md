@@ -128,6 +128,7 @@ Both are silent when the repo has no manifest, when you're offline, or when anyt
 | `authorize-deployment.yml` | Dual approval (release approver + QA) before deployment |
 | `auto-assign-qa.yml` | Assigns QA team to issues with `qa` or `qa-request` label |
 | `auto-qa-request.yml` | QA reminder whenever work reaches `main` (a safety net, not a gate). By default it adds a line to the one **rolling QA issue**; in `per-change` mode it files a QA Request (plus a Task if nothing is linked) per PR or direct push. Docs/settings-only changes are skipped |
+| `feature-approval.yml` | Applies the feature approver's approve/decline to a Feature Request (`approved` / `declined` labels) |
 | `qa-rollup-approval.yml` | Applies the QA approver's approve/decline (comment or checkbox) to the rolling QA issue |
 | `telegram-issues.yml` | **Opt-in, not in a default install.** Sends Telegram alerts for bugs, QA, sprints, releases, PR merges. Add it with `npx github-delivery-os add telegram .`; a repo that already has it keeps it, and `--update` keeps refreshing it |
 | `setup-labels.yml` | One-time workflow to create all required labels |
@@ -157,6 +158,7 @@ Each line under "Sprint Features" becomes a child issue with `Parent Sprint: #N`
 
 | Variable | Description |
 |----------|-------------|
+| `FEATURE_APPROVER` | GitHub username(s) who approve or decline Feature Requests (comma-separated list allowed). Falls back to `RELEASE_APPROVER` if unset |
 | `RELEASE_APPROVER` | GitHub username of release approver, or a comma-separated list (for notify + authorize). A decline from any of them blocks the release until that same person approves |
 | `QA_APPROVER` | GitHub username of QA approver, or a comma-separated list (for dual approval and the rolling QA issue). QA can decline too; a decline stands until that same person approves |
 | `QA_ASSIGNEES` | Comma-separated usernames for QA auto-assignment (e.g. `user1,user2`) |
@@ -268,6 +270,7 @@ gh issue list --repo <owner>/<repo> --search "\"Auto-filed by Delivery OS\" in:b
 | `qa_request.yml` | QA testing request |
 | `production_release_qa_signoff.yml` | Production release + QA sign-off |
 | `bug_report.yml` | Bug report with platform, severity, steps |
+| `feature_request.yml` | Feature with requirements, what it satisfies, acceptance criteria and expected tests; needs approval before work starts |
 
 ---
 
@@ -300,6 +303,7 @@ An install isn't fixed. You can add and remove pieces at any time, without reins
 
 | Pack | What it adds |
 |------|--------------|
+| `features` | The Feature Request form and `feature-approval`: the approver comments `approved` and the issue moves from `needs-approval` to `approved`, then tracks the work |
 | `qa` | The rolling QA issue (`auto-qa-request`), QA approval (`qa-rollup-approval`), QA assignment (`auto-assign-qa`), the QA Request form and QA labels, and **a release that needs a QA approver as well as the release approver** (the full release workflows and form replace lite's) |
 | `telegram` | Telegram alerts (`telegram-issues`) |
 

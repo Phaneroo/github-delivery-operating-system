@@ -39,6 +39,7 @@ const WORKFLOWS = [
   'setup-labels',
   'auto-qa-request',
   'qa-rollup-approval',
+  'feature-approval',
 ];
 
 // What a default (full) install puts in a repo: everything except the Telegram
@@ -88,6 +89,8 @@ const REQUIRED_SCRIPT_BY_WORKFLOW = {
   // Shares the verdict matcher with authorize-deployment and the rolling
   // issue body helpers with auto-qa-request — required since it was added.
   'qa-rollup-approval': ['authorize-deployment-verdict', 'auto-qa-request'],
+  // Reuses the release gate's approve/decline words.
+  'feature-approval': 'authorize-deployment-verdict',
 };
 
 // Workflows that only started require()-ing a script in a later release, so
@@ -1191,6 +1194,7 @@ const TEMPLATES = [
   'qa_request.yml',
   'production_release_qa_signoff.yml',
   'bug_report.yml',
+  'feature_request.yml',
 ];
 
 // Named subsets of the above. `full` is everything (the default, and what a
@@ -1233,6 +1237,7 @@ const WORKFLOW_INFO = {
   'setup-labels': { summary: 'One-time workflow that creates the labels Delivery OS uses', needs: [] },
   'auto-qa-request': { summary: 'Adds each change that reaches main to the rolling QA issue (or files QA Requests)', needs: [] },
   'qa-rollup-approval': { summary: "Applies the QA approver's approve/decline to the rolling QA issue", needs: ['auto-qa-request'] },
+  'feature-approval': { summary: "Applies the feature approver's approve/decline to a Feature Request (approved / declined labels)", needs: [] },
 };
 
 // The comma-separated names a flag was given, trimmed and de-duplicated.
@@ -1339,6 +1344,11 @@ const PACKS = {
     workflows: ['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa'],
     templates: ['qa_request.yml'],
   },
+  features: {
+    summary: 'Feature requests: the Feature Request form (requirements, what it satisfies, expected tests) and approve/decline by the feature approver',
+    workflows: ['feature-approval'],
+    templates: ['feature_request.yml'],
+  },
   telegram: {
     summary: 'Telegram alerts for bugs, QA, sprints, releases and merges (the sprint-completed alert comes from auto-close-sprint itself, once the two secrets exist)',
     workflows: ['telegram-issues'],
@@ -1354,6 +1364,7 @@ const TEMPLATE_NEEDS = {
   'sprint_planning.yml': ['sprint-child-creator', 'auto-close-sprint'],
   'production_release_qa_signoff.yml': ['notify-release-approver', 'authorize-deployment'],
   'qa_request.yml': ['auto-qa-request', 'qa-rollup-approval', 'auto-assign-qa'],
+  'feature_request.yml': ['feature-approval'],
 };
 
 function templateWanted(template, workflows) {
@@ -1393,9 +1404,10 @@ function effectiveFor(bundle, packs, customWorkflows) {
     workflows,
     // The bundle's forms (plus the QA Request form once a QA workflow is there),
     // keeping only those whose workflows are installed.
-    templates: (bundle === DEFAULT_BUNDLE || !qa ? base.templates : [...base.templates, ...PACKS.qa.templates]).filter((t) =>
-      templateWanted(t, workflows)
-    ),
+    templates: (bundle === DEFAULT_BUNDLE
+      ? base.templates
+      : [...base.templates, ...(qa ? PACKS.qa.templates : []), ...(workflows.includes('feature-approval') ? PACKS.features.templates : [])]
+    ).filter((t) => templateWanted(t, workflows)),
     scripts: scriptsForWorkflows(flavor, workflows),
     liteWorkflows: lite ? BUNDLES.lite.liteWorkflows : undefined,
     liteTemplates: lite ? BUNDLES.lite.liteTemplates : undefined,

@@ -3,13 +3,17 @@ name: Feature Approval
 # Approves or declines a Feature Request (label `feature`) before work starts.
 # Only FEATURE_APPROVER counts (falls back to RELEASE_APPROVER, then
 # 'feature-approver'); either variable may be a comma-separated list of logins.
-#   approve  a comment starting with an approval word (approved, ok, go ahead)
-#            or ✅ 👍 ✔️  → `approved` added, `needs-approval`/`declined` removed
+#   approve  a comment starting with `approved` / `go ahead` / ✅ 👍 ✔️, or
+#            consisting only of `ok` / `approve` (so "ok, but what about X?"
+#            in a discussion is not an approval)
+#            → `approved` added, `needs-approval`/`declined` removed
 #   decline  a comment starting with declined / rejected / not approved or
 #            ❌ 👎 🚫      → `declined` added, `needs-approval`/`approved` removed
-# The latest verdict from an approver wins. The issue stays open: after
-# approval the same issue tracks the work. The word lists are the release
-# gate's (.github/scripts/authorize-deployment-verdict.js).
+# Per approver, the latest verdict counts, and a decline stands until that
+# same person approves (another approver's approval is refused), as in the
+# release gate. Only open issues are acted on. After approval the same issue
+# tracks the work. The decline words are the release gate's
+# (.github/scripts/authorize-deployment-verdict.js).
 on:
   issue_comment:
     types: [created]
@@ -21,6 +25,7 @@ permissions:
 jobs:
   verdict:
     if: >-
+      github.event.issue.state == 'open' &&
       contains(github.event.issue.labels.*.name || fromJSON('[]'), 'feature') &&
       !github.event.issue.pull_request &&
       github.actor != 'github-actions[bot]'
@@ -42,7 +47,7 @@ jobs:
           FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER || vars.RELEASE_APPROVER || 'feature-approver' }}
         with:
           script: |
-            const { matchVerdict, phraseRegex, RELEASE_APPROVE_PHRASES, RELEASE_DECLINE_PHRASES } =
+            const { matchVerdict, phraseRegex, wholeCommentRegex, RELEASE_DECLINE_PHRASES } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const owner = context.repo.owner;
@@ -51,8 +56,11 @@ jobs:
             const approverNames = (process.env.FEATURE_APPROVER || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
             const isApprover = (login) => approverNames.some((a) => a.toLowerCase() === (login || '').toLowerCase());
 
+            // "ok" / "approve" start too many ordinary sentences to trust as a
+            // prefix on a discussion thread, so they count only as the whole comment.
             const vocab = {
-              approve: phraseRegex(RELEASE_APPROVE_PHRASES),
+              approve: phraseRegex(['approved', 'go ahead']),
+              approveWhole: wholeCommentRegex(['ok', 'approve']),
               decline: phraseRegex(RELEASE_DECLINE_PHRASES),
               approveEmoji: ['✅', '👍', '✔️', '✔'],
               declineEmoji: ['❌', '👎', '🚫'],
@@ -63,23 +71,47 @@ jobs:
             const verdict = matchVerdict(context.payload.comment.body, vocab);
             if (!verdict) return;
 
+            // Each approver's latest verdict on this issue (this comment included).
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: issueNumber, per_page: 100 });
+            const latest = {};
+            for (const c of comments) {
+              if (!isApprover(c.user && c.user.login)) continue;
+              const v = matchVerdict(c.body, vocab);
+              if (v) latest[c.user.login.toLowerCase()] = { v, login: c.user.login };
+            }
+            latest[actor.toLowerCase()] = { v: verdict, login: actor };
+
             // Live labels, not the event snapshot: comments seconds apart queue
             // under the concurrency group and must see each other's changes.
             const { data: live } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
             const labels = live.labels.map((l) => (typeof l === 'string' ? l : l.name));
-            const add = verdict === 'approved' ? 'approved' : 'declined';
-            const drop = verdict === 'approved' ? ['needs-approval', 'declined'] : ['needs-approval', 'approved'];
 
+            if (verdict === 'approved') {
+              const blockedBy = Object.keys(latest).filter((a) => a !== actor.toLowerCase() && latest[a].v === 'declined').map((a) => latest[a].login);
+              if (blockedBy.length) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `@${actor} this feature was declined by ${blockedBy.map((a) => '@' + a).join(', ')}. Only the approver who declined it can lift the decline, by approving.`,
+                });
+                return;
+              }
+            }
+
+            const add = verdict === 'approved' ? 'approved' : 'declined';
+            const drop = (verdict === 'approved' ? ['needs-approval', 'declined'] : ['needs-approval', 'approved']).filter((n) => labels.includes(n));
+
+            // Add the verdict label first: if a later call fails, the issue still
+            // carries a label that says where it stands.
+            const alreadyThere = labels.includes(add);
+            if (!alreadyThere) await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [add] });
             for (const name of drop) {
-              if (!labels.includes(name)) continue;
               try {
                 await github.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name });
               } catch (e) {
                 if (e.status !== 404) throw e;
               }
             }
-            if (labels.includes(add)) return; // already in this state: no second announcement
-            await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: [add] });
+            if (alreadyThere) return; // already in this state: no second announcement
 
             await github.rest.issues.createComment({
               owner, repo, issue_number: issueNumber,

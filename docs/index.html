@@ -492,6 +492,7 @@ Agent: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td data-label="Workflow">auto-qa-request<br><em>Full · pack: qa</em></td><td data-label="Trigger">Push to <code>main</code></td><td data-label="What it does">Adds each change to one rolling QA issue (tune with <code>DELIVERY_OS_AUTO_QA_MODE</code>)</td></tr>
               <tr><td data-label="Workflow">qa-rollup-approval<br><em>Full · pack: qa</em></td><td data-label="Trigger">Comment on the rolling QA issue</td><td data-label="What it does">QA approver approves (closes it) or declines (keeps it open)</td></tr>
               <tr><td data-label="Workflow">auto-assign-qa<br><em>Full · pack: qa</em></td><td data-label="Trigger">Issue labeled <code>qa</code> or <code>qa-request</code></td><td data-label="What it does">Assigns <code>QA_ASSIGNEES</code></td></tr>
+              <tr><td data-label="Workflow">feature-approval<br><em>Full · pack: features</em></td><td data-label="Trigger">Comment on a <code>feature</code> issue</td><td data-label="What it does">Feature approver approves (<code>approved</code>) or declines (<code>declined</code>); the same issue then tracks the work</td></tr>
               <tr><td data-label="Workflow">telegram-issues<br><em>Opt-in · pack: telegram</em></td><td data-label="Trigger">Issue, comment and PR events</td><td data-label="What it does">Sends Telegram alerts when the two secrets are set</td></tr>
             </tbody>
           </table>
@@ -538,7 +539,7 @@ Agent: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td><code>install --bundle lite --with-templates --with-labels --with-skill .</code></td><td>One person or a small project — sprints, tasks, bugs and a single-approver release, without the QA machinery. Sets you as the release approver</td></tr>
               <tr><td><code>install --only a,b …</code> / <code>--skip a,b</code></td><td>Pick individual workflows (names from <code>list</code>) instead of a whole bundle</td></tr>
               <tr><td><code>list .</code></td><td>See every bundle, pack and workflow, and which are installed in this repo (<code>--json</code> for tools)</td></tr>
-              <tr><td><code>add qa .</code> / <code>add telegram .</code> / <code>add &lt;workflow&gt; .</code></td><td>Add a pack or a single workflow later, without reinstalling (<code>--dry-run</code> to preview)</td></tr>
+              <tr><td><code>add qa .</code> / <code>add features .</code> / <code>add telegram .</code> / <code>add &lt;workflow&gt; .</code></td><td>Add a pack or a single workflow later, without reinstalling (<code>--dry-run</code> to preview)</td></tr>
               <tr><td><code>remove qa .</code> / <code>remove &lt;workflow&gt; .</code></td><td>Take a pack or workflow away again; deletes only the files nothing else needs</td></tr>
               <tr><td><code>setup-skill</code></td><td>Add the Claude Code skill that helps you choose what to install, before anything is installed</td></tr>
               <tr><td><code>install --dry-run …</code></td><td>Preview any combination above — nothing is written</td></tr>

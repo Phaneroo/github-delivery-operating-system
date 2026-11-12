@@ -228,3 +228,52 @@ test('feature flow: a repeat approval does not announce twice', async () => {
   const r = await featureVerdict('apprA', 'approved', { labels: ['feature', 'approved'] });
   assert.equal(r.comments.length, 0);
 });
+
+test('feature flow: "ok, but ..." and "approve of the idea, but ..." in a discussion do not approve; a bare "ok" does', async () => {
+  for (const body of ['Ok, can you clarify requirement 3?', 'Approve of the idea, but acceptance criteria are missing']) {
+    const r = await featureVerdict('apprA', body);
+    assert.deepEqual(r.labels, ['feature', 'needs-approval'], body);
+  }
+  assert.deepEqual((await featureVerdict('apprA', 'ok')).labels, ['approved', 'feature']);
+  assert.deepEqual((await featureVerdict('apprA', 'Approved, ship it')).labels, ['approved', 'feature']);
+});
+
+async function featureThread(comments, labels) {
+  const fx = createFakeRepo({
+    issues: [{ number: 9, title: '[FEATURE] x', labels, created_at: '2026-09-20T00:00:00Z' }],
+    comments: comments.slice(0, -1).map(([login, body]) => ({ issue_number: 9, user: { login }, body })),
+  });
+  const [login, body] = comments[comments.length - 1];
+  fx.store.comments.push({ issue_number: 9, user: { login }, body });
+  const context = { repo, payload: { issue: { number: 9 }, comment: { user: { login }, body } } };
+  await runScript(FEATURE, { github: fx.github, context, env: { FEATURE_APPROVER: 'apprA, apprB' } });
+  return {
+    labels: fx.store.issues[0].labels.map((l) => (typeof l === 'string' ? l : l.name)).sort(),
+    bot: fx.store.comments.filter((c) => c.user.login === 'github-actions[bot]'),
+  };
+}
+
+test('feature flow: with two approvers, a decline stands until the decliner approves', async () => {
+  const blocked = await featureThread([['apprA', 'declined'], ['apprB', 'approved']], ['feature', 'declined']);
+  assert.deepEqual(blocked.labels, ['declined', 'feature']);
+  assert.match(blocked.bot[0].body, /declined by @apprA/);
+  const lifted = await featureThread([['apprA', 'declined'], ['apprB', 'approved'], ['apprA', 'approved']], ['feature', 'declined']);
+  assert.deepEqual(lifted.labels, ['approved', 'feature']);
+});
+
+test('feature flow: the verdict label is added before the old ones are removed', async () => {
+  const fx = createFakeRepo({ issues: [{ number: 9, title: '[FEATURE] x', labels: ['feature', 'needs-approval'], created_at: '2026-09-20T00:00:00Z' }] });
+  const calls = [];
+  const gh = { ...fx.github, rest: { ...fx.github.rest, issues: { ...fx.github.rest.issues,
+    addLabels: async (a) => { calls.push('add'); return fx.github.rest.issues.addLabels(a); },
+    removeLabel: async (a) => { calls.push('remove'); return fx.github.rest.issues.removeLabel(a); } } } };
+  gh.paginate = fx.github.paginate;
+  const context = { repo, payload: { issue: { number: 9 }, comment: { user: { login: 'apprA' }, body: 'approved' } } };
+  await runScript(FEATURE, { github: gh, context, env: { FEATURE_APPROVER: 'apprA' } });
+  assert.deepEqual(calls, ['add', 'remove']);
+});
+
+test('feature flow: only open issues are acted on', () => {
+  const yml = require('fs').readFileSync(require('path').join(__dirname, '..', '.github', 'workflows', 'feature-approval.yml'), 'utf8');
+  assert.match(yml, /github\.event\.issue\.state == 'open'/);
+});

@@ -65,6 +65,7 @@ npx github-delivery-os install --bundle lite --with-templates --with-labels --wi
 | Task, bug and production release issue forms | ✓ | ✓ |
 | Release approval | one approver, you | release approver + QA approver |
 | Rolling QA issue, QA Requests, QA assignment, Telegram | none (add them later as packs) | ✓ |
+| Feature Request form with approval before work starts | `add features` | ✓ |
 | `AGENTS.md` for other AI coding agents (`--with-agents`) | ✓ (skips QA guidance) | ✓ |
 | Claude Code skill (`--with-skill`) | ✓ (skips QA guidance) | ✓ |
 

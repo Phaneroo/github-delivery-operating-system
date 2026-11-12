@@ -29,6 +29,7 @@ Delivery OS copies GitHub Actions workflows and issue templates directly into th
 
 - **One-command installation** — `npx github-delivery-os install` with options for templates, labels, dry runs, and controlled overwrites when updating.
 - **Consistent delivery patterns** — Sprint issues with structured feature lists, child issues, burn-down behavior, QA assignment, production release issues, and dual-approval gates (configurable via repository variables).
+- **Feature requests with approval** — A Feature Request form captures requirements, what a feature is meant to satisfy, acceptance criteria and the tests to carry out. The feature approver approves or declines by comment, and the same issue then tracks the work.
 - **Transparency** — Workflows and templates live in `.github/` in your repository, so behavior is reviewable in version control.
 - **Optional integrations** — Telegram notifications and GitHub CLI–based label setup where teams choose to enable them.
 

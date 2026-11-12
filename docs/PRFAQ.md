@@ -65,7 +65,7 @@ Other commands include `status`, `list` (what exists and what is installed), `ad
 
 ## 4. What gets installed?
 
-Two sizes: **full** (everything below) and **lite** (sprints, task and bug forms, and a release that one approval ships; no QA machinery). You can add the rest later as packs (`qa`, `telegram`) or one workflow at a time. Typical workflows (names may vary by release):
+Two sizes: **full** (everything below) and **lite** (sprints, task and bug forms, and a release that one approval ships; no QA machinery). You can add the rest later as packs (`qa`, `features`, `telegram`) or one workflow at a time. Typical workflows (names may vary by release):
 
 | Area | Behavior |
 |------|----------|
@@ -74,10 +74,11 @@ Two sizes: **full** (everything below) and **lite** (sprints, task and bug forms
 | Production | Notify a release approver when production-style issues are opened. |
 | Approvals | Apply `ready-for-deploy` after dual approval rules in [Governance](governance.md) (release approver and QA approver on full; one approver on lite). |
 | QA | Auto-assign QA on issues labeled `qa` or `qa-request`, and keep one rolling QA issue (full, or lite with the `qa` pack). |
+| Features | A Feature Request form (requirements, what it satisfies, acceptance criteria, expected tests) that the feature approver approves or declines by comment before work starts; the same issue then tracks the work (full, or lite with the `features` pack). |
 | Notifications | Optional Telegram messages for configured events. Opt-in: not in a default install; add them with `add telegram`. |
 | Labels | A workflow to create required labels on demand. |
 
-With `--with-templates`, you get structured forms for sprints, tasks, bugs, QA requests, production sign-off, and configuration. See [Architecture](architecture.md) for the full list and triggers.
+With `--with-templates`, you get structured forms for sprints, tasks, bugs, feature requests, QA requests, production sign-off, and configuration. See [Architecture](architecture.md) for the full list and triggers.
 
 ---
 
@@ -93,6 +94,7 @@ Set **GitHub Actions variables** (Repository → Settings → Secrets and variab
 
 - `RELEASE_APPROVER` — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.
 - `QA_APPROVER` — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios (full, or lite with the `qa` pack). QA can decline too, and a decline stands until that same person approves.
+- `FEATURE_APPROVER` — GitHub username (or comma-separated list) who approves or declines Feature Requests. Falls back to `RELEASE_APPROVER` if unset.
 - `QA_ASSIGNEES` — Comma-separated handles for QA assignment (full, or lite with the `qa` pack).
 - `PROJECT_NAME` — Optional display name in notifications.
 

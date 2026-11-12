@@ -127,7 +127,7 @@
       </article>
       <article class="doc-section" id="q4">
         <h2>4. What gets installed?</h2>
-        <p>Two sizes: full (everything below) and lite (sprints, task and bug forms, and a release that one approval ships; no QA machinery). You can add the rest later as packs (<code>qa</code>, <code>telegram</code>) or one workflow at a time. Typical workflows (names may vary by release):</p>
+        <p>Two sizes: full (everything below) and lite (sprints, task and bug forms, and a release that one approval ships; no QA machinery). You can add the rest later as packs (<code>qa</code>, <code>features</code>, <code>telegram</code>) or one workflow at a time. Typical workflows (names may vary by release):</p>
         <div class="table-wrap">
           <table class="workflows-table plain-first">
             <thead>
@@ -139,12 +139,13 @@
               <tr><td>Production</td><td>Notify a release approver when production-style issues are opened.</td></tr>
               <tr><td>Approvals</td><td>Apply <code>ready-for-deploy</code> after dual approval rules in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> (release approver and QA approver on full; one approver on lite).</td></tr>
               <tr><td>QA</td><td>Auto-assign QA on issues labeled <code>qa</code> or <code>qa-request</code>, and keep one rolling QA issue (full, or lite with the <code>qa</code> pack).</td></tr>
+              <tr><td>Features</td><td>A Feature Request form (requirements, what it satisfies, acceptance criteria, expected tests) that the feature approver approves or declines by comment before work starts; the same issue then tracks the work (full, or lite with the <code>features</code> pack).</td></tr>
               <tr><td>Notifications</td><td>Optional Telegram messages for configured events. Opt-in: not in a default install; add them with <code>add telegram</code>.</td></tr>
               <tr><td>Labels</td><td>A workflow to create required labels on demand.</td></tr>
             </tbody>
           </table>
         </div>
-        <p>With <code>--with-templates</code>, you get structured forms for sprints, tasks, bugs, QA requests, production sign-off, and configuration. See <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/architecture.md">Architecture</a> for the full list and triggers.</p>
+        <p>With <code>--with-templates</code>, you get structured forms for sprints, tasks, bugs, feature requests, QA requests, production sign-off, and configuration. See <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/architecture.md">Architecture</a> for the full list and triggers.</p>
       </article>
       <article class="doc-section" id="q5">
         <h2>5. How is this different from branch protection and pull requests alone?</h2>
@@ -156,6 +157,7 @@
         <ul>
           <li><code>RELEASE_APPROVER</code> — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.</li>
           <li><code>QA_APPROVER</code> — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios (full, or lite with the <code>qa</code> pack). QA can decline too, and a decline stands until that same person approves.</li>
+          <li><code>FEATURE_APPROVER</code> — GitHub username (or comma-separated list) who approves or declines Feature Requests. Falls back to <code>RELEASE_APPROVER</code> if unset.</li>
           <li><code>QA_ASSIGNEES</code> — Comma-separated handles for QA assignment (full, or lite with the <code>qa</code> pack).</li>
           <li><code>PROJECT_NAME</code> — Optional display name in notifications.</li>
         </ul>

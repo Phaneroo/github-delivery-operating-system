@@ -100,6 +100,28 @@ https://phaneroo.github.io/github-delivery-operating-system
 
 ---
 
+## Option F — 1.15 update (feature requests)
+
+**New in Delivery OS 1.15: approve a feature before anyone builds it.**
+
+A Feature Request form in GitHub captures:
+• the requirements
+• what the feature is meant to satisfy
+• the acceptance criteria
+• the tests to carry out
+
+The approver comments `approved` and the issue moves from `needs-approval` to `approved`. The same issue then tracks the work through to shipping. No new tools.
+
+Update with `npx github-delivery-os@latest install --with-templates --with-labels --update .` (lite: `add features .`).
+
+Open source. MIT. On npm.
+
+https://phaneroo.github.io/github-delivery-operating-system
+
+#GitHub #Engineering #DevOps #OpenSource
+
+---
+
 ## Tips for posting
 
 1. **Add a screenshot** — The landing page or a sprint issue in GitHub makes a strong visual.

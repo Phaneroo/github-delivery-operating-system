@@ -103,19 +103,22 @@
             <label for="tab-none">No agent</label>
           </div>
           <div class="tab-panel panel-any">
-            <div class="install-block"><div class="install-label">Codex, Cursor, GitHub Copilot, Cline, opencode and more</div><code>npx github-delivery-os install --with-templates --with-labels --with-agents .</code></div>
+            <div class="install-block"><div class="install-label">Codex, Cursor, GitHub Copilot, Cline, opencode and more: full (a team with a QA step)</div><code>npx github-delivery-os install --with-templates --with-labels --with-agents .</code></div>
+            <div class="install-block"><div class="install-label">Codex, Cursor, Copilot and more: lite (one person or a small project)</div><code>npx github-delivery-os install --bundle lite --with-templates --with-labels --with-agents .</code></div>
             <p class="tab-note">Adds the instructions to <code>AGENTS.md</code>, which most agents read. A few, like Aider, need to be pointed at the file.</p>
           </div>
           <div class="tab-panel panel-claude">
-            <div class="install-block"><div class="install-label">Claude Code</div><code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code></div>
+            <div class="install-block"><div class="install-label">Claude Code: full (a team with a QA step)</div><code>npx github-delivery-os install --with-templates --with-labels --with-skill .</code></div>
+            <div class="install-block"><div class="install-label">Claude Code: lite (one person or a small project)</div><code>npx github-delivery-os install --bundle lite --with-templates --with-labels --with-skill .</code></div>
             <p class="tab-note">Adds the <code>delivery-ops</code> skill to <code>.claude/skills</code>.</p>
           </div>
           <div class="tab-panel panel-none">
-            <div class="install-block"><div class="install-label">Terminal only</div><code>npx github-delivery-os install --with-templates --with-labels .</code></div>
+            <div class="install-block"><div class="install-label">Terminal only: full (a team with a QA step)</div><code>npx github-delivery-os install --with-templates --with-labels .</code></div>
+            <div class="install-block"><div class="install-label">Terminal only: lite (one person or a small project)</div><code>npx github-delivery-os install --bundle lite --with-templates --with-labels .</code></div>
             <p class="tab-note">Workflows, forms and labels only. You create issues yourself.</p>
           </div>
         </div>
-        <p>One person or a small project? Add <code>--bundle lite</code>. Want a preview first? Add <code>--dry-run</code>. <a href="#start-small">Lite or full →</a></p>
+        <p>Each tab shows both sizes: <strong>full</strong> for a team with a QA step, and <strong>lite</strong> (one person or a small project: sprints, tasks, bugs and a single-approver release). Want a preview first? Add <code>--dry-run</code>. <a href="#start-small">Lite or full →</a></p>
 
         <h3 id="guided">2. Ask your agent</h3>
         <p>Open your agent in the repo and say what you want:</p>
@@ -165,6 +168,7 @@
               <tr><td>Sprints, tasks, bugs, burn-down</td><td>✓</td><td>✓</td></tr>
               <tr><td>Release approval</td><td>One approver: you</td><td>Release approver + QA approver</td></tr>
               <tr><td>Rolling QA issue and QA requests</td><td>Add later</td><td>✓</td></tr>
+              <tr><td>Feature requests with approval</td><td>Add later</td><td>✓</td></tr>
               <tr><td>Telegram alerts</td><td>Add later</td><td>Add later</td></tr>
             </tbody>
           </table>

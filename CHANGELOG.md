@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`feature-approval` pings the feature approver** when a Feature Request is filed. If `FEATURE_APPROVER` isn't set, it says so on the issue instead of staying silent.
+- **Re-review after a decline.** The issue's author comments `ready for review` (once the requirements are updated) and the issue goes back to `needs-approval`, with the approver pinged. Edits alone never re-queue it, so an approver isn't re-pinged for changes that don't address the decline.
+
+### Changed
+
+- **`FEATURE_APPROVER` no longer falls back to `RELEASE_APPROVER`** (nor to a placeholder name). Feature sign-off is its own role, so it can be different people from release sign-off. A repo that relied on the fallback must set `FEATURE_APPROVER`; until then nobody can approve a feature, and the workflow says so on the issue. 1.15.0 shipped hours before this change.
+
 ## [1.15.0] - 2026-11-12
 
 ### Added

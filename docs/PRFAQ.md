@@ -94,7 +94,7 @@ Set **GitHub Actions variables** (Repository → Settings → Secrets and variab
 
 - `RELEASE_APPROVER` — GitHub username (or comma-separated list) for release approval flows. A decline from any listed approver blocks the release until that same person approves.
 - `QA_APPROVER` — GitHub username (or comma-separated list) for QA approval in dual-approval scenarios (full, or lite with the `qa` pack). QA can decline too, and a decline stands until that same person approves.
-- `FEATURE_APPROVER` — GitHub username (or comma-separated list) who approves or declines Feature Requests. Falls back to `RELEASE_APPROVER` if unset.
+- `FEATURE_APPROVER` — GitHub username (or comma-separated list) who approves or declines Feature Requests. Required for features, and separate from `RELEASE_APPROVER` (the two can be different people); while it is unset the workflow says so on the issue and approves nothing.
 - `QA_ASSIGNEES` — Comma-separated handles for QA assignment (full, or lite with the `qa` pack).
 - `PROJECT_NAME` — Optional display name in notifications.
 

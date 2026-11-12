@@ -1,8 +1,11 @@
 name: Feature Approval
 
 # Approves or declines a Feature Request (label `feature`) before work starts.
-# Only FEATURE_APPROVER counts (falls back to RELEASE_APPROVER, then
-# 'feature-approver'); either variable may be a comma-separated list of logins.
+# Only FEATURE_APPROVER counts: a repo variable (a login, or a comma-separated
+# list) that is deliberately separate from RELEASE_APPROVER and has no
+# fallback, so feature sign-off and release sign-off can be different people.
+# While it is unset the workflow says so on the issue and approves nothing.
+#   notify   a new `feature` issue pings the feature approver(s)
 #   approve  a comment starting with `approved` / `go ahead` / ✅ 👍 ✔️, or
 #            consisting only of `ok` / `approve` (so "ok, but what about X?"
 #            in a discussion is not an approval)
@@ -12,9 +15,15 @@ name: Feature Approval
 # Per approver, the latest verdict counts, and a decline stands until that
 # same person approves (another approver's approval is refused), as in the
 # release gate. Only open issues are acted on. After approval the same issue
-# tracks the work. The decline words are the release gate's
+# tracks the work.
+#   re-review  after a decline, the issue's author comments `ready for review`
+#            → `declined` removed, `needs-approval` back, approver(s) pinged.
+#            Edits alone never re-queue it.
+# The decline words are the release gate's
 # (.github/scripts/authorize-deployment-verdict.js).
 on:
+  issues:
+    types: [opened]
   issue_comment:
     types: [created]
 
@@ -23,8 +32,33 @@ permissions:
   contents: read
 
 jobs:
+  notify:
+    if: >-
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name || fromJSON('[]'), 'feature') &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Ping the feature approver
+        uses: actions/github-script@v9
+        env:
+          FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER }}
+        with:
+          script: |
+            const approverNames = (process.env.FEATURE_APPROVER || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
+            const body = approverNames.length
+              ? `${approverNames.map((a) => '@' + a).join(' ')} a Feature Request is waiting for your approval. Comment \`approved\` to start the work or \`declined\` to send it back.`
+              : '⚠️ The repo variable `FEATURE_APPROVER` is not set, so nobody can approve this Feature Request yet. Set it under Settings → Secrets and variables → Actions → Variables (a GitHub login, or a comma-separated list). It is separate from `RELEASE_APPROVER`.';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.payload.issue.number, body,
+            });
+
   verdict:
     if: >-
+      github.event_name == 'issue_comment' &&
       github.event.issue.state == 'open' &&
       contains(github.event.issue.labels.*.name || fromJSON('[]'), 'feature') &&
       !github.event.issue.pull_request &&
@@ -44,7 +78,7 @@ jobs:
       - name: Apply the approver's verdict
         uses: actions/github-script@v9
         env:
-          FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER || vars.RELEASE_APPROVER || 'feature-approver' }}
+          FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER }}
         with:
           script: |
             const { matchVerdict, phraseRegex, wholeCommentRegex, RELEASE_DECLINE_PHRASES } =
@@ -67,6 +101,28 @@ jobs:
             };
 
             const actor = context.payload.comment.user.login;
+
+            // After a decline, the issue's author asks for another look. Only that
+            // comment re-queues it: edits and ordinary replies leave it alone.
+            if (/^ready for review\b/i.test((context.payload.comment.body || '').trim())) {
+              const author = context.payload.issue.user && context.payload.issue.user.login;
+              if (!(author && author.toLowerCase() === actor.toLowerCase()) && !isApprover(actor)) return;
+              const { data: now } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+              const nowLabels = now.labels.map((l) => (typeof l === 'string' ? l : l.name));
+              if (!nowLabels.includes('declined') || nowLabels.includes('approved')) return;
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['needs-approval'] });
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name: 'declined' });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issueNumber,
+                body: `🔁 @${actor} asked for another review. ${approverNames.length ? approverNames.map((a) => '@' + a).join(' ') + ' please take another look.' : 'The repo variable `FEATURE_APPROVER` is not set, so nobody can approve it yet.'}`,
+              });
+              return;
+            }
+
             if (!isApprover(actor)) return;
             const verdict = matchVerdict(context.payload.comment.body, vocab);
             if (!verdict) return;

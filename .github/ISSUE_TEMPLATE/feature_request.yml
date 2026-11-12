@@ -13,7 +13,8 @@ body:
         The approver reviews this before any work starts. Once they comment
         **approved** (or ✅), the issue is labelled `approved` and the same issue
         is used to track the work. A comment starting with **declined** or
-        **rejected** declines it.
+        **rejected** declines it; after updating the requirements, comment
+        **ready for review** to send it back to the approver.
 
   - type: textarea
     id: summary

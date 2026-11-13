@@ -77,7 +77,7 @@
       <div class="doc-hero" id="overview">
         <h1>GitHub Delivery OS</h1>
         <p class="tagline">Sprints, QA and release approvals, built into your GitHub repo. Run it from any AI coding agent, or by hand.</p>
-        <p class="doc-lead"><strong>New in 1.15:</strong> Feature Requests with approval before work starts. Works with any AI coding agent, not just Claude Code. Not technical? <a href="why.html">Start here →</a></p>
+        <p class="doc-lead"><strong>New in 1.16:</strong> Feature Requests ping their own approver, and can be sent back for review after a decline. Works with any AI coding agent, not just Claude Code. Not technical? <a href="why.html">Start here →</a></p>
         <p class="hero-actions"><a class="cta star-btn" href="https://github.com/Phaneroo/github-delivery-operating-system" target="_blank" rel="noopener noreferrer">★ Star on GitHub <span class="star-count" hidden></span></a></p>
       </div>
 
@@ -496,7 +496,7 @@ Agent: Posted. authorize-deployment will add ready-for-deploy once both
               <tr><td data-label="Workflow">auto-qa-request<br><em>Full · pack: qa</em></td><td data-label="Trigger">Push to <code>main</code></td><td data-label="What it does">Adds each change to one rolling QA issue (tune with <code>DELIVERY_OS_AUTO_QA_MODE</code>)</td></tr>
               <tr><td data-label="Workflow">qa-rollup-approval<br><em>Full · pack: qa</em></td><td data-label="Trigger">Comment on the rolling QA issue</td><td data-label="What it does">QA approver approves (closes it) or declines (keeps it open)</td></tr>
               <tr><td data-label="Workflow">auto-assign-qa<br><em>Full · pack: qa</em></td><td data-label="Trigger">Issue labeled <code>qa</code> or <code>qa-request</code></td><td data-label="What it does">Assigns <code>QA_ASSIGNEES</code></td></tr>
-              <tr><td data-label="Workflow">feature-approval<br><em>Full · pack: features</em></td><td data-label="Trigger">Comment on a <code>feature</code> issue</td><td data-label="What it does">Feature approver approves (<code>approved</code>) or declines (<code>declined</code>); the same issue then tracks the work</td></tr>
+              <tr><td data-label="Workflow">feature-approval<br><em>Full · pack: features</em></td><td data-label="Trigger">Feature issue opened, or a comment on one</td><td data-label="What it does">Pings <code>FEATURE_APPROVER</code> (set it yourself; separate from the release approver); the approver approves (<code>approved</code>) or declines (<code>declined</code>), the author sends a declined one back with <code>ready for review</code>, and the same issue then tracks the work</td></tr>
               <tr><td data-label="Workflow">telegram-issues<br><em>Opt-in · pack: telegram</em></td><td data-label="Trigger">Issue, comment and PR events</td><td data-label="What it does">Sends Telegram alerts when the two secrets are set</td></tr>
             </tbody>
           </table>

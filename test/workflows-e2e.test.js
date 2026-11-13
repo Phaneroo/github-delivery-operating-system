@@ -340,3 +340,77 @@ test('feature approval: the workflow no longer reads RELEASE_APPROVER', () => {
   const yml = require('fs').readFileSync(require('path').join(__dirname, '..', '.github', 'workflows', 'feature-approval.yml'), 'utf8');
   assert.doesNotMatch(yml, /vars\.RELEASE_APPROVER/);
 });
+
+// feature-approval: review follow-ups
+
+const FEATURE_YML = require('fs').readFileSync(require('path').join(__dirname, '..', '.github', 'workflows', 'feature-approval.yml'), 'utf8');
+
+async function featureRun(job, { comments = [], labels = ['feature'], author = 'dev', approver = 'apprA, apprB', actor = 'dev', body = '' } = {}) {
+  const fx = createFakeRepo({ issues: [{ number: 9, title: '[FEATURE] x', labels, created_at: '2026-09-20T00:00:00Z' }], comments: comments.map(([login, text]) => ({ issue_number: 9, user: { login }, body: text })) });
+  if (job === 'verdict') fx.store.comments.push({ issue_number: 9, user: { login: actor }, body });
+  const context = { repo, payload: { issue: { number: 9, user: { login: author } }, comment: { user: { login: actor }, body } } };
+  await runScript(job === 'notify' ? FEATURE_NOTIFY : FEATURE, { github: fx.github, context, env: { FEATURE_APPROVER: approver } });
+  return {
+    labels: fx.store.issues[0].labels.map((l) => (typeof l === 'string' ? l : l.name)).sort(),
+    bot: fx.store.comments.filter((c) => c.user.login === 'github-actions[bot]'),
+  };
+}
+
+test('feature re-review: after a re-queue, a different approver can approve despite the first approver\'s old decline', async () => {
+  // alice declined, the author asked for review (the bot's 🔁 comment), bob approves
+  const r = await featureRun('verdict', {
+    approver: 'alice, bob', actor: 'bob', body: 'approved', labels: ['feature', 'needs-approval'],
+    comments: [['alice', 'declined'], ['github-actions[bot]', '🔁 @dev asked for another review. @alice @bob please take another look.']],
+  });
+  assert.deepEqual(r.labels, ['approved', 'feature']);
+});
+
+test('feature re-review: a decline before the re-queue still blocks if there was no re-queue', async () => {
+  const r = await featureRun('verdict', { approver: 'alice, bob', actor: 'bob', body: 'approved', labels: ['feature', 'declined'], comments: [['alice', 'declined']] });
+  assert.deepEqual(r.labels, ['declined', 'feature']);
+  assert.match(r.bot[0].body, /declined by @alice/);
+});
+
+test('feature re-review: questions, conditions and approvers do not re-queue; only the author, plainly, does', async () => {
+  for (const [actor, body] of [
+    ['dev', 'Ready for review? I am still unsure about the tests'],
+    ['dev', 'ready for review once the API lands'],
+    ['apprA', 'ready for review'],
+    ['stranger', 'ready for review'],
+  ]) {
+    const r = await featureRun('verdict', { labels: ['feature', 'declined'], actor, body });
+    assert.deepEqual(r.labels, ['declined', 'feature'], `${actor}: ${body}`);
+  }
+  assert.deepEqual((await featureRun('verdict', { labels: ['feature', 'declined'], actor: 'dev', body: 'Ready for review: added edge cases' })).labels, ['feature', 'needs-approval']);
+});
+
+test('feature approval: with FEATURE_APPROVER unset, an approve comment gets one reply saying so', async () => {
+  const first = await featureRun('verdict', { approver: '', actor: 'release-approver', body: 'approved', labels: ['feature', 'needs-approval'] });
+  assert.deepEqual(first.labels, ['feature', 'needs-approval']);
+  assert.match(first.bot[0].body, /`FEATURE_APPROVER` is not set/);
+  const again = await featureRun('verdict', { approver: '', actor: 'release-approver', body: 'approved', labels: ['feature', 'needs-approval'], comments: [['github-actions[bot]', first.bot[0].body]] });
+  assert.equal(again.bot.length, 1, 'only the earlier warning, no second one');
+  assert.equal((await featureRun('verdict', { approver: '', actor: 'someone', body: 'sounds interesting' })).bot.length, 0, 'ordinary discussion is not answered');
+});
+
+test('feature notify: the second event for the same issue (opened + labeled) does not ping twice', async () => {
+  const first = await featureRun('notify');
+  assert.equal(first.bot.length, 1);
+  const second = await featureRun('notify', { comments: [['github-actions[bot]', first.bot[0].body]] });
+  assert.equal(second.bot.length, 1, 'still just the first ping');
+});
+
+test('feature notify: the author is never pinged about their own request', async () => {
+  const [c] = (await featureRun('notify', { author: 'apprA', approver: 'apprA, apprB' })).bot;
+  assert.match(c.body, /@apprB/);
+  assert.doesNotMatch(c.body, /@apprA/);
+  assert.equal((await featureRun('notify', { author: 'apprA', approver: 'apprA' })).bot.length, 0, 'the only approver is the author');
+});
+
+test('feature-approval.yml: notify runs for opened and for the feature label being added, verdict only for comments', () => {
+  assert.match(FEATURE_YML, /types: \[opened, labeled\]/);
+  assert.match(FEATURE_YML, /github\.event\.action == 'opened' \|\| github\.event\.label\.name == 'feature'/);
+  assert.match(FEATURE_YML, /github\.event_name == 'issues' &&/);
+  assert.match(FEATURE_YML, /github\.event_name == 'issue_comment' &&/);
+  assert.match(FEATURE_YML, /feature-approval-notify-\$\{\{ github\.event\.issue\.number \}\}/);
+});

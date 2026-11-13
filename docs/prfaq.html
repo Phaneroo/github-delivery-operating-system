@@ -139,7 +139,7 @@
               <tr><td>Production</td><td>Notify a release approver when production-style issues are opened.</td></tr>
               <tr><td>Approvals</td><td>Apply <code>ready-for-deploy</code> after dual approval rules in <a href="https://github.com/Phaneroo/github-delivery-operating-system/blob/main/docs/governance.md">Governance</a> (release approver and QA approver on full; one approver on lite).</td></tr>
               <tr><td>QA</td><td>Auto-assign QA on issues labeled <code>qa</code> or <code>qa-request</code>, and keep one rolling QA issue (full, or lite with the <code>qa</code> pack).</td></tr>
-              <tr><td>Features</td><td>A Feature Request form (requirements, what it satisfies, acceptance criteria, expected tests) that the feature approver approves or declines by comment before work starts; the same issue then tracks the work (full, or lite with the <code>features</code> pack).</td></tr>
+              <tr><td>Features</td><td>A Feature Request form (requirements, what it satisfies, acceptance criteria, expected tests) that the feature approver approves or declines by comment before work starts (the approver is pinged when it is filed); after a decline, the author's <code>ready for review</code> comment sends it back; the same issue then tracks the work (full, or lite with the <code>features</code> pack).</td></tr>
               <tr><td>Notifications</td><td>Optional Telegram messages for configured events. Opt-in: not in a default install; add them with <code>add telegram</code>.</td></tr>
               <tr><td>Labels</td><td>A workflow to create required labels on demand.</td></tr>
             </tbody>

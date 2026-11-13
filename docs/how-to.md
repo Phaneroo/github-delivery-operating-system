@@ -64,6 +64,7 @@ npx github-delivery-os install --bundle lite --with-templates --with-labels --wi
 npx github-delivery-os list .                       # what exists, and what's installed here (✓ / ○)
 npx github-delivery-os add qa . --dry-run           # preview adding QA sign-off
 npx github-delivery-os add qa .                     # add it (releases then need a QA approver too)
+npx github-delivery-os add features .               # Feature Requests with approval (already in full)
 npx github-delivery-os remove qa .                  # take it away again
 npx github-delivery-os add auto-assign-qa .         # or one workflow at a time
 ```
@@ -117,6 +118,18 @@ Packs (`qa`, `telegram`) are named groups; any single workflow works by name too
 - QA approver: `qa approved`, `approved`, `qa ok`, or `looks good`
 
 Once both approve, the issue receives `ready-for-deploy`. To decline, a release approver comments `declined`, `reject`, or `not approved`. With several release approvers, one approver's decline can only be lifted by that same person approving.
+
+---
+
+## Propose a Feature
+
+Set up once: add the repo variable `FEATURE_APPROVER` (Settings → Secrets and variables → Actions → Variables): a GitHub login, or a comma-separated list. It is separate from `RELEASE_APPROVER`, so feature sign-off can be a different person. Until it is set, nobody can approve a feature, and the issue says so.
+
+1. Issues → New issue → **Feature Request**
+2. Fill in the requirements, what it is meant to satisfy, acceptance criteria and the expected tests
+3. Submit
+
+**What happens:** the issue gets `feature` and `needs-approval`, and `FEATURE_APPROVER` is pinged. The approver comments `approved` (also `go ahead`, ✅, or just `ok`) and the issue moves to `approved`; the same issue then tracks the work (link PRs, close it when the feature ships). `declined` (or `rejected`, ❌) adds `declined`. After a decline, the author updates the requirements and comments `ready for review` to put it back in the approver's queue; edits alone don't. With several approvers, a decline can only be lifted by the person who declined it.
 
 ---
 
@@ -233,6 +246,7 @@ npx github-delivery-os uninstall --dry-run .           # Preview
 | Request release | New issue → PRODUCTION RELEASE & QA SIGN-OFF |
 | Approve release | Comment `approved` (dual: both approvers) |
 | Report bug | New issue → Bug Report |
+| Propose a feature | New issue → Feature Request; `FEATURE_APPROVER` comments `approved`; after a decline, the author comments `ready for review` |
 | QA request | New issue → QA REQUEST |
 | Propose a feature | New issue → Feature Request; the approver comments `approved` to start it |
 | Enable Telegram | `npx github-delivery-os add telegram .`, then add TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID |

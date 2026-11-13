@@ -10,11 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`feature-approval` pings the feature approver** when a Feature Request is filed. If `FEATURE_APPROVER` isn't set, it says so on the issue instead of staying silent.
-- **Re-review after a decline.** The issue's author comments `ready for review` (once the requirements are updated) and the issue goes back to `needs-approval`, with the approver pinged. Edits alone never re-queue it, so an approver isn't re-pinged for changes that don't address the decline.
+- **Re-review after a decline.** The issue's author comments `ready for review` (once the requirements are updated) and the issue goes back to `needs-approval`, with the approver pinged. Edits alone never re-queue it, so an approver isn't re-pinged for changes that don't address the decline. Questions ("ready for review?"), conditions ("ready for review once X lands") and comments from anyone but the author don't count. A re-review starts clean: verdicts from before it no longer count, so a different approver can approve after another one's decline.
+- The ping also fires when the `feature` label is added to an existing issue, only once per issue, and never pings the author about their own request.
 
 ### Changed
 
-- **`FEATURE_APPROVER` no longer falls back to `RELEASE_APPROVER`** (nor to a placeholder name). Feature sign-off is its own role, so it can be different people from release sign-off. A repo that relied on the fallback must set `FEATURE_APPROVER`; until then nobody can approve a feature, and the workflow says so on the issue. 1.15.0 shipped hours before this change.
+- **`FEATURE_APPROVER` no longer falls back to `RELEASE_APPROVER`** (nor to a placeholder name). Feature sign-off is its own role, so it can be different people from release sign-off. **Upgrading:** a repo that relied on the fallback must set `FEATURE_APPROVER` (Settings → Secrets and variables → Actions → Variables); until then nobody can approve a feature, and the workflow replies once on the issue to an approve or decline comment saying so (features filed before the upgrade included). 1.15.0 shipped hours before this change.
 
 ## [1.15.0] - 2026-11-12
 

@@ -420,3 +420,34 @@ test('otherQaDecliners ignores decliners who are no longer QA approvers', () => 
   assert.deepEqual(otherQaDecliners(log, 'qa1', ['QA1', 'qa2']), ['qa2']);
   assert.deepEqual(otherQaDecliners(log, 'qa1', ['qa1']), []);
 });
+
+// ---- feature approvers (shared by feature-approval.yml's jobs) ----
+
+const { parseApproverNames, isApproverLogin, mentionList, featureApproverUnsetMessage, FEATURE_APPROVER_UNSET } = require('../.github/scripts/authorize-deployment-verdict');
+
+test('parseApproverNames keeps case, drops @ and blanks, and accepts a single login or a list', () => {
+  assert.deepEqual(parseApproverNames('Alice, @bob ,, carol'), ['Alice', 'bob', 'carol']);
+  assert.deepEqual(parseApproverNames('dave'), ['dave']);
+  assert.deepEqual(parseApproverNames(''), []);
+  assert.deepEqual(parseApproverNames(undefined), []);
+});
+
+test('isApproverLogin ignores case, and a missing login is nobody', () => {
+  assert.equal(isApproverLogin(['Alice'], 'alice'), true);
+  assert.equal(isApproverLogin(['Alice'], 'bob'), false);
+  assert.equal(isApproverLogin(['Alice'], undefined), false);
+  assert.equal(isApproverLogin([], 'alice'), false);
+});
+
+test('mentionList mentions everyone except the excluded login (case-insensitively)', () => {
+  assert.equal(mentionList(['Alice', 'Bob']), '@Alice @Bob');
+  assert.equal(mentionList(['Alice', 'Bob'], 'alice'), '@Bob');
+  assert.equal(mentionList(['Alice'], 'ALICE'), '');
+});
+
+test('featureApproverUnsetMessage carries the marker the workflow looks for, the consequence, and the how-to', () => {
+  const m = featureApproverUnsetMessage('so nobody can approve this yet.');
+  assert.ok(m.includes(FEATURE_APPROVER_UNSET));
+  assert.match(m, /so nobody can approve this yet\./);
+  assert.match(m, /separate from `RELEASE_APPROVER`/);
+});

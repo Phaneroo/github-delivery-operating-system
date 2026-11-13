@@ -197,6 +197,43 @@ function parseLogins(value) {
     .filter(Boolean);
 }
 
+// ---------------------------------------------------------------------------
+// Feature approvers (feature-approval.yml). FEATURE_APPROVER is its own
+// variable (no fallback to RELEASE_APPROVER); these keep the parsing, the
+// matching and the "not set" wording in one place for the workflow's jobs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Logins from FEATURE_APPROVER, as typed (case kept, for mentions).
+ * @param {string | null | undefined} value
+ * @returns {string[]}
+ */
+function parseApproverNames(value) {
+  return (value || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
+}
+
+/** Whether `login` is one of `names` (GitHub logins are case-insensitive). */
+function isApproverLogin(names, login) {
+  const l = normalize(login);
+  return names.some((n) => normalize(n) === l);
+}
+
+/** "@a @b" for the names, leaving out `except` (e.g. the issue's author). */
+function mentionList(names, except) {
+  return names.filter((n) => normalize(n) !== normalize(except)).map((n) => '@' + n).join(' ');
+}
+
+// Present in every "not set" message; the workflow also looks for it in earlier
+// comments, so it only ever warns once.
+const FEATURE_APPROVER_UNSET = '`FEATURE_APPROVER` is not set';
+const FEATURE_APPROVER_HOWTO =
+  'Set it under Settings → Secrets and variables → Actions → Variables (a GitHub login, or a comma-separated list). It is separate from `RELEASE_APPROVER`.';
+
+/** The warning for a repo with no FEATURE_APPROVER; `consequence` says what that means here. */
+function featureApproverUnsetMessage(consequence) {
+  return `⚠️ The repo variable ${FEATURE_APPROVER_UNSET}, ${consequence} ${FEATURE_APPROVER_HOWTO}`;
+}
+
 /**
  * Walks comments in chronological order and keeps the LATEST verdict from
  * EACH approver (keyed by lowercased login), separately for the release
@@ -332,4 +369,4 @@ module.exports = {
   ROLLING_QA_DECLINE_PHRASES,
   ROLLING_QA_APPROVE_EMOJI,
   ROLLING_QA_DECLINE_EMOJI,
-  nextReleaseAction, computeVerdict, parseLogins, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE, QA_DECLINE_RE };
+  nextReleaseAction, computeVerdict, parseLogins, parseApproverNames, isApproverLogin, mentionList, featureApproverUnsetMessage, FEATURE_APPROVER_UNSET, selectFilingsToCloseOnRelease, parseFilingPrNumber, DECLINE_RE, APPROVE_RE, QA_APPROVE_RE, QA_DECLINE_RE };

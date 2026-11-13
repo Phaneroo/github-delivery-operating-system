@@ -45,38 +45,41 @@ jobs:
       contains(github.event.issue.labels.*.name || fromJSON('[]'), 'feature') &&
       github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      contents: read
     # An issue form with labels fires `opened` and `labeled` together: one at a time,
     # so the second run sees the first one's ping and stays quiet.
     concurrency:
       group: feature-approval-notify-${{ github.event.issue.number }}
       cancel-in-progress: false
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Ping the feature approver
         uses: actions/github-script@v9
         env:
           FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER }}
         with:
           script: |
+            const { parseApproverNames, mentionList, featureApproverUnsetMessage } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const issueNumber = context.payload.issue.number;
             const MARK = '<!-- feature-approval:notify -->';
-            const approverNames = (process.env.FEATURE_APPROVER || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
-            const author = ((context.payload.issue.user && context.payload.issue.user.login) || '').toLowerCase();
+            const approverNames = parseApproverNames(process.env.FEATURE_APPROVER);
+            const author = (context.payload.issue.user && context.payload.issue.user.login) || '';
 
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: issueNumber, per_page: 100 });
             if (comments.some((c) => (c.body || '').includes(MARK))) return;
 
             // Never ping the author about their own request.
-            const mentions = approverNames.filter((a) => a.toLowerCase() !== author);
+            const mentions = mentionList(approverNames, author);
             let body;
             if (!approverNames.length) {
-              body = '⚠️ The repo variable `FEATURE_APPROVER` is not set, so nobody can approve this Feature Request yet. Set it under Settings → Secrets and variables → Actions → Variables (a GitHub login, or a comma-separated list). It is separate from `RELEASE_APPROVER`.';
-            } else if (mentions.length) {
-              body = `${mentions.map((a) => '@' + a).join(' ')} a Feature Request is waiting for your approval. Comment \`approved\` to start the work or \`declined\` to send it back.`;
+              body = featureApproverUnsetMessage('so nobody can approve this Feature Request yet.');
+            } else if (mentions) {
+              body = `${mentions} a Feature Request is waiting for your approval. Comment \`approved\` to start the work or \`declined\` to send it back.`;
             } else {
               return; // the author is the only approver: nobody else to ping
             }
@@ -107,14 +110,16 @@ jobs:
           FEATURE_APPROVER: ${{ vars.FEATURE_APPROVER }}
         with:
           script: |
-            const { matchVerdict, phraseRegex, wholeCommentRegex, RELEASE_DECLINE_PHRASES } =
-              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
+            const {
+              matchVerdict, phraseRegex, wholeCommentRegex, RELEASE_DECLINE_PHRASES,
+              parseApproverNames, isApproverLogin, mentionList, featureApproverUnsetMessage, FEATURE_APPROVER_UNSET,
+            } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/authorize-deployment-verdict.js`);
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const issueNumber = context.payload.issue.number;
-            const approverNames = (process.env.FEATURE_APPROVER || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
-            const isApprover = (login) => approverNames.some((a) => a.toLowerCase() === (login || '').toLowerCase());
+            const approverNames = parseApproverNames(process.env.FEATURE_APPROVER);
+            const isApprover = (login) => isApproverLogin(approverNames, login);
 
             // "ok" / "approve" start too many ordinary sentences to trust as a
             // prefix on a discussion thread, so they count only as the whole comment.
@@ -152,7 +157,7 @@ jobs:
               // The leading 🔁 marks the start of a fresh review: verdicts before it stop counting.
               await github.rest.issues.createComment({
                 owner, repo, issue_number: issueNumber,
-                body: `🔁 @${actor} asked for another review. ${approverNames.length ? approverNames.map((a) => '@' + a).join(' ') + ' please take another look.' : 'The repo variable `FEATURE_APPROVER` is not set, so nobody can approve it yet.'}`,
+                body: `🔁 @${actor} asked for another review. ${approverNames.length ? mentionList(approverNames) + ' please take another look.' : `The repo variable ${FEATURE_APPROVER_UNSET}, so nobody can approve it yet.`}`,
               });
               return;
             }
@@ -161,10 +166,10 @@ jobs:
             if (!approverNames.length) {
               if (!matchVerdict(context.payload.comment.body, vocab)) return;
               const earlier = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: issueNumber, per_page: 100 });
-              if (earlier.some((c) => (c.body || '').includes('`FEATURE_APPROVER` is not set'))) return;
+              if (earlier.some((c) => (c.body || '').includes(FEATURE_APPROVER_UNSET))) return;
               await github.rest.issues.createComment({
                 owner, repo, issue_number: issueNumber,
-                body: '⚠️ The repo variable `FEATURE_APPROVER` is not set, so this comment was not counted as a verdict. Set it under Settings → Secrets and variables → Actions → Variables (a GitHub login, or a comma-separated list). It is separate from `RELEASE_APPROVER`.',
+                body: featureApproverUnsetMessage('so this comment was not counted as a verdict.'),
               });
               return;
             }

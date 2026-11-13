@@ -414,3 +414,9 @@ test('feature-approval.yml: notify runs for opened and for the feature label bei
   assert.match(FEATURE_YML, /github\.event_name == 'issue_comment' &&/);
   assert.match(FEATURE_YML, /feature-approval-notify-\$\{\{ github\.event\.issue\.number \}\}/);
 });
+
+test('feature re-review: with FEATURE_APPROVER unset, the re-queue comment says nobody can approve yet', async () => {
+  const r = await featureRun('verdict', { approver: '', labels: ['feature', 'declined'], actor: 'dev', body: 'ready for review' });
+  assert.deepEqual(r.labels, ['feature', 'needs-approval']);
+  assert.match(r.bot[0].body, /^🔁 @dev asked for another review\. The repo variable `FEATURE_APPROVER` is not set, so nobody can approve it yet\./);
+});

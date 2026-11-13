@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`feature-approval`**: the approver parsing, matching, mentions and the "`FEATURE_APPROVER` is not set" message are shared helpers in `authorize-deployment-verdict.js` instead of being repeated in each job. No change in behaviour. The notify job now checks out the repo (to load them) and drops a `permissions` block that repeated the workflow-level one.
+
 ## [1.16.0] - 2026-11-12
 
 ### Added

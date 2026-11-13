@@ -74,7 +74,7 @@ Two sizes: **full** (everything below) and **lite** (sprints, task and bug forms
 | Production | Notify a release approver when production-style issues are opened. |
 | Approvals | Apply `ready-for-deploy` after dual approval rules in [Governance](governance.md) (release approver and QA approver on full; one approver on lite). |
 | QA | Auto-assign QA on issues labeled `qa` or `qa-request`, and keep one rolling QA issue (full, or lite with the `qa` pack). |
-| Features | A Feature Request form (requirements, what it satisfies, acceptance criteria, expected tests) that the feature approver approves or declines by comment before work starts; the same issue then tracks the work (full, or lite with the `features` pack). |
+| Features | A Feature Request form (requirements, what it satisfies, acceptance criteria, expected tests) that the feature approver approves or declines by comment before work starts (the approver is pinged when it is filed); after a decline, the author's `ready for review` comment sends it back; the same issue then tracks the work (full, or lite with the `features` pack). |
 | Notifications | Optional Telegram messages for configured events. Opt-in: not in a default install; add them with `add telegram`. |
 | Labels | A workflow to create required labels on demand. |
 
